@@ -50,15 +50,20 @@ contract WaterfallFuzzTest is Test {
     }
 }
 
-/// @notice Stateful invariant: random deposits / redemptions / price moves / time, asserting the
-///         core conservation and first-loss invariants always hold.
+/// @notice Stateful invariant handler: random deposits and redemptions in both tranches, price
+///         moves, time, donations, delinquency toggles, the ToU default clock, and recovery+claims.
+///         Every controller call is wrapped so the fuzzer keeps exploring through expected reverts.
 contract InvariantHandler is Test {
     TrancheController public c;
     MockWrapper public w;
+    MockMarket public m;
+    MockERC20 public usdc;
 
-    constructor(TrancheController _c, MockWrapper _w) {
+    constructor(TrancheController _c, MockWrapper _w, MockMarket _m, MockERC20 _u) {
         c = _c;
         w = _w;
+        m = _m;
+        usdc = _u;
     }
 
     function depositSenior(uint256 a) public {
@@ -82,25 +87,60 @@ contract InvariantHandler is Test {
         try c.requestRedeem(true, a) {} catch {}
     }
 
+    function redeemJunior(uint256 a) public {
+        uint256 bal = c.junior().balanceOf(address(this));
+        if (bal == 0) return;
+        a = bound(a, 1, bal);
+        try c.requestRedeem(false, a) {} catch {}
+    }
+
     function movePrice(uint256 p) public {
         w.setPrice(bound(p, 0.4e18, 3e18));
     }
 
+    function toggleDelinquent(bool d) public {
+        m.setDelinquent(d);
+        try c.accrue() {} catch {}
+    }
+
+    function donate(uint256 a) public {
+        w.mintShares(address(c), bound(a, 0, 1e12));
+    }
+
     function passTime(uint256 t) public {
         vm.warp(block.timestamp + bound(t, 0, 60 days));
-        c.accrue();
+        try c.accrue() {} catch {}
+    }
+
+    function advanceDefaultClock(uint256 t) public {
+        // push the on-chain delinquency clock, sometimes far enough to trip the ToU default
+        m.setTimeDelinquent(uint32(bound(t, 0, 200 days)));
+        try c.checkDefault() {} catch {}
+    }
+
+    function pokeAndClaim(uint256 seed, uint256 fund) public {
+        uint256 n = c.requestsLength();
+        if (n == 0) return;
+        uint256 i = seed % n;
+        (,,,, uint32 expiry) = c.requests(i);
+        if (block.timestamp <= expiry) vm.warp(uint256(expiry) + 1);
+        usdc.mint(address(m), bound(fund, 0, 1e12)); // partial-to-over liquidity
+        try c.pokeRecovery(expiry) {} catch {}
+        try c.claim(i) {} catch {}
     }
 }
 
 contract TrancheInvariantTest is Test {
     TrancheController c;
     MockWrapper w;
+    MockMarket m;
+    MockERC20 usdc;
     InvariantHandler handler;
 
     function setUp() public {
-        MockERC20 usdc = new MockERC20("USD Coin", "USDC");
-        MockMarket market = new MockMarket(address(usdc));
-        w = new MockWrapper(address(market));
+        usdc = new MockERC20("USD Coin", "USDC");
+        m = new MockMarket(address(usdc));
+        w = new MockWrapper(address(m));
         MockSentinel sentinel = new MockSentinel();
 
         c = new TrancheController(
@@ -116,7 +156,7 @@ contract TrancheInvariantTest is Test {
                 shareDecimals: 18
             })
         );
-        handler = new InvariantHandler(c, w);
+        handler = new InvariantHandler(c, w, m, usdc);
         c.setJuniorAllowed(address(handler), true);
 
         // seed a balanced position so deposits have a basis
@@ -140,4 +180,11 @@ contract TrancheInvariantTest is Test {
         (uint256 sv, uint256 jv) = c.trancheValues();
         if (jv > 0) assertEq(sv, c.seniorOwed(), "senior whole while junior has value");
     }
+
+    // NOTE: a no-over-distribution invariant (sum of claimed + claimable <= recoveredUSDC) was run
+    // here and FAILED: the redemption queue can credit a late-queuing request a share of recovery
+    // that was already distributed, because the class wmt total grows but is never reconciled against
+    // amounts already claimed. The bug is captured deterministically in
+    // AttackTest.test_Finding_LateQueuerOverPromisesRecovery and written up in the red-team framework
+    // (Self-review findings). Re-add this invariant once the redemption accounting is fixed.
 }

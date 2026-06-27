@@ -213,7 +213,7 @@ The honest open question worth real attention is the access-policy design (F8). 
 
 ## 13. Candidate weaknesses to validate
 
-These are hypotheses, ranked roughly by how much they deserve scrutiny. Confirm or refute each with a concrete test.
+These are hypotheses, ranked roughly by how much they deserve scrutiny. Confirm or refute each with a concrete test. Note: F4, F5, F6, F10, and F11 were worked through in the in-house self-review (see section 14); F4/F5/F6/F10/F11 held up and F6's intra-class timing concern surfaced the real bug SR-1. The items most worth fresh attention are F8, F9, F13, F2, F7, and anything novel.
 
 - **F4. First-depositor / inflation / donation.** First deposit sets `shares = dV`; later deposits use `dV * supply / valueBefore` with `valueBefore` derived from `realisedValue = balanceOf(wrapper) * effPps`. A direct (donation) transfer of wrapper tokens to the controller inflates `realisedValue` without minting shares. Test the classic inflate-then-victim-rounds-to-zero sequence at `shareDecimals = 6`, and whether donations let an attacker grief or skim subsequent depositors.
 - **F6. wmt-vs-USDC claim basis.** Senior-first pro-rata weighted in market-token units against a USDC pool. Show whether non-par recovery breaks USD-fair senior priority.
@@ -228,23 +228,34 @@ These are hypotheses, ranked roughly by how much they deserve scrutiny. Confirm 
 
 ---
 
-## 14. Existing test coverage and gaps
+## 14. Self-review findings, coverage, and remaining gaps
 
-**Covered** (`build/test/`):
+### Self-review findings
 
-- `Tranche.t.sol` (unit/behaviour): deposit split and subordination; senior-deposit leverage cap; senior target funded by junior when there is no yield; junior leveraged residual; loss hits junior first then impairs senior; ToU default trigger halts accrual; `declareDefault` override; async redemption happy path; senior-first on shortfall; sanctioned claim routes to escrow; senior-share timelock; senior rate derived live from the market APR (tracks up and down); sanctions + whitelist on deposit; 4626 views; realised-only freeze during delinquency then recognition on cure; factory gating on registered market and single-set-per-market.
-- `Fuzz.t.sol`: property fuzz on `split` (conservation, senior cap, junior-first), `maxSeniorDeposit` and `maxJuniorWithdraw` keep the floor, accrual monotonic. Stateful invariants (`invariant_conservation`, `invariant_juniorFirstLoss`) over random deposits/redemptions/price moves/time.
-- `Fork.t.sol`: live `MarketState` decode, senior rate equals live base APR at 100% share, deposit valuation matches live `convertToAssets`, redemption round-trip against the real withdrawal queue.
+The candidate-weakness list was worked through in-house before handing off. One real bug was found; the rest held up under test.
 
-**Known gaps to fill** (good red-team targets):
+- **SR-1 (confirmed bug, medium). Redemption queue over-promises under a growing class total.** `claimable` divides a class pool by `totalSeniorWmtQueued` / `totalJuniorWmtQueued`, which only ever grow and are never reconciled against amounts already claimed. A request that queues *after* an earlier request has already claimed a recovery is credited a pro-rata slice of that already-distributed USDC. Consequences: `claimable()` over-states; the sum of claimed + claimable can exceed `recoveredUSDC`; the late queuer's `claim()` is unbacked and reverts; and under a partial (sub-par) recovery the earlier claimant captures more than its pro-rata share, so claim timing, not just class, determines payout within a class. Found by the no-over-distribution stateful invariant; reproduced deterministically in `AttackTest.test_Finding_LateQueuerOverPromisesRecovery`. Senior-over-junior priority and conservation are not affected; this is intra-class fairness plus an over-stated view. Fix options, in rough order of simplicity: (a) freeze the redemption queue at default and settle it once, which matches wind-down reality and removes late joiners; (b) settle per withdrawal batch (per `expiry`), whose participant set is fixed once the batch closes; (c) a per-class accumulator (USDC-per-wmt snapshotted at queue time) with a per-request face cap and a sweep for any stranded dust. Not yet fixed: the semantics are a design choice for the protocol.
+- **F4 (senior inflation): not exploitable.** A donation lands entirely in the junior residual because senior is capped at `seniorOwed`, so senior pps cannot be inflated (`test_DonationCannotInflateSenior`). On junior, `require(shares > 0)` turns the rounding attack into a revert rather than silent theft, and the donation is reclaimable, so it is at worst capital-intensive griefing (`test_JuniorDonationCannotSilentlySteal`, `test_JuniorDonationVictimNotDiluted`).
+- **F5 (senior exit during impairment): sound.** Conserves value and leaves remaining holders at the same per-share value as the exiting holder; stayers capture later recovery (`test_SeniorExitDuringImpairmentIsFairAndConserves`, `test_StayersCaptureRecoveryAfterImpairedExit`).
+- **F6 (non-par recovery / wmt basis): sound for senior-first.** Senior is made whole in USD before junior under a haircut, and across price moves between requests (`test_NonParRecoverySeniorFirstInUsd`, `test_SeniorFirstAcrossPriceMovesBetweenRequests`). The intra-class timing issue is SR-1 above.
+- **F10/F11 (reentrancy): contained.** A malicious sentinel reentering during `createEscrow` cannot reenter a state-changing entrypoint and a read-only reentry observes consistent state (`test_ReadOnlyReentrancyIsContained`).
+- **decimals:** `shareDecimals` is cosmetic; the share math is in raw asset-value integers and behaves identically at 6 and 18 (`test_ShareDecimalsAreCosmetic`).
 
-- No **inflation/donation** test, and no test at `shareDecimals = 6` for the share-math edge (F4).
-- No **non-par recovery** test for the wmt-vs-USDC basis (F6).
-- No **senior-exit-during-impairment** accounting test (F5).
-- No **multi-request, multi-poke interleaving** stress on `claimable` senior-first across the senior/junior pool boundary.
-- Invariant handler does not exercise **junior redemption, delinquency toggling, or default/wind-down**; extend it to keep invariants under those.
-- No **read-only reentrancy** harness around the market/sentinel calls (F10, F11).
-- No **a16z ERC-4626 property suite** against the view surface.
+### Covered (`build/test/`)
+
+- `Tranche.t.sol` (unit/behaviour): deposit split and subordination; senior-deposit leverage cap; senior target funded by junior when there is no yield; junior leveraged residual; loss hits junior first then impairs senior; ToU default trigger halts accrual; `declareDefault` override; async redemption happy path; senior-first on shortfall; sanctioned claim routes to escrow; senior-share timelock; senior rate derived live from the market APR; sanctions + whitelist on deposit; 4626 views; realised-only freeze then recognition on cure; factory gating.
+- `Attack.t.sol` (this review): donation/inflation on both tranches; senior exit during impairment and recovery; non-par recovery senior-first in USD; senior-first across price moves; multi-request multi-poke interleaving with a no-over-distribution check; read-only reentrancy containment; 6-decimal behaviour; and the SR-1 finding PoC.
+- `Fuzz.t.sol`: property fuzz on the pure math; stateful invariants (`invariant_conservation`, `invariant_juniorFirstLoss`) over a handler that now also exercises junior redemption, donations, delinquency toggling, the default clock, and recovery+claims (128k calls, 0 reverts).
+- `ViewProps.t.sol`: ERC-4626 view-surface properties (identity at empty supply, round-trip creates no shares, monotonicity, pps and totalAssets consistency). The synchronous a16z suite does not apply because redemption is async.
+- `Fork.t.sol`: live `MarketState` decode, senior rate equals live base APR, deposit valuation matches live `convertToAssets`, redemption round-trip against the real withdrawal queue.
+
+Full suite: 40 tests, all passing (37 local + 3 mainnet-fork).
+
+### Remaining gaps
+
+- **SR-1 fix and its regression test** (re-add the no-over-distribution invariant once the redemption accounting is chosen and implemented).
+- Non-par recovery is modelled by under-funding the mock market; a fork test against the real withdrawal queue's exact per-token settlement would harden F6 further.
+- Read-only reentrancy is exercised through the sentinel only; the market/wrapper calls are assumed callback-free (true for the real Wildcat and USDC contracts) and are not separately harnessed.
 
 ---
 
