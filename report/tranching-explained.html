@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Wildcat Tranching, Explained</title>
+<style>
+  :root{
+    --ink:#16130f;--ink-soft:#3a352e;--muted:#6b6359;--line:#e4ddd1;--line2:#c9bfae;
+    --amber:#b4670d;--amber-soft:#f7efe0;--cream:#fbf8f2;--green:#2f6f4f;--red:#9a3412;
+  }
+  *{box-sizing:border-box;}
+  @page{ size:Letter; margin:18mm 17mm 18mm 17mm; }
+  html{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  body{ font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif; color:var(--ink); font-size:10.6pt; line-height:1.55; margin:0; }
+  .mono{ font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace; }
+  .rf{ position:fixed; left:0; right:0; bottom:0; height:15mm; background:#fff; }
+  .rf .in{ position:absolute; left:0; right:0; bottom:6mm; font-size:7.3pt; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); display:flex; justify-content:space-between; border-top:.5pt solid var(--line); padding-top:3pt; }
+  .kicker{ font-size:8.5pt; letter-spacing:.22em; text-transform:uppercase; color:var(--amber); font-weight:800; }
+  h1{ font-size:27pt; font-weight:800; letter-spacing:-.02em; margin:7pt 0 0; line-height:1.05; }
+  .deck{ font-size:11.5pt; color:var(--ink-soft); margin:9pt 0 0; max-width:172mm; line-height:1.5; font-style:italic; }
+  .meta{ font-size:8.6pt; color:var(--muted); margin-top:9pt; }
+  .breath{ border:1pt solid var(--line2); border-left:3pt solid var(--amber); background:var(--cream); border-radius:4pt; padding:11pt 14pt; margin:14pt 0 0; }
+  .breath .t{ font-size:8pt; letter-spacing:.14em; text-transform:uppercase; color:var(--amber); font-weight:800; margin-bottom:4pt; }
+  .breath p{ margin:0; font-size:11pt; }
+  h2{ font-size:14pt; font-weight:800; margin:0 0 5pt; padding-bottom:5pt; border-bottom:1.5pt solid var(--ink); display:flex; align-items:baseline; gap:9pt; }
+  h2 .num{ font-size:8.5pt; color:var(--amber); font-weight:800; border:1.2pt solid var(--amber); border-radius:50%; width:16pt; height:16pt; display:inline-flex; align-items:center; justify-content:center; flex:none; }
+  section{ margin:7mm 0 0; } p{ margin:0 0 6pt; } .lead{ color:var(--ink-soft); }
+  strong{ font-weight:700; } em{ font-style:italic; color:var(--ink-soft); }
+  .cards{ display:flex; gap:9pt; margin:8pt 0 2pt; }
+  .card{ flex:1; border:1pt solid var(--line2); border-radius:6pt; padding:11pt 13pt; }
+  .card.sr{ background:var(--cream); }
+  .card.jr{ background:#fff; }
+  .card .h{ font-size:11.5pt; font-weight:800; } .card .h .c{ font-family:"SF Mono",monospace; font-size:9pt; color:var(--amber); }
+  .card .tag{ font-size:7.6pt; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); font-weight:700; margin-top:1pt; }
+  .card ul{ margin:6pt 0 0; padding-left:14pt; } .card li{ margin:0 0 3pt; font-size:9.6pt; }
+  .wf{ display:flex; gap:10pt; margin:8pt 0 2pt; }
+  .wf .col{ flex:1; border:1pt solid var(--line2); border-radius:6pt; overflow:hidden; }
+  .wf .col h4{ margin:0; font-size:9.5pt; padding:6pt 10pt; color:#fff; font-weight:800; }
+  .wf .good h4{ background:var(--green); } .wf .bad h4{ background:var(--red); }
+  .wf .body{ padding:9pt 11pt; }
+  .bucket{ display:flex; align-items:center; gap:7pt; margin:0 0 5pt; font-size:9.3pt; }
+  .bucket .lab{ width:42pt; font-weight:800; flex:none; }
+  .bucket .bar{ height:13pt; border-radius:2pt; }
+  .bar.sr{ background:var(--amber); } .bar.jr{ background:#dcaa5e; }
+  .bar.loss{ background:#e7d6c4; }
+  .arrowdn{ text-align:center; color:var(--muted); font-size:11pt; margin:0; }
+  ul.clean{ margin:4pt 0 0; padding-left:16pt; } ul.clean li{ margin:0 0 5pt; }
+  .callout{ border:1pt solid var(--line2); border-left:3pt solid var(--amber); background:var(--cream); border-radius:3pt; padding:9pt 13pt; margin:8pt 0 0; }
+  .callout .ct{ font-size:8pt; letter-spacing:.12em; text-transform:uppercase; color:var(--amber); font-weight:800; margin-bottom:3pt; }
+  .num-eg{ background:#fff; border:1pt dashed var(--line2); border-radius:5pt; padding:9pt 13pt; margin:7pt 0 0; font-size:9.6pt; }
+  .num-eg .nt{ font-size:7.8pt; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); font-weight:700; margin-bottom:3pt; }
+  .fineprint li{ font-size:9.6pt; }
+  .recap{ border:1.5pt solid var(--ink); border-radius:6pt; padding:12pt 15pt; margin:8pt 0 0; background:var(--cream); }
+  .recap .rt{ font-size:8.5pt; letter-spacing:.14em; text-transform:uppercase; color:var(--amber); font-weight:800; margin-bottom:4pt; }
+  .pagebreak{ break-before:page; }
+</style>
+</head>
+<body>
+<div class="rf"><div class="in"><span>Wildcat &middot; Tranching, Explained</span><span>One loan, two ways to lend it</span></div></div>
+
+<div class="kicker">Wildcat &nbsp;&middot;&nbsp; Risk Tranching</div>
+<h1>Tranching, Explained</h1>
+<div class="deck">One loan, two ways to lend it. The friendly, no-jargon tour of how Wildcat tranching works, what it does for you, and what it does when things go wrong. If you have never touched DeFi, start here. If you run a credit desk, this still covers everything, just gently.</div>
+<div class="meta">Ethereum mainnet &middot; senior &amp; junior tranches over a Wildcat private-credit facility</div>
+
+<div class="breath">
+  <div class="t">The whole thing in one breath</div>
+  <p>Wildcat lets a real borrower take out a loan on-chain. Tranching splits the lender side into two pieces: a <strong>safe seat</strong> and a <strong>spicy seat</strong>. The safe seat is paid first and earns a steady return. The spicy seat is paid last, earns more when things go well, and takes the hit first when things go badly. Same loan, same borrower, two different rides. You pick the seat that suits you.</p>
+</div>
+
+<section>
+<h2><span class="num">1</span> Start with the loan</h2>
+<p>On Wildcat, a borrower (think a trading firm like Wintermute) asks to borrow stablecoins, usually USDC. Lenders put USDC in, the borrower pays interest. This is private credit: a real loan to a real, named counterparty, with terms everyone can see.</p>
+<p>When you lend, you get a token representing your share of the loan plus the interest piling up on it. Wildcat wraps that into a tidy, standard receipt called <span class="mono">v-wmtUSDC</span>. Think of it as a claim ticket: "I am owed this slice of the loan, and it is growing." So far every lender is in the same boat, sharing upside and risk the same way. That is fine, but it is one-size-fits-all. Tranching gives the safety-seekers and the yield-seekers each what they want, out of the same loan.</p>
+</section>
+
+<section>
+<h2><span class="num">2</span> Split the lenders into two groups</h2>
+<p>Tranching divides the lender claims into two slices. "Tranche" is just French for "slice." Each is its own token you can hold, transfer, or sell.</p>
+<div class="cards">
+  <div class="card sr">
+    <div class="h">Senior <span class="c">sr-wmtUSDC</span></div>
+    <div class="tag">The safe seat</div>
+    <ul><li>First in line for interest</li><li>First in line to be paid back</li><li>Last to take a loss</li></ul>
+  </div>
+  <div class="card jr">
+    <div class="h">Junior <span class="c">jr-wmtUSDC</span></div>
+    <div class="tag">The spicy seat</div>
+    <ul><li>Earns whatever is left after senior</li><li>Usually more, and amplified</li><li>Absorbs losses first</li></ul>
+  </div>
+</div>
+<p class="lead">Picture two people funding a lemonade stand. The senior partner says "pay me my fixed cut first, every time." The junior partner says "I take whatever is left: more on a great day, nothing on a bad day, and I eat the loss if a customer skips the bill." Same stand, two very different deals. The borrower notices none of this; they still see one loan with one set of terms.</p>
+</section>
+
+<section>
+<h2><span class="num">3</span> The cushion (the important part)</h2>
+<p>Here is what makes the safe seat actually safe. The junior slice sits underneath senior and acts as a cushion. If the loan loses value, the loss eats the junior cushion first. Senior is only touched once the entire junior cushion is gone. Two rules keep that cushion meaningful:</p>
+<ul class="clean">
+  <li><strong>The cushion is always at least 20% of the money.</strong> Junior can never shrink below one fifth of the total, so senior always has a real buffer beneath it.</li>
+  <li><strong>Senior can never be more than four times the junior.</strong> The same rule from the other side. It stops the structure getting top-heavy.</li>
+</ul>
+<div class="callout"><div class="ct">In plain terms</div>Before a single senior dollar is at risk, at least twenty cents of every dollar in the structure (all of it junior money) has to be wiped out first. That protection is what senior pays for by accepting a lower return.</div>
+</section>
+
+<section>
+<h2><span class="num">4</span> When things go well, who earns what</h2>
+<p>The loan pays interest, and it flows like water down a set of buckets in a fixed order.</p>
+<p><strong>Senior's bucket fills first.</strong> Senior is owed a target return. It is not plucked from the air and not a promise carved in stone. It is tied to what the borrower actually pays: senior earns a set <strong>share</strong> of the loan's rate. If the facility pays 8.5% and senior's share is 80%, senior targets about 6.8%. If the borrower's rate rises, senior's target rises with it; if it falls, senior follows down. Senior tracks the loan, and never tries to earn more than the loan itself pays.</p>
+<p><strong>Junior catches the overflow.</strong> Once senior's bucket is full, the rest spills into junior. Because junior is a thin slice catching the leftover spread on the whole loan, its return is amplified. On a good loan, junior can earn well above the headline rate.</p>
+<div class="num-eg">
+  <div class="nt">A feel for the numbers</div>
+  Senior 300, junior 100, loan pays 8.5%, senior share 80%. The whole 400 earns 8.5% = <strong>34</strong> of interest. Senior takes 6.8% on 300 &asymp; <strong>20</strong>. Junior keeps the rest &asymp; <strong>14</strong> on a base of just 100, roughly a <strong>14% return</strong>. The same 8.5% loan, felt as 14% by junior. That amplification is junior's reward for standing in front.
+</div>
+<p class="lead" style="margin-top:7pt">One edge worth knowing: set senior's share all the way to 100% and senior just earns the full loan rate while junior earns the same rate, with no amplification left over. Junior would then take first-loss risk for no extra reward, which nobody wants. So in practice the share sits below 100%, and that gap is exactly junior's premium for being the cushion.</p>
+</section>
+
+<section class="pagebreak">
+<h2><span class="num">5</span> When things go badly, who loses what</h2>
+<p>Losses run down the same buckets, but draining from the bottom. If the loan loses value, junior's bucket empties first. Senior stays completely whole until junior hits zero. Only then does senior feel anything.</p>
+<div class="wf">
+  <div class="col good">
+    <h4>Good times: interest fills top-down</h4>
+    <div class="body">
+      <div class="bucket"><span class="lab">Senior</span><div class="bar sr" style="width:62%"></div><span>target coupon, paid first</span></div>
+      <div class="arrowdn">&darr; overflow</div>
+      <div class="bucket"><span class="lab">Junior</span><div class="bar jr" style="width:88%"></div><span>amplified leftover</span></div>
+    </div>
+  </div>
+  <div class="col bad">
+    <h4>Bad times: loss drains bottom-up</h4>
+    <div class="body">
+      <div class="bucket"><span class="lab">Senior</span><div class="bar sr" style="width:62%"></div><span>untouched until junior is empty</span></div>
+      <div class="arrowdn">&uarr; protected</div>
+      <div class="bucket"><span class="lab">Junior</span><div class="bar loss" style="width:88%"></div><span>absorbs loss first, down to zero</span></div>
+    </div>
+  </div>
+</div>
+<div class="num-eg">
+  <div class="nt">A feel for the numbers</div>
+  Same 300 senior, 100 junior. The pool drops 20% (400 &rarr; 320): senior still holds 300, junior absorbs the whole 80 and is left with 20. The pool drops to 200: junior (only 100) is wiped to zero, and senior, owed 300, holds the remaining 200. Senior finally takes a loss, but only after junior is completely gone.
+</div>
+<p style="margin-top:7pt">This is "first-loss," and it is not a marketing claim. It is enforced by the contract on every single calculation. Junior cannot dodge it, and senior cannot jump the queue in reverse.</p>
+</section>
+
+<section>
+<h2><span class="num">6</span> How your slice is valued (no pretending)</h2>
+<p>You might expect a tranche price to wobble on guesses about the future. It does not. Value is based only on money that is actually real and actually there. No oracle guessing, no optimistic marks.</p>
+<p>This matters most when a borrower pays late. Wildcat charges late borrowers a penalty rate, which on paper makes the claim look like it is growing faster. It would be easy, and dishonest, to book that paper growth as profit. Tranching refuses. When the loan is in trouble, value is frozen at its last genuinely-good level and does not climb on penalty interest that has not been paid. The rule is one-directional and simple: <strong>freeze the gains you have not really earned, recognize the losses immediately.</strong> You only ever count money you can point to.</p>
+</section>
+
+<section>
+<h2><span class="num">7</span> Getting your money out</h2>
+<p>Read this twice, because people get it wrong. Tranches are <strong>not an ATM</strong>. You do not click withdraw and get instant cash. You join a queue, the same withdrawal queue the underlying loan uses.</p>
+<ul class="clean">
+  <li><strong>You request to exit.</strong> Hand back your tokens, get put in line for your share of the loan.</li>
+  <li><strong>You wait.</strong> The request sits in the queue until there is real cash, which comes from the borrower repaying or new lenders arriving.</li>
+  <li><strong>You claim.</strong> Once cash is available, you pull your share.</li>
+</ul>
+<p>And the queue has a strict order: <strong>senior is always at the front.</strong> When cash comes back, senior is made whole first; junior is paid only once senior has what it is owed. If there is only enough for part of the line, senior gets it and junior waits. This is on purpose: the safe seat is first to be paid, in good times and bad. The trade-off is that everyone, senior included, is in a queue rather than holding instant cash. Think semi-liquid, not a checking account.</p>
+</section>
+
+<section>
+<h2><span class="num">8</span> What "default" means, and what happens</h2>
+<p>Borrowers can be a little late; that is normal, and the loan charges them for it. "Default" is more serious: the borrower has been deep in arrears for a long, sustained stretch. Wildcat's own rules define it: after a borrower blows past their grace period and then stays in penalty for a continuous further 90 days, the loan is considered in default. Tranching mirrors that exact definition on-chain, reading the loan's own clock. A specific written agreement between borrower and lenders can override the timing, since the real definition is ultimately legal.</p>
+<p>Nothing on a blockchain happens by itself, so this does not magically trigger. Anyone can nudge the contract to check the clock, and ordinary activity nudges it automatically. The moment default registers, three things happen:</p>
+<ul class="clean">
+  <li><strong>Senior stops its meter.</strong> Its claim stops growing, frozen at the default-day value.</li>
+  <li><strong>The doors close to new money.</strong> No new deposits.</li>
+  <li><strong>An orderly wind-down begins.</strong> Whatever can be recovered, including anything recovered later through off-chain legal enforcement, is paid through the queue senior-first, junior absorbing the shortfall.</li>
+</ul>
+<div class="callout"><div class="ct">Where the loss actually shows up</div>The contract never reaches in and slashes a price out of nowhere. During trouble, values freeze. The real loss lands later, as cash comes back lighter than hoped through the withdrawal queue, and that cash is always handed out senior-first. Junior is written down to zero before senior loses a cent.</div>
+</section>
+
+<section>
+<h2><span class="num">9</span> The safety rails</h2>
+<p>A few things are built in so you do not have to trust anyone's good behavior:</p>
+<ul class="clean">
+  <li><strong>The core logic cannot be changed.</strong> The waterfall rules are immutable. No one rewrites them after you are in.</li>
+  <li><strong>The few adjustable settings move slowly.</strong> The handful of knobs (like senior's share of the rate) sit behind a mandatory waiting period, announced before they take effect. No surprise overnight changes.</li>
+  <li><strong>No one can freeze your exit.</strong> The controls can pause new deposits, but can never block a payout to existing money.</li>
+  <li><strong>Sanctions are respected.</strong> A sanctioned address has its funds routed to secure escrow rather than paid directly, the same compliance backbone the rest of Wildcat uses.</li>
+  <li><strong>The junior seat is invite-only.</strong> First-loss is not for everyone, so junior is restricted to qualified participants. Senior is open to the lenders the market already approves.</li>
+</ul>
+<p>There is no admin button that drains the pool and no way for operators to walk off with the money. The rules, not the operators, are in charge.</p>
+</section>
+
+<section>
+<h2><span class="num">10</span> Who each seat is for</h2>
+<div class="cards">
+  <div class="card sr">
+    <div class="h">Take the senior seat</div>
+    <div class="tag">Treasuries &middot; conservative credit &middot; cash-plus</div>
+    <ul><li>Capital preservation on a named borrower</li><li>Priority return that tracks the loan</li><li>Behind a hard 20% first-loss buffer</li><li>Whole structure visible on-chain, live</li></ul>
+  </div>
+  <div class="card jr">
+    <div class="h">Take the junior seat</div>
+    <div class="tag">Credit funds &middot; prop desks &middot; yield-seekers</div>
+    <ul><li>Express a view on the borrower and get paid for it</li><li>Amplified spread on the whole loan</li><li>No protection, first dollar of loss</li><li>Own the risk rather than hedge it</li></ul>
+  </div>
+</div>
+<p class="lead" style="margin-top:8pt"><strong>Run the desk that places both</strong> to widen your buyer base without renegotiating anything with the borrower. One loan becomes two products: sell safety to capital that needs safety and yield to capital that wants it. That deepens the facility and lowers its blended cost, with the borrower changing nothing.</p>
+</section>
+
+<section>
+<h2><span class="num">11</span> How this is different</h2>
+<p><strong>Versus traditional securitization.</strong> No special-purpose vehicle, no trustee, no servicer, no quarterly remittance reports. Deploy a contract per loan and you are done, with no ongoing intermediary skimming fees. Everything is visible per-block instead of in a monthly statement, settlement is instant, and the tranches are real tokens you can hold and move. The trade-offs are honest: smart-contract and stablecoin risk, thinner secondary markets, and final recovery in a default still leans on off-chain legal enforcement.</p>
+<p><strong>Versus other on-chain tranching.</strong> Most on-chain tranching splits up <em>liquid</em> yield, where a loss is just a price gently sliding down. Wildcat's is built for undercollateralized private credit, where a loss is a discrete, real-world credit event. So the loss trigger is tied to the loan's <em>actual</em> default definition, not a price chart. And the whole layer is owned by Wildcat, so there is no third party to depend on and no revenue share, and the tranche tokens slot straight into the same approved deposit flow as everything else.</p>
+</section>
+
+<section>
+<h2><span class="num">12</span> The honest fine print</h2>
+<ul class="clean fineprint">
+  <li><strong>It is semi-liquid, not daily-liquidity.</strong> Exits queue and can fill partially under stress. Senior-first, always.</li>
+  <li><strong>One borrower per tranche set.</strong> Diversification comes from spreading across loans, not within one.</li>
+  <li><strong>Junior is genuinely first-loss.</strong> It can be written all the way to zero before senior loses anything. That is the design.</li>
+  <li><strong>Recovery is part code, part courtroom.</strong> The contract distributes recoveries senior-first, but ultimate recovery in a real default depends on off-chain legal enforcement.</li>
+  <li><strong>Standard DeFi risks apply.</strong> Smart-contract and stablecoin risk are real. The system is independently audited before it handles real money.</li>
+</ul>
+</section>
+
+<div class="recap">
+  <div class="rt">The recap, for the dog</div>
+  <p style="margin:0">One loan. Two seats. Senior is the safe seat: paid first, steady return that tracks the loan, protected by a cushion of at least 20%. Junior is the spicy seat: paid last, earns the amplified leftover, and <em>is</em> the cushion. Interest fills senior's bucket first and junior catches the overflow. Losses drain junior's bucket first and only reach senior once junior is empty. Getting out means joining a queue, with senior at the front. If the borrower truly defaults, senior's meter stops and everything left is paid out senior-first. The rules are fixed in code, the few knobs move slowly and in the open, and nobody can run off with the money. Pick your seat.</p>
+</div>
+
+</body>
+</html>

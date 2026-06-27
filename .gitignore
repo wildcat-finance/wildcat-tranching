@@ -1,0 +1,24 @@
+# Third-party reference repositories (studied, not part of this project)
+repos/
+
+# Foundry build artifacts
+build/out/
+build/cache/
+out/
+cache/
+
+# Node
+node_modules/
+
+# Secrets / local env
+.env
+.env.*
+*.local
+
+# OS / editor cruft
+.DS_Store
+**/.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/

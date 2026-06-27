@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Wildcat Tranching: Architecture &amp; Design Overview</title>
+<style>
+  :root{
+    --ink:#16130f;--ink-soft:#3a352e;--muted:#6b6359;--line:#e4ddd1;--line2:#c9bfae;
+    --amber:#b4670d;--amber-soft:#f7efe0;--cream:#fbf8f2;--green:#2f6f4f;--red:#9a3412;
+  }
+  *{box-sizing:border-box;}
+  @page{ size:Letter; margin:19mm 17mm 20mm 17mm; }
+  html{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  body{ font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif; color:var(--ink); font-size:10.3pt; line-height:1.5; margin:0; }
+  .mono{ font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace; }
+  .rf{ position:fixed; left:0; right:0; bottom:0; height:16mm; background:#fff; }
+  .rf .in{ position:absolute; left:0; right:0; bottom:7mm; font-size:7.3pt; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); display:flex; justify-content:space-between; border-top:.5pt solid var(--line); padding-top:3pt; }
+  .kicker{ font-size:8.5pt; letter-spacing:.22em; text-transform:uppercase; color:var(--amber); font-weight:800; }
+  h1{ font-size:24pt; font-weight:800; letter-spacing:-.015em; margin:7pt 0 0; }
+  .deck{ font-size:11.5pt; color:var(--ink-soft); margin:8pt 0 0; max-width:172mm; line-height:1.45; }
+  .meta{ font-size:8.6pt; color:var(--muted); margin-top:7pt; }
+  .facts{ display:flex; gap:0; border:1pt solid var(--line2); border-radius:3pt; overflow:hidden; margin:12pt 0 0; }
+  .facts .m{ flex:1; padding:8pt 10pt; border-right:1pt solid var(--line); }
+  .facts .m:last-child{ border-right:0; }
+  .facts .l{ font-size:7.2pt; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+  .facts .v{ font-size:12pt; font-weight:800; margin-top:2pt; letter-spacing:-.01em; }
+  .v.am{ color:var(--amber); }
+  h2{ font-size:13.5pt; font-weight:800; margin:0 0 4pt; padding-bottom:5pt; border-bottom:1.5pt solid var(--ink); display:flex; align-items:baseline; gap:8pt; }
+  h2 .num{ font-size:8.5pt; color:var(--amber); font-weight:800; border:1.2pt solid var(--amber); border-radius:50%; width:15pt; height:15pt; display:inline-flex; align-items:center; justify-content:center; flex:none; }
+  section{ margin:6mm 0 0; } p{ margin:0 0 5pt; } .lead{ color:var(--ink-soft); }
+  strong{ font-weight:700; } em{ font-style:italic; color:var(--ink-soft); }
+  table{ width:100%; border-collapse:collapse; margin:4pt 0; font-size:9.2pt; } tr{ break-inside:avoid; }
+  thead th{ text-align:left; font-size:7.5pt; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); font-weight:700; padding:0 7pt 4pt; border-bottom:1.2pt solid var(--ink); }
+  tbody td{ padding:5pt 7pt; border-bottom:.5pt solid var(--line); vertical-align:top; } tbody tr:nth-child(even){ background:#faf7f1; }
+  td:first-child,th:first-child{ padding-left:2pt; }
+  ul.clean{ margin:3pt 0 0; padding-left:15pt; } ul.clean li{ margin:0 0 4pt; }
+  .flow{ display:flex; align-items:stretch; gap:0; margin:6pt 0 2pt; }
+  .box{ flex:1; border:1pt solid var(--line2); border-radius:5pt; padding:8pt 6pt; text-align:center; }
+  .box.dark{ background:var(--ink); color:#fff; border-color:var(--ink); }
+  .box.cream{ background:var(--cream); }
+  .box .t{ font-size:9.5pt; font-weight:800; } .box .c{ font-family:"SF Mono",monospace; font-size:8.5pt; color:var(--amber); margin-top:1pt; } .box.dark .c{ color:#e7b06a; }
+  .box .s{ font-size:7.6pt; color:var(--muted); margin-top:2pt; } .box.dark .s{ color:#c9bfae; }
+  .arr{ display:flex; align-items:center; justify-content:center; width:22pt; color:var(--amber); font-weight:800; font-size:13pt; }
+  .callout{ border:1pt solid var(--line2); border-left:3pt solid var(--amber); background:var(--cream); border-radius:3pt; padding:9pt 12pt; margin:6pt 0 0; break-inside:avoid; }
+  .callout .ct{ font-size:8pt; letter-spacing:.12em; text-transform:uppercase; color:var(--amber); font-weight:800; margin-bottom:3pt; }
+  .note{ font-size:8.6pt; color:var(--muted); margin-top:5pt; }
+</style>
+</head>
+<body>
+<div class="rf"><div class="in"><span>Wildcat &middot; In-House Tranching: Architecture &amp; Design Overview</span><span>Confidential</span></div></div>
+
+<div class="kicker">Wildcat &nbsp;&middot;&nbsp; In-House Tranching</div>
+<h1>Architecture &amp; Design Overview</h1>
+<div class="deck">A senior/junior credit-tranche vault layered on the Wildcat <span class="mono">v-wmtUSDC</span> market wrapper. This describes the system as built: its contracts, how it attaches to a Wildcat market, the design decisions, and the properties it guarantees.</div>
+<div class="meta">Ethereum mainnet &middot; full rationale in the Design &amp; Risk Specification</div>
+
+<div class="facts">
+  <div class="m"><div class="l">Capital stack</div><div class="v">Senior + Junior</div></div>
+  <div class="m"><div class="l">First-loss</div><div class="v am">Junior ≥ 20%</div></div>
+  <div class="m"><div class="l">Senior leverage</div><div class="v">≤ 4×</div></div>
+  <div class="m"><div class="l">Default</div><div class="v">grace + 90d</div></div>
+  <div class="m"><div class="l">Valuation</div><div class="v">realised-only</div></div>
+</div>
+
+<section>
+<h2><span class="num">1</span> Contracts</h2>
+<table>
+  <thead><tr><th style="width:27%">Contract</th><th>Role</th></tr></thead>
+  <tbody>
+    <tr><td class="mono">WaterfallMath</td><td>Pure tranche math: senior target accrual, value/loss split, subordination, and the ToU default trigger.</td></tr>
+    <tr><td class="mono">TrancheController</td><td>Immutable orchestrator: deposits, the async redemption queue, default detection &amp; wind-down, subordination gating, per-user sanctions + escrow. Reentrancy-guarded; safe transfers.</td></tr>
+    <tr><td class="mono">senior / junior</td><td><span class="mono">sr-wmtUSDC</span> / <span class="mono">jr-wmtUSDC</span>: Solady ERC20 + EIP-2612 permit with an ERC-4626 value-view surface. Senior open to KYC'd lenders; junior whitelisted.</td></tr>
+    <tr><td class="mono">TrancheFactory</td><td>Registered at the <span class="mono">WildcatArchController</span>; deploys one tranche set per registered market, gated on <span class="mono">isRegisteredMarket</span>.</td></tr>
+    <tr><td class="mono">IExternal</td><td>Interfaces to the Wildcat 4626 wrapper, market (state + withdrawal queue), sanctions sentinel, and arch controller.</td></tr>
+  </tbody>
+</table>
+</section>
+
+<section>
+<h2><span class="num">2</span> How it attaches</h2>
+<div class="flow">
+  <div class="box"><div class="t">USDC</div><div class="s">base asset</div></div>
+  <div class="arr">&rarr;</div>
+  <div class="box"><div class="t">Wildcat market</div><div class="c">wmtUSDC</div><div class="s">rebasing credit token</div></div>
+  <div class="arr">&rarr;</div>
+  <div class="box cream"><div class="t">ERC-4626 wrapper</div><div class="c">v-wmtUSDC</div><div class="s">non-rebasing</div></div>
+  <div class="arr">&rarr;</div>
+  <div class="box dark"><div class="t">TrancheController</div><div class="c">sr- / jr-wmtUSDC</div><div class="s">holds + waterfall</div></div>
+</div>
+<p class="note">The <span class="mono">TrancheFactory</span> is registered at the protocol level (<span class="mono">WildcatArchController</span>) and deploys one senior/junior set per registered market. Tranching is a lender-side vault on top of an unchanged market; the borrower continues to see a single unitranche facility.</p>
+</section>
+
+<section>
+<h2><span class="num">3</span> The model</h2>
+<ul class="clean">
+  <li><strong>Senior</strong> holds a priority claim that accrues at a target derived from the facility's base APR (the APR times a governance-set, timelocked senior share, capped at the APR), funded from realised yield and topped from junior down to a floor. It is a priority claim, not a solvency guarantee.</li>
+  <li><strong>Junior</strong> is the leveraged first-loss residual: it earns the excess spread and absorbs losses to zero before senior is touched.</li>
+  <li><strong>Subordination</strong> is a fixed floor (junior ≥ 20% of TVL, senior ≤ 4×), enforced by gating senior deposits and junior withdrawals.</li>
+  <li><strong>Valuation</strong> is realised-only and oracle-free: NAV is held at a high-watermark while the market is delinquent, so unrealised penalty accrual is never booked.</li>
+  <li><strong>Redemption</strong> is asynchronous, mirroring the market's batched withdrawal queue (request → execute → claim); partial proceeds are allocated senior-first.</li>
+  <li><strong>Default</strong> mirrors Wildcat ToU §6.2 on-chain (<span class="mono">timeDelinquent ≥ delinquencyGracePeriod + 90 days</span>), per-market configurable, with a Loan-Agreement override. On trigger the vault freezes deposits, halts senior accrual, and winds down senior-first.</li>
+  <li><strong>Governance</strong> is immutable logic + a bounded, timelocked parameter set; pause halts deposits only and never blocks senior exits.</li>
+  <li><strong>Compliance</strong> re-enforces the Wildcat sentinel per user (sanctioned redemptions route to escrow); junior is restricted to qualified providers.</li>
+</ul>
+</section>
+
+<section>
+<h2><span class="num">4</span> Properties &amp; verification</h2>
+<div class="callout">
+  <div class="ct">Invariants</div>
+  <p style="margin:0"><span class="mono">seniorValue + juniorValue == realisedValue</span> at all times · junior floors at zero before senior is impaired (first-loss) · senior is paid before junior on every settlement (priority).</p>
+</div>
+<ul class="clean">
+  <li>Built on Solady's audited <span class="mono">ERC20</span>, <span class="mono">ReentrancyGuard</span>, and <span class="mono">SafeTransferLib</span>; share conversions round in favour of the pool.</li>
+  <li>Covered by a Foundry suite: unit/behaviour tests, property fuzzing, stateful invariants, and mainnet-fork tests that exercise deposit, valuation, and a redemption round-trip against the live <span class="mono">v-wmtUSDC</span> facility and its withdrawal queue.</li>
+</ul>
+<p class="note">Not yet audited. Independent review focuses on the credit-loss / redemption edge cases, the gas/DoS profile of the redemption-request array at scale, and ERC-4626 conformance of the view surface.</p>
+</section>
+
+</body>
+</html>

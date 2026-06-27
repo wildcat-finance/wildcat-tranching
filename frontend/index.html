@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wildcat Tranching: Interactive Model</title>
+<style>
+  :root{
+    --ink:#16130f; --ink2:#221c14; --soft:#3a352e; --muted:#6b6359; --line:#e4ddd1; --line2:#cfc6b6;
+    --amber:#b4670d; --amberb:#d98412; --cream:#fbf8f2; --bg:#f4f1ea; --green:#2f6f4f; --red:#9a3412; --card:#fff;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;font-size:14px;line-height:1.45;}
+  .mono{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;}
+  header{padding:18px 26px;border-bottom:1px solid var(--line);background:var(--card);display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;}
+  header .kick{font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--amber);font-weight:800;}
+  header h1{font-size:20px;font-weight:800;margin:0;letter-spacing:-.01em;}
+  header .tag{font-size:12px;color:var(--muted);}
+  .pill{margin-left:auto;font-size:11px;font-weight:800;letter-spacing:.04em;padding:4px 12px;border-radius:20px;color:#fff;}
+  .pill.active{background:var(--green);} .pill.wind{background:var(--red);}
+  .wrap{max-width:1180px;margin:0 auto;padding:18px 22px 60px;}
+  .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;}
+  .metric{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:11px 13px;}
+  .metric .l{font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700;}
+  .metric .v{font-size:19px;font-weight:800;margin-top:3px;letter-spacing:-.01em;}
+  .metric .v small{font-size:12px;color:var(--muted);font-weight:700;}
+  .v.am{color:var(--amber);} .v.gr{color:var(--green);} .v.rd{color:var(--red);}
+  .grid{display:grid;grid-template-columns:1.05fr 1fr;gap:16px;}
+  @media(max-width:880px){.grid{grid-template-columns:1fr;}.metrics{grid-template-columns:repeat(2,1fr);}}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin-bottom:16px;}
+  .panel h2{font-size:13px;font-weight:800;margin:0 0 12px;letter-spacing:.01em;display:flex;align-items:center;gap:8px;}
+  .panel h2 .dot{width:8px;height:8px;border-radius:50%;background:var(--amber);}
+  /* tranche stack */
+  .stack-wrap{display:flex;gap:18px;align-items:stretch;}
+  .stack{position:relative;width:120px;min-height:230px;display:flex;flex-direction:column;justify-content:flex-end;border:1px solid var(--line2);border-radius:7px;overflow:hidden;background:#faf7f1;}
+  .seg{display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:12px;transition:height .35s ease;}
+  .seg.senior{background:var(--amberb);} .seg.junior{background:var(--ink2);}
+  .seg small{font-weight:600;opacity:.85;font-size:10px;}
+  .floor{position:absolute;left:0;right:0;border-top:2px dashed var(--red);}
+  .floor span{position:absolute;right:3px;top:-15px;font-size:9px;color:var(--red);font-weight:800;background:#faf7f1;padding:0 3px;}
+  .legend{font-size:12px;color:var(--soft);flex:1;}
+  .legend b{color:var(--ink);}
+  .legend .row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--line);}
+  .sub-ok{color:var(--green);font-weight:800;} .sub-bad{color:var(--red);font-weight:800;}
+  /* controls */
+  .ctl{margin-bottom:14px;}
+  .ctl .lbl{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;}
+  .row{display:flex;gap:7px;flex-wrap:wrap;align-items:center;}
+  input,select{font-family:inherit;font-size:13px;padding:7px 9px;border:1px solid var(--line2);border-radius:6px;background:#fff;color:var(--ink);}
+  input{width:120px;}
+  button{font-family:inherit;font-size:12.5px;font-weight:700;padding:7px 12px;border:1px solid var(--ink);border-radius:6px;background:var(--ink);color:#fff;cursor:pointer;}
+  button.sec{background:#fff;color:var(--ink);}
+  button.am{background:var(--amber);border-color:var(--amber);}
+  button.gr{background:var(--green);border-color:var(--green);}
+  button.rd{background:var(--red);border-color:var(--red);}
+  button:hover{opacity:.9;} button:disabled{opacity:.4;cursor:not-allowed;}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px;}
+  th{text-align:left;font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:700;padding:5px 7px;border-bottom:1.5px solid var(--ink);}
+  td{padding:6px 7px;border-bottom:1px solid var(--line);}
+  .tag-s{color:var(--amber);font-weight:800;} .tag-j{color:var(--ink2);font-weight:800;}
+  #log{height:150px;overflow:auto;background:#faf7f1;border:1px solid var(--line);border-radius:7px;padding:9px 11px;font-size:12px;}
+  #log div{padding:1.5px 0;border-bottom:1px dotted var(--line);} #log .e-am{color:var(--amber);} #log .e-gr{color:var(--green);} #log .e-rd{color:var(--red);} #log .t{color:var(--muted);}
+  .note{font-size:11px;color:var(--muted);margin-top:8px;}
+  .params{font-size:11px;color:var(--muted);}
+  .params b{color:var(--ink);}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="kick">Wildcat · In-House Tranching</div>
+    <h1>Interactive Model</h1>
+  </div>
+  <span class="tag">A JS model of the on-chain <span class="mono">WaterfallMath</span>: explore deposits, yield, loss, default and the senior-first redemption queue. <b>Mock, no wallet required.</b></span>
+  <span id="statusPill" class="pill active">ACTIVE</span>
+</header>
+
+<div class="wrap">
+  <div class="metrics" id="metrics"></div>
+
+  <div class="grid">
+    <!-- LEFT: position + waterfall -->
+    <div>
+      <div class="panel">
+        <h2><span class="dot"></span>Capital stack &amp; waterfall</h2>
+        <div class="stack-wrap">
+          <div class="stack" id="stack">
+            <div class="seg senior" id="segS"></div>
+            <div class="seg junior" id="segJ"></div>
+            <div class="floor" id="floor"><span>20% floor</span></div>
+          </div>
+          <div class="legend" id="legend"></div>
+        </div>
+        <div class="note">Senior (amber) holds a priority claim that accrues at the target rate; junior (dark) is the leveraged first-loss residual. Losses shrink junior from the bottom up; senior is impaired only once junior hits zero. The dashed line is the subordination floor (junior ≥ 20% of TVL).</div>
+      </div>
+
+      <div class="panel">
+        <h2><span class="dot"></span>Redemption queue <span class="params" style="margin-left:auto">async · senior-first</span></h2>
+        <div class="row">
+          <input id="fundAmt" type="number" value="0" placeholder="USDC"/>
+          <button class="sec" onclick="fundMarket()">Fund market liquidity</button>
+          <button class="am" onclick="poke()">Poke recovery</button>
+          <span class="params">market USDC: <b id="mUSDC">0</b> · recovered: <b id="recU">0</b></span>
+        </div>
+        <table id="queue"><thead><tr><th>#</th><th>Tranche</th><th>Queued</th><th>Claimable</th><th>Claimed</th><th></th></tr></thead><tbody id="queueBody"></tbody></table>
+        <div class="note" id="queueNote"></div>
+      </div>
+    </div>
+
+    <!-- RIGHT: controls -->
+    <div>
+      <div class="panel">
+        <h2><span class="dot"></span>Deposit &amp; redeem</h2>
+        <div class="ctl">
+          <div class="lbl">Deposit (USDC value)</div>
+          <div class="row">
+            <input id="depAmt" type="number" value="50000"/>
+            <button class="am" onclick="deposit(true)">→ Senior</button>
+            <button onclick="deposit(false)">→ Junior</button>
+          </div>
+          <div class="note">Junior is whitelisted first-loss capital. Senior deposits are capped by the subordination floor.</div>
+        </div>
+        <div class="ctl">
+          <div class="lbl">Request redeem (% of your tranche)</div>
+          <div class="row">
+            <select id="redTranche"><option value="senior">Senior</option><option value="junior">Junior</option></select>
+            <input id="redPct" type="number" value="100" min="1" max="100"/>
+            <button class="sec" onclick="requestRedeem()">Request redeem</button>
+          </div>
+          <div class="note">Burns shares now; USDC is paid from the market's batched queue (poke → claim), senior-first.</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2><span class="dot"></span>Scenario</h2>
+        <div class="ctl">
+          <div class="lbl">Credit loss (haircut to recoverable value)</div>
+          <div class="row">
+            <button class="sec" onclick="addYield(-10)">−10%</button>
+            <button class="sec" onclick="addYield(-30)">−30%</button>
+            <span class="params">underlying value: <b id="px">1.0000</b></span>
+          </div>
+        </div>
+        <div class="ctl">
+          <div class="lbl">Time &amp; accrual</div>
+          <div class="row">
+            <button class="sec" onclick="advance(30)">+30 days</button>
+            <button class="sec" onclick="advance(180)">+180 days</button>
+            <span class="params">elapsed: <b id="elapsed">0d</b></span>
+          </div>
+        </div>
+        <div class="ctl">
+          <div class="lbl">Credit stress (ToU §6.2: grace + 90d ⇒ default)</div>
+          <div class="row">
+            <button class="sec" onclick="delinq(30)">Delinquent +30d</button>
+            <button class="rd" onclick="forceToU()">Reach ToU default</button>
+            <button class="rd" onclick="declareDefault()">Declare default</button>
+          </div>
+          <div class="note">delinquency: <b id="delq">0d</b> / threshold <b id="thr">92d</b> (grace 2d + 90d penalty)</div>
+        </div>
+        <div class="ctl">
+          <div class="lbl">Facility rate (the senior target is derived from this)</div>
+          <div class="row">
+            <input id="aprBps" type="number" value="850"/>
+            <button class="sec" onclick="setMarketApr()">Set market APR (bps)</button>
+          </div>
+          <div class="row" style="margin-top:5px">
+            <input id="shareBps" type="number" value="8000"/>
+            <button class="sec" onclick="setSeniorShare()">Set senior share (bips)</button>
+          </div>
+          <div class="note">Senior target APR = market APR × senior share, capped at the market APR. Junior keeps the residual.</div>
+        </div>
+        <div class="row" style="margin-top:6px">
+          <button class="sec" onclick="preset('healthy')">Preset: healthy yield</button>
+          <button class="sec" onclick="preset('loss')">Preset: loss event</button>
+          <button class="sec" onclick="reset()">Reset</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2><span class="dot"></span>Event log</h2>
+        <div id="log"></div>
+      </div>
+    </div>
+  </div>
+  <div class="note" style="margin-top:6px">Parameters mirror the contracts: senior target = <b id="pRate">6.80%</b> (derived: market APR × senior share, capped at the APR) · min junior = <b>20%</b> (senior ≤ 4×) · default window = <b>grace + 90d</b> · valuation realised-only. Logic mirrors the on-chain <span class="mono">WaterfallMath</span> (covered by the Foundry suite incl. mainnet-fork &amp; invariants).</div>
+</div>
+
+<script>
+const YEAR = 365*24*3600, BIPS = 1e4;
+let S;
+function fresh(){return{
+  price:1, shares:0, seniorOwed:0, seniorSupply:0, juniorSupply:0,
+  marketAprBps:850, seniorShareBips:8000, minJuniorBips:2000, grace:2*24*3600, window:90*24*3600,
+  elapsed:0, timeDelinquent:0, status:'Active', forced:false,
+  requests:[], totalSeniorWmt:0, totalJuniorWmt:0, recovered:0, marketUSDC:0,
+};}
+// ---- waterfall (ports of WaterfallMath) ----
+const realised = ()=> S.shares*S.price;
+function split(){ const r=realised(),o=S.seniorOwed; const sv=Math.min(r,o); return [sv, r-sv]; }
+const meetsSub=(sv,jv,m)=>{const t=sv+jv; return t==0?true: jv*BIPS >= m*t;};
+const maxSeniorDep=(sv,jv,m)=> m==0?Infinity:Math.max(0,(jv*BIPS)/m-(sv+jv));
+const maxJuniorWd=(sv,jv,m)=>{const t=sv+jv,L=jv*BIPS,R=m*t; return L<=R?0:(L-R)/(BIPS-m);};
+const defaultReached=()=> S.forced || S.timeDelinquent>=S.grace+S.window;
+function syncDefault(){ if(S.status=='Active'&&defaultReached()){S.status='WindDown'; log('Default reached. Wind-down: senior accrual halted, junior locked, recoveries senior-first.','rd');} }
+// effective senior target rate (bips), derived from the facility APR: APR × share, capped at the APR
+const effRate=()=> Math.min(S.marketAprBps, S.marketAprBps*S.seniorShareBips/BIPS);
+function accrue(dt){ syncDefault(); if(S.status!='Active')return; if(S.seniorOwed>0&&dt>0){S.seniorOwed += S.seniorOwed*effRate()*dt/(BIPS*YEAR);} }
+
+// ---- actions ----
+function deposit(isSenior){
+  if(S.status!='Active'){return log('Deposits disabled in wind-down.','rd');}
+  const dV=+document.getElementById('depAmt').value; if(!(dV>0))return;
+  let [sv,jv]=split();
+  if(isSenior){
+    if(!meetsSub(sv+dV,jv,S.minJuniorBips)){
+      const mx=maxSeniorDep(sv,jv,S.minJuniorBips);
+      return log(`Senior deposit blocked by subordination floor; max senior right now ≈ ${fmt(mx)} USDC (need more junior).`,'rd');
+    }
+  }
+  const supply=isSenior?S.seniorSupply:S.juniorSupply, vb=isSenior?sv:jv;
+  const sh = supply==0? dV : dV*supply/vb;
+  S.shares += dV/S.price;
+  if(isSenior){S.seniorOwed+=dV; S.seniorSupply+=sh;} else {S.juniorSupply+=sh;}
+  log(`Deposit ${fmt(dV)} USDC → ${isSenior?'senior':'junior'} (+${fmt(sh)} shares)`, isSenior?'am':'');
+  render();
+}
+function requestRedeem(){
+  const isSenior=document.getElementById('redTranche').value=='senior';
+  const pct=Math.min(100,Math.max(0,+document.getElementById('redPct').value))/100;
+  const supply=isSenior?S.seniorSupply:S.juniorSupply; if(supply<=0)return log('No shares in that tranche.','rd');
+  let [sv,jv]=split(); const shares=supply*pct; const val=(isSenior?sv:jv)*pct;
+  if(val<=0)return log('Nothing to redeem.','rd');
+  if(isSenior){ const owedShare=S.seniorOwed*shares/supply; S.seniorOwed=Math.max(0,S.seniorOwed-owedShare); S.seniorSupply-=shares; }
+  else { if(S.status=='Active' && val>maxJuniorWd(sv,jv,S.minJuniorBips)+1e-6) return log(`Junior redemption blocked by floor; max ≈ ${fmt(maxJuniorWd(sv,jv,S.minJuniorBips))} USDC.`,'rd'); S.juniorSupply-=shares; }
+  S.shares-=val/S.price;
+  S.requests.push({id:S.requests.length,senior:isSenior,wmt:val,claimed:0});
+  if(isSenior)S.totalSeniorWmt+=val; else S.totalJuniorWmt+=val;
+  log(`Redeem request #${S.requests.length-1}: ${isSenior?'senior':'junior'} ${fmt(val)} USDC queued (await poke → claim)`, isSenior?'am':'');
+  render();
+}
+function fundMarket(){ const a=+document.getElementById('fundAmt').value; if(a>0){S.marketUSDC+=a; log(`Market funded with ${fmt(a)} USDC liquidity.`);} render(); }
+function poke(){
+  const outstanding=(S.totalSeniorWmt+S.totalJuniorWmt)-S.recovered;
+  const pay=Math.min(outstanding,S.marketUSDC);
+  if(pay<=0)return log('No liquidity available to recover (market illiquid).','rd');
+  S.recovered+=pay; S.marketUSDC-=pay;
+  log(`Poke recovery: pulled ${fmt(pay)} USDC from the batch (total recovered ${fmt(S.recovered)}).`,'gr'); render();
+}
+function claimable(r){
+  let pool;
+  if(r.senior){ pool=Math.min(S.recovered,S.totalSeniorWmt); return S.totalSeniorWmt==0?0:Math.max(0,r.wmt*pool/S.totalSeniorWmt - r.claimed); }
+  const sPool=Math.min(S.recovered,S.totalSeniorWmt); let jPool=Math.max(0,S.recovered-sPool); jPool=Math.min(jPool,S.totalJuniorWmt);
+  return S.totalJuniorWmt==0?0:Math.max(0,r.wmt*jPool/S.totalJuniorWmt - r.claimed);
+}
+function claim(id){ const r=S.requests[id]; const c=claimable(r); if(c<=0)return; r.claimed+=c; log(`Claim #${id}: ${fmt(c)} USDC paid to ${r.senior?'senior':'junior'} LP.`,'gr'); render(); }
+function addYield(p){ S.price*=(1+p/100); log(`Underlying ${p>=0?'+':''}${p}% → price ${S.price.toFixed(4)}.`, p>=0?'gr':'rd'); render(); }
+function advance(d){ const dt=d*24*3600; if(S.status=='Active') S.price*=(1+S.marketAprBps*dt/(BIPS*YEAR)); accrue(dt); S.elapsed+=dt; log(`+${d}d at ${(S.marketAprBps/100).toFixed(2)}% APR: underlying grows, senior takes ${(effRate()/100).toFixed(2)}%, junior the residual.`); render(); }
+function delinq(d){ S.timeDelinquent+=d*24*3600; log(`Delinquency advanced +${d}d (now ${(S.timeDelinquent/86400)|0}d).`,'rd'); syncDefault(); render(); }
+function forceToU(){ S.timeDelinquent=S.grace+S.window; log('Delinquency set to grace + 90d (ToU §6.2 default).','rd'); syncDefault(); render(); }
+function declareDefault(){ S.forced=true; log('Loan-Agreement override: default declared.','rd'); syncDefault(); render(); }
+function setMarketApr(){ S.marketAprBps=Math.max(0,+document.getElementById('aprBps').value||0); log(`Market APR → ${(S.marketAprBps/100).toFixed(2)}%. Senior target now ${(effRate()/100).toFixed(2)}% (derived).`); render(); }
+function setSeniorShare(){ S.seniorShareBips=Math.min(BIPS,Math.max(0,+document.getElementById('shareBps').value||0)); log(`Senior share → ${(S.seniorShareBips/100).toFixed(2)}% of APR. Senior target now ${(effRate()/100).toFixed(2)}% (timelocked on-chain).`); render(); }
+function preset(k){ reset(false);
+  if(k=='healthy'){ depositVal(false,100000); depositVal(true,300000); const dt=180*24*3600; S.price*=(1+S.marketAprBps*dt/(BIPS*YEAR)); accrue(dt); S.elapsed=dt; log(`Preset: balanced stack + 180d at ${(S.marketAprBps/100).toFixed(2)}% APR.`,'gr'); }
+  if(k=='loss'){ depositVal(false,100000); depositVal(true,300000); S.price*=0.85; log('Preset: −15% loss event. Junior absorbs it first.','rd'); }
+  render();
+}
+function depositVal(isSenior,dV){ let [sv,jv]=split(); const supply=isSenior?S.seniorSupply:S.juniorSupply,vb=isSenior?sv:jv; const sh=supply==0?dV:dV*supply/vb; S.shares+=dV/S.price; if(isSenior){S.seniorOwed+=dV;S.seniorSupply+=sh;}else{S.juniorSupply+=sh;} }
+function reset(seed=true){ S=fresh(); document.getElementById('log').innerHTML=''; if(seed){ depositVal(false,100000); depositVal(true,300000); log('Initialised: junior 100,000 + senior 300,000 (junior 25%).'); } render(); }
+
+// ---- render ----
+function fmt(x){ if(!isFinite(x))return'∞'; return (Math.round(x*100)/100).toLocaleString('en-US',{maximumFractionDigits:2}); }
+function log(m,c){ const d=document.getElementById('log'); const e=document.createElement('div'); const t=`${(S.elapsed/86400).toFixed(0)}d`; e.innerHTML=`<span class="t">[${t}]</span> <span class="e-${c||''}">${m}</span>`; d.prepend(e); }
+function render(){
+  syncDefault();
+  const [sv,jv]=split(), tvl=sv+jv, r=realised();
+  const subPct = tvl>0? jv/tvl*100 : 0;
+  const sPps = S.seniorSupply>0? sv/S.seniorSupply:1, jPps=S.juniorSupply>0? jv/S.juniorSupply:1;
+  // metrics
+  document.getElementById('metrics').innerHTML =
+    metric('TVL (realised)', fmt(tvl)+' <small>USDC</small>','') +
+    metric('Senior NAV', fmt(sv)+` <small>pps ${sPps.toFixed(4)}</small>`,'am') +
+    metric('Junior NAV', fmt(jv)+` <small>pps ${jPps.toFixed(4)}</small>`, jv>0?'':'rd') +
+    metric('Subordination', subPct.toFixed(1)+'% <small>floor 20%</small>', subPct>=20?'gr':'rd');
+  // stack
+  const maxBar = Math.max(tvl, 1);
+  const segS=document.getElementById('segS'), segJ=document.getElementById('segJ');
+  const hS = tvl>0? sv/maxBar*100:0, hJ = tvl>0? jv/maxBar*100:0;
+  segS.style.height=hS+'%'; segJ.style.height=hJ+'%';
+  segS.innerHTML = sv>0?`SENIOR<small>${fmt(sv)}</small>`:''; segJ.innerHTML = jv>0?`JUNIOR<small>${fmt(jv)}</small>`:'';
+  const floor=document.getElementById('floor'); floor.style.bottom=(20)+'%'; // 20% of TVL from bottom (junior region)
+  // legend
+  document.getElementById('legend').innerHTML =
+    `<div class="row"><span>Senior owed (claim)</span><b>${fmt(S.seniorOwed)}</b></div>`+
+    `<div class="row"><span>Market APR (facility)</span><b>${(S.marketAprBps/100).toFixed(2)}%</b></div>`+
+    `<div class="row"><span>Senior share of APR</span><b>${(S.seniorShareBips/100).toFixed(2)}%</b></div>`+
+    `<div class="row"><span>Senior target APR (derived)</span><b>${(effRate()/100).toFixed(2)}%</b></div>`+
+    `<div class="row"><span>Junior leverage</span><b>${jv>0?(sv/jv).toFixed(2)+'×':'n/a'}</b></div>`+
+    `<div class="row"><span>Subordination</span><span class="${subPct>=20?'sub-ok':'sub-bad'}">${subPct.toFixed(1)}% ${subPct>=20?'✓':'✗ breach'}</span></div>`+
+    `<div class="row"><span>Status</span><b>${S.status}${defaultReached()?' (default)':''}</b></div>`+
+    `<div class="row" style="border:0"><span>Underlying price</span><b>${S.price.toFixed(4)}</b></div>`;
+  // status pill
+  const pill=document.getElementById('statusPill'); pill.textContent=S.status=='Active'?'ACTIVE':'WIND-DOWN'; pill.className='pill '+(S.status=='Active'?'active':'wind');
+  // params strip
+  document.getElementById('px').textContent=S.price.toFixed(4);
+  document.getElementById('elapsed').textContent=(S.elapsed/86400).toFixed(0)+'d';
+  document.getElementById('delq').textContent=((S.timeDelinquent/86400)|0)+'d';
+  document.getElementById('thr').textContent=((S.grace+S.window)/86400|0)+'d';
+  document.getElementById('mUSDC').textContent=fmt(S.marketUSDC);
+  document.getElementById('recU').textContent=fmt(S.recovered);
+  document.getElementById('pRate').textContent=(effRate()/100).toFixed(2)+'%';
+  // queue
+  const tb=document.getElementById('queueBody'); tb.innerHTML = S.requests.length? S.requests.map(rq=>{
+    const c=claimable(rq);
+    return `<tr><td>${rq.id}</td><td class="${rq.senior?'tag-s':'tag-j'}">${rq.senior?'senior':'junior'}</td><td>${fmt(rq.wmt)}</td><td>${fmt(c)}</td><td>${fmt(rq.claimed)}</td><td>${c>0.001?`<button class="gr" style="padding:3px 9px" onclick="claim(${rq.id})">Claim</button>`:''}</td></tr>`;
+  }).join(''):'<tr><td colspan="6" style="color:var(--muted)">No redemption requests yet.</td></tr>';
+  document.getElementById('queueNote').textContent = S.requests.length?
+    `Senior cohort is funded in full before the junior cohort receives anything; fund partially and poke to see senior-first allocation.`:'';
+}
+function metric(l,v,cls){return `<div class="metric"><div class="l">${l}</div><div class="v ${cls}">${v}</div></div>`;}
+function runDemo(){
+  const q=new URLSearchParams(location.search).get('demo');
+  if(q=='loss'){ S.price*=0.7; log('Demo: −30% loss event. Junior absorbs it first.','rd'); render(); }
+  if(q=='seniorfirst'){
+    forceToU(); // enter wind-down so junior can also queue
+    document.getElementById('redTranche').value='senior'; document.getElementById('redPct').value=100; requestRedeem();
+    document.getElementById('redTranche').value='junior'; document.getElementById('redPct').value=100; requestRedeem();
+    S.marketUSDC=300000; log('Demo: only 300k of 400k liquidity available.'); poke();
+  }
+}
+reset(true); runDemo();
+</script>
+</body>
+</html>
