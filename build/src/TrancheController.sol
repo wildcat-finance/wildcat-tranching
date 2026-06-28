@@ -30,6 +30,7 @@ contract TrancheController is ReentrancyGuard {
 
     // ----- governance (bounded; senior share behind a timelock) -----
     address public governance;
+    address public pendingGovernance;
     address public defaultDeclarer;
     /// @notice Senior's share of the market's base APR, in bips of BIPS (<= BIPS). The effective
     ///         senior target rate is derived live from the market; see currentSeniorRateBips().
@@ -74,7 +75,8 @@ contract TrancheController is ReentrancyGuard {
     uint256 public juniorWmtQueued; // cumulative junior face ever queued
     uint256 public seniorCashAllocated; // USDC assigned to the senior class (its FIFO fill level)
     uint256 public juniorCashAllocated; // USDC assigned to the junior class
-    uint256 public recoveredUSDC; // total USDC pulled from the market via pokeRecovery
+    uint256 public recoveredUSDC; // total USDC ever received = idle balance + totalClaimedOut
+    uint256 public totalClaimedOut; // cumulative USDC paid out via claim (to owners or escrow)
 
     // ----- bounds -----
     uint256 internal constant BIPS = 1e4;
@@ -93,6 +95,8 @@ contract TrancheController is ReentrancyGuard {
     event SeniorShareSet(uint256 shareBips);
     event JuniorAllowed(address indexed account, bool allowed);
     event DepositsPaused(bool paused);
+    event GovernanceProposed(address indexed pending);
+    event GovernanceTransferred(address indexed from, address indexed to);
 
     struct Params {
         address underlyingVault;
@@ -108,6 +112,7 @@ contract TrancheController is ReentrancyGuard {
 
     constructor(Params memory p) {
         require(p.underlyingVault != address(0), "ZERO_ADDR");
+        require(p.governance != address(0), "ZERO_GOV");
         require(p.seniorShareBips <= MAX_SENIOR_SHARE_BIPS, "BAD_SHARE");
         require(p.minJuniorBips >= 500 && p.minJuniorBips <= 9000, "BAD_SUBORDINATION");
         require(p.defaultPenaltyWindow > 0 && p.defaultPenaltyWindow <= MAX_PENALTY_WINDOW, "BAD_WINDOW");
@@ -168,11 +173,6 @@ contract TrancheController is ReentrancyGuard {
 
     function _assetsOf(uint256 shares) internal view returns (uint256) {
         return (shares * _effPps()) / PPS_UNIT;
-    }
-
-    function _sharesOf(uint256 assets) internal view returns (uint256) {
-        uint256 p = _effPps();
-        return p == 0 ? 0 : (assets * PPS_UNIT) / p;
     }
 
     // ============================================================ views
@@ -309,8 +309,16 @@ contract TrancheController is ReentrancyGuard {
         }
         token.burn(msg.sender, shares); // effects before external interactions
 
-        uint256 shares4626 = _sharesOf(assetValue);
+        // Size the wrapper redemption at the LIVE price, not the frozen mark. During delinquency the
+        // mark is frozen below the live price, and redeeming at the frozen size while the wrapper pays
+        // out at the live price would let the exiter pull more than its frozen-mark claim (booking
+        // unrealised penalty appreciation, diluting holders who stay). Using the live price makes
+        // wmtGot == assetValue, so the appreciation stays in the pool for the residual.
+        uint256 cur = _curPps();
+        uint256 shares4626 = cur == 0 ? 0 : (assetValue * PPS_UNIT) / cur;
+        require(shares4626 > 0, "ZERO_REDEEM");
         uint256 wmtGot = underlyingVault.redeem(shares4626, address(this), address(this));
+        require(wmtGot <= type(uint128).max, "WMT_OVERFLOW");
         uint32 expiry = market.queueWithdrawal(wmtGot);
 
         id = requests.length;
@@ -332,9 +340,21 @@ contract TrancheController is ReentrancyGuard {
         uint256 before = baseAsset.balanceOf(address(this));
         market.executeWithdrawal(address(this), expiry);
         uint256 got = baseAsset.balanceOf(address(this)) - before;
-        recoveredUSDC += got;
-        _allocate();
+        _syncRecovered();
         emit RecoveryPoked(expiry, got, recoveredUSDC);
+    }
+
+    /// @notice Credit any USDC the controller holds that has not yet been booked, then re-allocate.
+    ///         Recovery is derived from the actual balance (idle USDC + everything already claimed),
+    ///         so USDC that arrives outside pokeRecovery (a permissionless market executeWithdrawal,
+    ///         a direct transfer, or recovery above queued face) is captured rather than stranded.
+    function sync() external nonReentrant {
+        _syncRecovered();
+    }
+
+    function _syncRecovered() internal {
+        recoveredUSDC = baseAsset.balanceOf(address(this)) + totalClaimedOut;
+        _allocate();
     }
 
     /// @notice Assign not-yet-allocated recovered USDC to the senior class first (up to the senior
@@ -385,6 +405,7 @@ contract TrancheController is ReentrancyGuard {
         amt = claimable(id);
         if (amt == 0) return 0;
         r.usdcClaimed += uint128(amt); // effects before transfer
+        totalClaimedOut += amt; // keep recoveredUSDC = idle balance + claimed invariant intact
 
         bool toEscrow = _isSanctioned(r.owner);
         if (toEscrow) {
@@ -439,5 +460,20 @@ contract TrancheController is ReentrancyGuard {
 
     function setDefaultDeclarer(address d) external onlyGovernance {
         defaultDeclarer = d;
+    }
+
+    /// @notice Two-step governance transfer so a lost or rotated key is recoverable. The current
+    ///         governance proposes a successor; the successor must accept, which prevents handing
+    ///         control to an address that cannot use it.
+    function proposeGovernance(address next) external onlyGovernance {
+        pendingGovernance = next;
+        emit GovernanceProposed(next);
+    }
+
+    function acceptGovernance() external {
+        require(msg.sender == pendingGovernance, "NOT_PENDING");
+        emit GovernanceTransferred(governance, pendingGovernance);
+        governance = pendingGovernance;
+        pendingGovernance = address(0);
     }
 }

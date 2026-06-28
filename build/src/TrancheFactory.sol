@@ -11,6 +11,11 @@ import {IUnderlying4626, IArchControllerLike} from "./interfaces/IExternal.sol";
 ///      rails. Derives the market from the wrapper (`underlying.market()`). One set per market.
 contract TrancheFactory {
     IArchControllerLike public immutable archController;
+    /// @notice Only the owner may deploy tranche sets. Deployment is caller-supplied (governance,
+    ///         sentinel, the vault itself), so leaving it open lets anyone front-run and squat the
+    ///         canonical controllerForMarket slot, or register a fake vault whose market() returns a
+    ///         real registered market. Gating to a trusted owner closes both.
+    address public owner;
 
     mapping(address => address) public controllerForMarket; // market => TrancheController
     address[] public allControllers;
@@ -18,10 +23,20 @@ contract TrancheFactory {
     event TranchesDeployed(
         address indexed market, address indexed underlying, address controller, address senior, address junior
     );
+    event OwnerTransferred(address indexed from, address indexed to);
 
     constructor(address _archController) {
         require(_archController != address(0), "ZERO_ARCH");
         archController = IArchControllerLike(_archController);
+        owner = msg.sender;
+        emit OwnerTransferred(address(0), msg.sender);
+    }
+
+    function transferOwner(address next) external {
+        require(msg.sender == owner, "ONLY_OWNER");
+        require(next != address(0), "ZERO_OWNER");
+        emit OwnerTransferred(owner, next);
+        owner = next;
     }
 
     struct DeployParams {
@@ -36,6 +51,9 @@ contract TrancheFactory {
     }
 
     function deployTranches(DeployParams calldata p) external returns (address controllerAddr) {
+        require(msg.sender == owner, "ONLY_OWNER");
+        require(p.governance != address(0), "ZERO_GOV");
+        require(p.sentinel != address(0), "ZERO_SENTINEL");
         address market = IUnderlying4626(p.underlyingVault).market();
         require(archController.isRegisteredMarket(market), "MARKET_NOT_REGISTERED");
         require(controllerForMarket[market] == address(0), "TRANCHES_EXIST");

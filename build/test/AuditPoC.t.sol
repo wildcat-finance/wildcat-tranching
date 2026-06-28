@@ -4,7 +4,8 @@ pragma solidity ^0.8.25;
 import "forge-std/Test.sol";
 import {TrancheController} from "../src/TrancheController.sol";
 import {TrancheToken} from "../src/TrancheToken.sol";
-import {MockERC20, MockMarket, MockWrapper, MockSentinel} from "./Mocks.sol";
+import {TrancheFactory} from "../src/TrancheFactory.sol";
+import {MockERC20, MockMarket, MockWrapper, MockSentinel, MockArch} from "./Mocks.sol";
 
 /// @notice PoC for the pashov-auditor headline finding (SR-D): during delinquency, requestRedeem
 ///         sizes the wrapper-share redemption at the FROZEN mark (_effPps) but underlyingVault.redeem
@@ -60,28 +61,113 @@ contract AuditPoCTest is Test {
         vm.stopPrank();
     }
 
-    function test_PoC_FrozenMarkOverRedemptionDuringDelinquency() public {
+    /// @dev Regression for SR-D (fixed): redeeming during delinquency now sizes the wrapper
+    ///      redemption at the LIVE price, so the exiter queues exactly its frozen-mark claim and
+    ///      the unrealised appreciation stays in the pool for the residual instead of being booked.
+    function test_FrozenMarkRedemptionSizedAtLivePrice() public {
         // market goes delinquent and the wrapper price climbs on (unpaid) penalty accrual
         market.setDelinquent(true);
         wrapper.setPrice(1.2e18); // curPps = 1.2, markPps frozen at 1.0 -> effPps = 1.0
 
         uint256 balBefore = wrapper.balanceOf(address(c)); // 400e18
 
-        // a senior holder redeems half its position (150 shares of 300)
+        // a senior holder redeems half its position (150 shares of 300); frozen-mark claim = 150
         vm.prank(srLP);
         uint256 id = c.requestRedeem(true, 150e18);
 
-        // frozen-mark entitlement of these shares is 150 (assetValue at effPps = 1.0)
-        // but the queued market tokens are sized at the live price:
+        // FIXED: queued amount equals the frozen-mark claim (150), not 1.2x it
         (,, uint128 wmt,,) = c.requests(id);
-        assertEq(uint256(wmt), 180e18, "BUG: queued 180 wmt for a 150 frozen-mark claim (1.2x over-redeem)");
+        assertEq(uint256(wmt), 150e18, "queued exactly the 150 frozen-mark claim (no over-redeem)");
 
-        // and the controller's wrapper balance dropped by 150 shares (sized at frozen 1.0),
-        // not the 125 shares (150 / 1.2) a live-priced redemption of a 150 claim would cost
+        // FIXED: only 125 wrapper shares (150 / 1.2 live) are redeemed, leaving the appreciation
+        // on the extra 25 shares in the pool for the residual (junior) rather than the exiter
         uint256 redeemed = balBefore - wrapper.balanceOf(address(c));
-        assertEq(redeemed, 150e18, "BUG: redeemed 150 wrapper shares (frozen sizing) not 125 (live)");
+        assertEq(redeemed, 125e18, "redeemed 125 wrapper shares (sized at live price)");
+    }
 
-        // The exiter has queued 180 USDC-equivalent of claim; once the market pays, they book the
-        // 30 of unrealised appreciation the high-watermark was meant to freeze, diluting stayers.
+    /// @dev SR-A (fixed): USDC that arrives outside pokeRecovery (e.g. a permissionless market
+    ///      executeWithdrawal, the real-market default path) is no longer stranded; sync() credits
+    ///      it from the actual balance.
+    function test_SR_A_ExternalWithdrawalNotStranded() public {
+        uint256 sShares = senior.balanceOf(srLP);
+        vm.prank(srLP);
+        uint256 id = c.requestRedeem(true, sShares);
+        (,, uint128 wmt,, uint32 expiry) = c.requests(id);
+        usdc.mint(address(market), uint256(wmt));
+        vm.warp(uint256(expiry) + 1);
+
+        // someone executes the controller's batch DIRECTLY, bypassing pokeRecovery's delta accounting
+        market.executeWithdrawal(address(c), expiry);
+        assertGt(usdc.balanceOf(address(c)), 0, "USDC landed in the controller");
+        assertEq(c.recoveredUSDC(), 0, "but it is not yet credited");
+        assertEq(c.claimable(id), 0, "and would be stranded without the fix");
+
+        // sync() rescues it from the actual balance
+        c.sync();
+        assertEq(c.claimable(id), uint256(wmt), "sync credits the externally-recovered USDC");
+        vm.prank(srLP);
+        assertEq(c.claim(id), uint256(wmt), "claim now settles");
+    }
+
+    /// @dev SR-B (fixed): deployTranches is owner-gated and validates governance/sentinel.
+    function _dp(address g, address s) internal view returns (TrancheFactory.DeployParams memory) {
+        return TrancheFactory.DeployParams({
+            underlyingVault: address(wrapper),
+            sentinel: s,
+            borrower: address(0xB0110),
+            governance: g,
+            defaultDeclarer: address(0xDEC),
+            seniorShareBips: 8000,
+            minJuniorBips: 2000,
+            defaultPenaltyWindow: 90 days
+        });
+    }
+
+    function test_SR_B_DeployTranchesGated() public {
+        MockArch arch = new MockArch();
+        TrancheFactory factory = new TrancheFactory(address(arch)); // owner = this test contract
+        arch.setRegistered(address(market), true);
+
+        vm.prank(address(0xBAD));
+        vm.expectRevert(bytes("ONLY_OWNER"));
+        factory.deployTranches(_dp(gov, address(sentinel)));
+
+        vm.expectRevert(bytes("ZERO_GOV"));
+        factory.deployTranches(_dp(address(0), address(sentinel)));
+
+        vm.expectRevert(bytes("ZERO_SENTINEL"));
+        factory.deployTranches(_dp(gov, address(0)));
+
+        address ctrl = factory.deployTranches(_dp(gov, address(sentinel))); // owner, valid params
+        assertEq(factory.controllerForMarket(address(market)), ctrl);
+    }
+
+    /// @dev Governance is now rotatable via a two-step transfer (addresses the no-rotation finding).
+    function test_GovernanceTwoStepTransfer() public {
+        address newGov = address(0x9999);
+        vm.prank(address(0xBAD));
+        vm.expectRevert(bytes("ONLY_GOV"));
+        c.proposeGovernance(newGov);
+
+        vm.prank(gov);
+        c.proposeGovernance(newGov);
+        assertEq(c.pendingGovernance(), newGov);
+
+        vm.prank(address(0xBAD));
+        vm.expectRevert(bytes("NOT_PENDING"));
+        c.acceptGovernance();
+
+        vm.prank(newGov);
+        c.acceptGovernance();
+        assertEq(c.governance(), newGov);
+        assertEq(c.pendingGovernance(), address(0));
+
+        // old governance can no longer act; new one can
+        vm.prank(gov);
+        vm.expectRevert(bytes("ONLY_GOV"));
+        c.setDepositsPaused(true);
+        vm.prank(newGov);
+        c.setDepositsPaused(true);
+        assertTrue(c.depositsPaused());
     }
 }
