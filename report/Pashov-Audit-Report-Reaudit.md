@@ -4,7 +4,7 @@ This is the second audit cycle, run after the first cycle's fixes landed. It re-
 
 **Re-audited commit:** `696a0120` (`wildcat-finance/wildcat-tranching`, PR #4), the post-fix baseline that resolved SR-D, SR-A, SR-B and the low items from the first cycle. In-scope: `build/src/` (WaterfallMath, TrancheController, TrancheToken, TrancheFactory); interfaces, lib, and tests excluded per the skill's scope rules. Agents ran on Sonnet.
 
-**Pass status.** Pass 1 (12 agent-runs) is complete and is the basis of this report. Passes 2 and 3 were launched to match the first cycle's 3-pass methodology but hit a transient account session limit and returned no results; they are queued as a confirmation sweep against the post-R1/R2/R3 hash once the limit resets. Convergence in pass 1 was already very high across all twelve lenses, so the actionable set below is considered stable; passes 2 and 3 are expected to re-confirm rather than extend it.
+**Pass status.** Pass 1 (12 agent-runs against `696a0120`) is the basis of the findings below. Pass 2 (12 agent-runs, cold) was then run against the post-R1/R2/R3 hash `f1ff690` (PR #5), with the agent bundles rebuilt from the fixed source; its results are in the "Pass 2 confirmation sweep" section at the end. Pass 3 was deliberately not run (work was scoped to stop after pass 2); convergence across passes 1 and 2 was high enough that a third pass is expected to re-confirm rather than extend the set.
 
 ## Validation of the first-cycle fixes
 
@@ -65,6 +65,22 @@ The agents re-surfaced the same design-level observations as the first cycle. Ea
 
 51 tests passing (48 local + 3 mainnet-fork), including the 128k-call stateful invariants (conservation, junior-first-loss, no-over-distribution). The first cycle's 48 plus the three new R1/R2/R3 regressions.
 
+## Pass 2 confirmation sweep (post-fix code `f1ff690`)
+
+Pass 2 ran the same 12 cold specialist agents against the R1/R2/R3-fixed source (`f1ff690`), bundles rebuilt from the fixed contracts. Purpose: confirm R1/R2/R3 are resolved and surface any regression or new issue.
+
+**R1, R2, R3 confirmed resolved.** No agent re-derived the accrual-ordering leak, the single-step factory ownership, or the missing zero-borrower guard. The reordered `accrue()` (interest before `_syncDefault`), the `accrue()` calls in `pokeRecovery`/`sync`/`checkDefault`/`declareDefault`, the two-step `acceptOwner`, and the `ZERO_BORROWER` guards are all present in the audited source and were not flagged.
+
+**Convergent false positive re-confirmed.** The wmt-vs-USDC / scaleFactor "surplus stranded or leaked to junior" claim recurred across the math, invariant, numerical-gap, and periphery lenses. It is the same false positive documented in the first cycle: the v-wmtUSDC wrapper is USD-par (its rebasing balance is the normalized USDC claim, so `convertToAssets` already absorbs the market scaleFactor and `seniorWmtQueued`/`recoveredUSDC` are 1:1). One periphery agent independently re-derived the live Wildcat `queueWithdrawal`/`executeWithdrawal` semantics mid-pass and explicitly retracted the finding. The three mainnet-fork tests exercise the real wrapper and market and pass.
+
+**New items surfaced in pass 2 (all LOW or informational; none changed).** Recorded for a future cycle; none is high-severity and none is an external-theft path:
+
+- **R4 (low, governance ergonomics): `executeSeniorShareBips` is permissionless and has no cancel path.** Permissionless execution after the timelock is by design (the 2-day timelock is the gate, not the caller identity). The genuine gap is that a pending proposal can only be overwritten (resetting the 2-day clock), not cancelled, so a fat-fingered proposal could be executed by a watcher in the block before a corrective re-proposal lands. Recommendation (deferred): add `cancelSeniorShareProposal()` gated to `onlyGovernance` that zeroes `seniorShareEta`.
+- **Low: `proposeGovernance` lacks the zero-address guard** that `TrancheFactory.transferOwner` has. Recoverable by re-proposing (a zero `pendingGovernance` can never accept), so impact is a transient stuck-pending state. Recommendation (deferred): mirror the factory's `require(next != address(0))`.
+- **Low: `setDefaultDeclarer` emits no event and has no zero-address guard,** unlike its peer setters. Recommendation (deferred): add an event and a zero-check for monitorability.
+- **Accepted / by-design (re-confirmed, unchanged):** premature `declareDefault` by a junior-aligned declarer freezing `seniorOwedAtDefault` low (governance-trust; `declareDefault`/`setDefaultDeclarer` power is the documented, accepted concentration); borrower control of the market base APR driving the senior accrual rate (the F1 family, accepted as mirroring the market's own update-driven accrual); junior redemption uncapped in WindDown (cash gate enforces priority); rounding dust to the pool; `markPps == 0` at construction (unreachable with a live wrapper).
+- **Informational dependency/edge notes:** `claim()` routes a sanctioned owner's USDC to the Wildcat escrow, and a permanently reverting `sentinel.createEscrow` (or a USDC blacklist-and-destroy against the controller) is an external-dependency failure that could strand that USDC; both are extreme-edge and outside the controller's trust boundary. A cheap defensive `if (seniorCashAllocated + juniorCashAllocated >= recoveredUSDC) return;` guard in `_allocate` would harden the USDC-destroy edge; deferred.
+
 ## Disposition
 
-The first-cycle fixes hold. The re-audit found one real senior-priority leak (R1), one consistency/safety gap (R2), and one defensive guard (R3), all now fixed and regression-tested, plus one informational product decision (Permit2). No high-severity issue and no external-theft path was found in either cycle. Passes 2 and 3 will run as a confirmation sweep against the post-R1/R2/R3 hash once the account session limit resets; their results will be appended here.
+The first-cycle fixes hold across two re-audit passes. The re-audit found one real senior-priority leak (R1), one consistency/safety gap (R2), and one defensive guard (R3), all fixed and regression-tested in PR #5, plus one informational product decision (Permit2). Pass 2 against the fixed code re-confirmed R1/R2/R3 resolved and surfaced only LOW/informational items (R4 and three minor governance-hygiene gaps), deferred to a future cycle with recommendations above. No high-severity issue and no external-theft path was found in either audit cycle. Pass 3 was not run (scoped to stop after pass 2).
