@@ -170,4 +170,74 @@ contract AuditPoCTest is Test {
         c.setDepositsPaused(true);
         assertTrue(c.depositsPaused());
     }
+
+    /// @dev R1 (re-audit): accrue() now books the elapsed interest BEFORE testing for default, and
+    ///      declareDefault/checkDefault/pokeRecovery/sync all accrue first, so the distress gate in
+    ///      _allocate always reserves the live seniorOwed. Here a full year elapses with no other
+    ///      interaction, then declareDefault trips wind-down: seniorOwedAtDefault must include the
+    ///      year of senior interest. Before the fix _syncDefault ran first and froze the stale value.
+    function test_R1_AccrualBookedBeforeWindDown() public {
+        assertEq(c.seniorOwed(), 300e18, "seniorOwed after deposit");
+        vm.warp(block.timestamp + 365 days);
+        vm.prank(address(0xDEC)); // defaultDeclarer
+        c.declareDefault();
+        // 300 + 10% (1000 bips base APR, 100% senior share) * 300 = 330 booked before the freeze
+        assertEq(c.seniorOwedAtDefault(), 330e18, "final year of senior interest booked before freeze");
+        assertEq(c.seniorOwed(), 330e18, "seniorOwed frozen at the accrued value, not the stale one");
+    }
+
+    /// @dev R2 (re-audit): factory ownership transfer is two-step (propose + accept), matching the
+    ///      controller's governance rotation, so a mistyped/uncontrolled successor cannot strand it.
+    function test_R2_FactoryTwoStepOwner() public {
+        MockArch arch = new MockArch();
+        TrancheFactory factory = new TrancheFactory(address(arch)); // owner = this test contract
+        address newOwner = address(0xA11CE);
+
+        vm.prank(address(0xBAD));
+        vm.expectRevert(bytes("ONLY_OWNER"));
+        factory.transferOwner(newOwner);
+
+        // propose: ownership does NOT move yet
+        factory.transferOwner(newOwner);
+        assertEq(factory.pendingOwner(), newOwner, "pending set");
+        assertEq(factory.owner(), address(this), "owner unchanged until accepted");
+
+        // only the proposed successor can accept
+        vm.prank(address(0xBAD));
+        vm.expectRevert(bytes("NOT_PENDING"));
+        factory.acceptOwner();
+
+        vm.prank(newOwner);
+        factory.acceptOwner();
+        assertEq(factory.owner(), newOwner, "ownership transferred on accept");
+        assertEq(factory.pendingOwner(), address(0), "pending cleared");
+    }
+
+    /// @dev R3 (re-audit): borrower must be non-zero; it keys every sentinel sanctions/escrow call.
+    function test_R3_ZeroBorrowerRejected() public {
+        MockArch arch = new MockArch();
+        TrancheFactory factory = new TrancheFactory(address(arch));
+        arch.setRegistered(address(market), true);
+
+        TrancheFactory.DeployParams memory p = _dp(gov, address(sentinel));
+        p.borrower = address(0);
+        vm.expectRevert(bytes("ZERO_BORROWER"));
+        factory.deployTranches(p);
+
+        // the controller constructor guards it directly too
+        vm.expectRevert(bytes("ZERO_BORROWER"));
+        new TrancheController(
+            TrancheController.Params({
+                underlyingVault: address(wrapper),
+                sentinel: address(sentinel),
+                borrower: address(0),
+                governance: gov,
+                defaultDeclarer: address(0xDEC),
+                seniorShareBips: 10000,
+                minJuniorBips: 2000,
+                defaultPenaltyWindow: 90 days,
+                shareDecimals: 18
+            })
+        );
+    }
 }

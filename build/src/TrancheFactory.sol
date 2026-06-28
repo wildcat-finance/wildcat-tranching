@@ -16,6 +16,7 @@ contract TrancheFactory {
     ///         canonical controllerForMarket slot, or register a fake vault whose market() returns a
     ///         real registered market. Gating to a trusted owner closes both.
     address public owner;
+    address public pendingOwner;
 
     mapping(address => address) public controllerForMarket; // market => TrancheController
     address[] public allControllers;
@@ -23,6 +24,7 @@ contract TrancheFactory {
     event TranchesDeployed(
         address indexed market, address indexed underlying, address controller, address senior, address junior
     );
+    event OwnerProposed(address indexed pending);
     event OwnerTransferred(address indexed from, address indexed to);
 
     constructor(address _archController) {
@@ -32,11 +34,21 @@ contract TrancheFactory {
         emit OwnerTransferred(address(0), msg.sender);
     }
 
+    /// @notice Two-step ownership transfer, mirroring TrancheController's governance rotation: the
+    ///         owner proposes a successor who must accept, so ownership can never be stranded on a
+    ///         typo'd or uncontrolled address.
     function transferOwner(address next) external {
         require(msg.sender == owner, "ONLY_OWNER");
         require(next != address(0), "ZERO_OWNER");
-        emit OwnerTransferred(owner, next);
-        owner = next;
+        pendingOwner = next;
+        emit OwnerProposed(next);
+    }
+
+    function acceptOwner() external {
+        require(msg.sender == pendingOwner, "NOT_PENDING");
+        emit OwnerTransferred(owner, pendingOwner);
+        owner = pendingOwner;
+        pendingOwner = address(0);
     }
 
     struct DeployParams {
@@ -54,6 +66,7 @@ contract TrancheFactory {
         require(msg.sender == owner, "ONLY_OWNER");
         require(p.governance != address(0), "ZERO_GOV");
         require(p.sentinel != address(0), "ZERO_SENTINEL");
+        require(p.borrower != address(0), "ZERO_BORROWER");
         address market = IUnderlying4626(p.underlyingVault).market();
         require(archController.isRegisteredMarket(market), "MARKET_NOT_REGISTERED");
         require(controllerForMarket[market] == address(0), "TRANCHES_EXIST");

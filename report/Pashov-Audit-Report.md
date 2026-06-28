@@ -49,7 +49,7 @@ Any caller could occupy the canonical `controllerForMarket[market]` slot for a r
 - **Controller self-sanctioned edge**: if the controller address itself were sanctioned in the Wildcat sentinel, `redeem`/`queueWithdrawal` revert or route to a Wildcat escrow, stranding recovery. Edge case; note for ops.
 
 ## Suite status
-48 tests, all passing (45 local + 3 mainnet-fork). The SR-D PoC was converted to a regression asserting the fix, and SR-A / SR-B / governance-rotation each gained a regression in `AuditPoC.t.sol`.
+51 tests, all passing (48 local + 3 mainnet-fork). The SR-D PoC was converted to a regression asserting the fix, and SR-A / SR-B / governance-rotation each gained a regression in `AuditPoC.t.sol`. The second audit cycle added three more regressions (R1 / R2 / R3); see the re-audit report.
 
 ## Re-audit
-After the fixes, the same `solidity-auditor` process was re-run (12 agents x 3 passes) against the fixed code. Results appended in `report/Pashov-Audit-Report-Reaudit.md`.
+After the fixes, the same `solidity-auditor` process was re-run cold against the fixed code (`696a0120`). The first-cycle fixes held; the re-audit surfaced one senior-priority leak (R1, stale `seniorOwed` at the distress gate), one consistency gap (R2, single-step factory ownership), and one defensive guard (R3, zero-address borrower), all now fixed and regression-tested. Full write-up in `report/Pashov-Audit-Report-Reaudit.md`.

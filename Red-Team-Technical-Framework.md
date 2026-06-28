@@ -257,7 +257,7 @@ The candidate-weakness list was worked through in-house before handing off. One 
 - `ViewProps.t.sol`: ERC-4626 view-surface properties (identity at empty supply, round-trip creates no shares, monotonicity, pps and totalAssets consistency). The synchronous a16z suite does not apply because redemption is async.
 - `Fork.t.sol`: live `MarketState` decode, senior rate equals live base APR, deposit valuation matches live `convertToAssets`, redemption round-trip against the real withdrawal queue.
 
-Full suite: 45 tests, all passing (42 local + 3 mainnet-fork). (`AuditPoC.t.sol` adds the external-audit SR-D proof of concept; see `report/Pashov-Audit-Report.md`.)
+Full suite: 51 tests, all passing (48 local + 3 mainnet-fork). (`AuditPoC.t.sol` carries the external-audit regressions: SR-D, SR-A, SR-B, governance rotation, and the second-cycle R1/R2/R3; see `report/Pashov-Audit-Report.md` and `report/Pashov-Audit-Report-Reaudit.md`.)
 
 ### Remaining gaps
 
