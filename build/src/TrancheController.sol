@@ -93,8 +93,10 @@ contract TrancheController is ReentrancyGuard {
     event WindDownEntered(uint256 seniorOwedAtDefault, bool forced);
     event SeniorShareProposed(uint256 shareBips, uint256 eta);
     event SeniorShareSet(uint256 shareBips);
+    event SeniorShareProposalCancelled();
     event JuniorAllowed(address indexed account, bool allowed);
     event DepositsPaused(bool paused);
+    event DefaultDeclarerSet(address indexed declarer);
     event GovernanceProposed(address indexed pending);
     event GovernanceTransferred(address indexed from, address indexed to);
 
@@ -372,8 +374,12 @@ contract TrancheController is ReentrancyGuard {
     ///         exit ahead of senior priority; the held-back remainder stays for the senior obligation
     ///         and is released to junior only once senior is covered. O(1); no clawback.
     function _allocate() internal {
-        uint256 undistributed = recoveredUSDC - seniorCashAllocated - juniorCashAllocated;
-        if (undistributed == 0) return;
+        // Guard the subtraction: recoveredUSDC is balance-derived, so a forced external balance drop
+        // (e.g. a USDC blacklist-and-destroy against this contract) can push it below what is already
+        // allocated. Returning early keeps allocation and claims live instead of bricking on underflow.
+        uint256 allocated = seniorCashAllocated + juniorCashAllocated;
+        if (recoveredUSDC <= allocated) return;
+        uint256 undistributed = recoveredUSDC - allocated;
 
         // Senior claimants are always filled first, in queue order, up to the senior face queued.
         uint256 seniorRoom = seniorWmtQueued > seniorCashAllocated ? seniorWmtQueued - seniorCashAllocated : 0;
@@ -457,6 +463,15 @@ contract TrancheController is ReentrancyGuard {
         emit SeniorShareSet(seniorShareBips);
     }
 
+    /// @notice Cancel a pending senior-share proposal before it executes. Execution is permissionless
+    ///         once the timelock elapses, so without this a mis-entered proposal could only be
+    ///         overwritten (resetting the clock); cancelling lets governance abort it outright.
+    function cancelSeniorShareProposal() external onlyGovernance {
+        pendingSeniorShareBips = 0;
+        seniorShareEta = 0;
+        emit SeniorShareProposalCancelled();
+    }
+
     function setJuniorAllowed(address account, bool allowed) external onlyGovernance {
         juniorAllowed[account] = allowed;
         emit JuniorAllowed(account, allowed);
@@ -468,13 +483,16 @@ contract TrancheController is ReentrancyGuard {
     }
 
     function setDefaultDeclarer(address d) external onlyGovernance {
+        require(d != address(0), "ZERO_DECLARER");
         defaultDeclarer = d;
+        emit DefaultDeclarerSet(d);
     }
 
     /// @notice Two-step governance transfer so a lost or rotated key is recoverable. The current
     ///         governance proposes a successor; the successor must accept, which prevents handing
     ///         control to an address that cannot use it.
     function proposeGovernance(address next) external onlyGovernance {
+        require(next != address(0), "ZERO_GOV");
         pendingGovernance = next;
         emit GovernanceProposed(next);
     }
