@@ -181,10 +181,16 @@ contract TrancheInvariantTest is Test {
         if (jv > 0) assertEq(sv, c.seniorOwed(), "senior whole while junior has value");
     }
 
-    // NOTE: a no-over-distribution invariant (sum of claimed + claimable <= recoveredUSDC) was run
-    // here and FAILED: the redemption queue can credit a late-queuing request a share of recovery
-    // that was already distributed, because the class wmt total grows but is never reconciled against
-    // amounts already claimed. The bug is captured deterministically in
-    // AttackTest.test_Finding_LateQueuerOverPromisesRecovery and written up in the red-team framework
-    // (Self-review findings). Re-add this invariant once the redemption accounting is fixed.
+    /// @dev the redemption queue never promises more USDC than has actually been recovered. This held
+    ///      after the FIFO senior-first settlement fix (it failed against the old growing-denominator
+    ///      pool; see AttackTest.test_LateQueuerNotOverPromised).
+    function invariant_noOverDistribution() public view {
+        uint256 n = c.requestsLength();
+        uint256 totalEntitled;
+        for (uint256 i = 0; i < n; i++) {
+            (,,, uint128 usdcClaimed,) = c.requests(i);
+            totalEntitled += uint256(usdcClaimed) + c.claimable(i);
+        }
+        assertLe(totalEntitled, c.recoveredUSDC(), "no over-distribution beyond recovered USDC");
+    }
 }
