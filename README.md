@@ -42,7 +42,7 @@ build/test/
 ```bash
 export FOUNDRY_DISABLE_NIGHTLY_WARNING=true
 
-# everything (local + mainnet fork): 25 tests
+# everything (local + mainnet fork): 51 tests
 cd build && forge test
 
 # local only (unit + fuzz + invariants)

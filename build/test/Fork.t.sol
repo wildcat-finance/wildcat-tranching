@@ -39,7 +39,7 @@ contract ForkTest is Test {
             TrancheController.Params({
                 underlyingVault: WRAPPER,
                 sentinel: address(0), // sanctions logic is unit-tested; skip on fork
-                borrower: address(0),
+                borrower: address(0xB0110), // unused while sentinel is zero; non-zero per ZERO_BORROWER guard
                 governance: address(this),
                 defaultDeclarer: address(this),
                 seniorShareBips: 10000, // senior takes 100% of the live base APR

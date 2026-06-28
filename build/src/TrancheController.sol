@@ -113,6 +113,7 @@ contract TrancheController is ReentrancyGuard {
     constructor(Params memory p) {
         require(p.underlyingVault != address(0), "ZERO_ADDR");
         require(p.governance != address(0), "ZERO_GOV");
+        require(p.borrower != address(0), "ZERO_BORROWER");
         require(p.seniorShareBips <= MAX_SENIOR_SHARE_BIPS, "BAD_SHARE");
         require(p.minJuniorBips >= 500 && p.minJuniorBips <= 9000, "BAD_SUBORDINATION");
         require(p.defaultPenaltyWindow > 0 && p.defaultPenaltyWindow <= MAX_PENALTY_WINDOW, "BAD_WINDOW");
@@ -218,19 +219,25 @@ contract TrancheController is ReentrancyGuard {
     }
 
     // ============================================================ accrual / lifecycle
+    /// @dev Order matters: book interest for the elapsed period FIRST (while still Active), THEN
+    ///      test for default. If _syncDefault ran first it would freeze seniorOwedAtDefault at the
+    ///      pre-accrual value, dropping the final period's senior interest. Because the distress gate
+    ///      in _allocate reserves seniorOwed, an understated seniorOwed leaks cash to junior ahead of
+    ///      senior priority; accruing before the freeze keeps the reserve whole.
     function accrue() public {
         _refreshMark();
-        _syncDefault();
-        if (status != Status.Active) return;
-        uint256 dt = block.timestamp - lastAccrual;
-        if (dt > 0) {
-            seniorOwed = WaterfallMath.accrueSeniorOwed(seniorOwed, currentSeniorRateBips(), dt);
-            lastAccrual = block.timestamp;
+        if (status == Status.Active) {
+            uint256 dt = block.timestamp - lastAccrual;
+            if (dt > 0) {
+                seniorOwed = WaterfallMath.accrueSeniorOwed(seniorOwed, currentSeniorRateBips(), dt);
+                lastAccrual = block.timestamp;
+            }
         }
+        _syncDefault();
     }
 
     function checkDefault() external {
-        _syncDefault();
+        accrue(); // accrue the final sliver before any default freeze (see accrue)
     }
 
     function _syncDefault() internal {
@@ -244,7 +251,7 @@ contract TrancheController is ReentrancyGuard {
     function declareDefault() external {
         require(msg.sender == governance || msg.sender == defaultDeclarer, "NOT_AUTH");
         forcedDefault = true;
-        _syncDefault();
+        accrue(); // books interest up to the forced-default instant, then freezes seniorOwedAtDefault
     }
 
     // ============================================================ deposits
@@ -337,6 +344,7 @@ contract TrancheController is ReentrancyGuard {
     }
 
     function pokeRecovery(uint32 expiry) external nonReentrant {
+        accrue(); // refresh seniorOwed so the distress gate in _allocate reserves the live obligation
         uint256 before = baseAsset.balanceOf(address(this));
         market.executeWithdrawal(address(this), expiry);
         uint256 got = baseAsset.balanceOf(address(this)) - before;
@@ -349,6 +357,7 @@ contract TrancheController is ReentrancyGuard {
     ///         so USDC that arrives outside pokeRecovery (a permissionless market executeWithdrawal,
     ///         a direct transfer, or recovery above queued face) is captured rather than stranded.
     function sync() external nonReentrant {
+        accrue(); // refresh seniorOwed so the distress gate in _allocate reserves the live obligation
         _syncRecovered();
     }
 
