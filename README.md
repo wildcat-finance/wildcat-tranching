@@ -15,13 +15,13 @@ booked as profit.
 > Not yet audited.
 
 ## Documentation
-- [Tranching-Explained.md](Tranching-Explained.md) — plain-language explainer of the whole facility (also rendered to PDF under `report/`).
-- [Design-Risk-Specification.md](Design-Risk-Specification.md) — the design and risk decisions behind the model.
-- [Red-Team-Technical-Framework.md](Red-Team-Technical-Framework.md) — adversarial-review brief: trust model, invariants, and the candidate-weakness list.
-- [BD-Primer.md](BD-Primer.md) — structured-credit framing for business development and trading desks.
-- [Wildcat-Tranching-Effort-Assessment.md](Wildcat-Tranching-Effort-Assessment.md) — build effort and common-ground assessment vs Strata / Royco / Pareto.
-- `report/` — branded PDFs (architecture, BD primer, explainer). `deck/` — slide decks.
-- `frontend/index.html` — interactive model of the waterfall (open in a browser).
+- [Tranching-Explained.md](Tranching-Explained.md): plain-language explainer of the whole facility (also rendered to PDF under `report/`).
+- [Design-Risk-Specification.md](Design-Risk-Specification.md): the design and risk decisions behind the model.
+- [Red-Team-Technical-Framework.md](Red-Team-Technical-Framework.md): adversarial-review brief: trust model, invariants, and the candidate-weakness list.
+- [BD-Primer.md](BD-Primer.md): structured-credit framing for business development and trading desks.
+- [Wildcat-Tranching-Effort-Assessment.md](Wildcat-Tranching-Effort-Assessment.md): build effort and common-ground assessment vs Strata / Royco / Pareto.
+- `report/`: branded PDFs (architecture, BD primer, explainer). `deck/`: slide decks.
+- `frontend/index.html`: interactive model of the waterfall (open in a browser).
 
 ## Contracts (`build/`)
 ```
@@ -42,7 +42,7 @@ build/test/
 ```bash
 export FOUNDRY_DISABLE_NIGHTLY_WARNING=true
 
-# everything (local + mainnet fork): 51 tests
+# everything (local + mainnet fork): 55 tests
 cd build && forge test
 
 # local only (unit + fuzz + invariants)
