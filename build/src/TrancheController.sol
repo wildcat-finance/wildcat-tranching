@@ -66,9 +66,15 @@ contract TrancheController is ReentrancyGuard {
     }
 
     Request[] public requests;
-    uint256 public totalSeniorWmtQueued;
-    uint256 public totalJuniorWmtQueued;
-    uint256 public recoveredUSDC;
+    /// @notice Cumulative class face (in wmt) queued strictly BEFORE each request: its place in the
+    ///         class FIFO. Recovered cash fills each class in queue order, so a request is paid only
+    ///         once allocation reaches its position. This is what makes settlement conserving.
+    mapping(uint256 => uint256) public faceBefore;
+    uint256 public seniorWmtQueued; // cumulative senior face ever queued
+    uint256 public juniorWmtQueued; // cumulative junior face ever queued
+    uint256 public seniorCashAllocated; // USDC assigned to the senior class (its FIFO fill level)
+    uint256 public juniorCashAllocated; // USDC assigned to the junior class
+    uint256 public recoveredUSDC; // total USDC pulled from the market via pokeRecovery
 
     // ----- bounds -----
     uint256 internal constant BIPS = 1e4;
@@ -137,6 +143,13 @@ contract TrancheController is ReentrancyGuard {
 
     function _delinquent() internal view returns (bool) {
         return market.currentState().isDelinquent;
+    }
+
+    /// @dev Distress = the market is delinquent or the vault has entered wind-down. Junior cash
+    ///      release is gated against the full senior obligation while distressed, so first-loss
+    ///      capital cannot exit ahead of senior priority during a slow-motion default.
+    function _distressed() internal view returns (bool) {
+        return status == Status.WindDown || _delinquent();
     }
 
     /// @dev Effective price per share: live while healthy, frozen at the watermark while delinquent.
@@ -301,10 +314,18 @@ contract TrancheController is ReentrancyGuard {
         uint32 expiry = market.queueWithdrawal(wmtGot);
 
         id = requests.length;
+        if (isSenior) {
+            faceBefore[id] = seniorWmtQueued;
+            seniorWmtQueued += wmtGot;
+        } else {
+            faceBefore[id] = juniorWmtQueued;
+            juniorWmtQueued += wmtGot;
+        }
         requests.push(Request({owner: msg.sender, isSenior: isSenior, wmt: uint128(wmtGot), usdcClaimed: 0, expiry: expiry}));
-        if (isSenior) totalSeniorWmtQueued += wmtGot;
-        else totalJuniorWmtQueued += wmtGot;
         emit RedeemRequested(id, isSenior, msg.sender, shares, wmtGot, expiry);
+        // A newly queued senior (more senior room) or a reduced senior obligation (a senior exit) can
+        // release cash that was being held back; re-run allocation so it reaches the right class.
+        _allocate();
     }
 
     function pokeRecovery(uint32 expiry) external nonReentrant {
@@ -312,22 +333,50 @@ contract TrancheController is ReentrancyGuard {
         market.executeWithdrawal(address(this), expiry);
         uint256 got = baseAsset.balanceOf(address(this)) - before;
         recoveredUSDC += got;
+        _allocate();
         emit RecoveryPoked(expiry, got, recoveredUSDC);
     }
 
-    /// @notice USDC currently claimable by a request, under senior-first cumulative pro-rata.
+    /// @notice Assign not-yet-allocated recovered USDC to the senior class first (up to the senior
+    ///         face queued), then to junior. Under distress (delinquent or wind-down) junior may only
+    ///         draw cash beyond the FULL senior obligation (seniorOwed), so first-loss capital cannot
+    ///         exit ahead of senior priority; the held-back remainder stays for the senior obligation
+    ///         and is released to junior only once senior is covered. O(1); no clawback.
+    function _allocate() internal {
+        uint256 undistributed = recoveredUSDC - seniorCashAllocated - juniorCashAllocated;
+        if (undistributed == 0) return;
+
+        // Senior claimants are always filled first, in queue order, up to the senior face queued.
+        uint256 seniorRoom = seniorWmtQueued > seniorCashAllocated ? seniorWmtQueued - seniorCashAllocated : 0;
+        uint256 toSenior = undistributed < seniorRoom ? undistributed : seniorRoom;
+        if (toSenior > 0) {
+            seniorCashAllocated += toSenior;
+            undistributed -= toSenior;
+        }
+        if (undistributed == 0) return;
+
+        // Junior is gated: while distressed, reserve the entire senior obligation (protects even
+        // senior that has not queued yet); otherwise only the senior amount actually queued.
+        uint256 seniorReserve = _distressed() ? seniorOwed : seniorWmtQueued;
+        uint256 juniorCeil = recoveredUSDC > seniorReserve ? recoveredUSDC - seniorReserve : 0;
+        if (juniorCeil > juniorWmtQueued) juniorCeil = juniorWmtQueued;
+        uint256 juniorRoom = juniorCeil > juniorCashAllocated ? juniorCeil - juniorCashAllocated : 0;
+        uint256 toJunior = undistributed < juniorRoom ? undistributed : juniorRoom;
+        if (toJunior > 0) juniorCashAllocated += toJunior;
+        // Any remainder stays undistributed: reserved for the senior obligation or for later requests.
+    }
+
+    /// @notice USDC currently claimable by a request. Its class fills FIFO from cash allocated to that
+    ///         class, so the request is paid only once allocation reaches its position in the queue.
+    ///         This mirrors the underlying market's batch ordering and never promises more than has
+    ///         been recovered (sum of claimable across a class == cash allocated to it).
     function claimable(uint256 id) public view returns (uint256) {
         Request memory r = requests[id];
-        uint256 entitled;
-        if (r.isSenior) {
-            uint256 pool = recoveredUSDC < totalSeniorWmtQueued ? recoveredUSDC : totalSeniorWmtQueued;
-            entitled = totalSeniorWmtQueued == 0 ? 0 : (uint256(r.wmt) * pool) / totalSeniorWmtQueued;
-        } else {
-            uint256 seniorPool = recoveredUSDC < totalSeniorWmtQueued ? recoveredUSDC : totalSeniorWmtQueued;
-            uint256 jPool = recoveredUSDC > seniorPool ? recoveredUSDC - seniorPool : 0;
-            if (jPool > totalJuniorWmtQueued) jPool = totalJuniorWmtQueued;
-            entitled = totalJuniorWmtQueued == 0 ? 0 : (uint256(r.wmt) * jPool) / totalJuniorWmtQueued;
-        }
+        uint256 allocated = r.isSenior ? seniorCashAllocated : juniorCashAllocated;
+        uint256 fb = faceBefore[id];
+        if (allocated <= fb) return 0;
+        uint256 reached = allocated - fb;
+        uint256 entitled = reached < r.wmt ? reached : r.wmt; // capped at this request's face
         return entitled > r.usdcClaimed ? entitled - r.usdcClaimed : 0;
     }
 

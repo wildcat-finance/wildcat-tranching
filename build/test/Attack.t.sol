@@ -322,32 +322,33 @@ contract AttackTest is Test {
         uint32 expiry = uint32(block.timestamp + market.withdrawalBatchDuration());
         vm.warp(expiry + 1);
 
-        // chunk 1: 300 -> split pro-rata across senior only
+        // chunk 1: 300 fills the senior class FIFO; senior 1 (first in line) is paid in full
         usdc.mint(address(market), 300e18);
         c.pokeRecovery(expiry);
-        assertEq(c.claimable(sid1), 150e18, "senior 1 pro-rata of senior pool");
-        assertEq(c.claimable(sid2), 150e18, "senior 2 pro-rata of senior pool");
-        assertEq(c.claimable(jid1), 0, "junior 1 waits");
-        assertEq(c.claimable(jid2), 0, "junior 2 waits");
+        assertEq(c.claimable(sid1), 300e18, "senior 1 fully paid first (FIFO within class)");
+        assertEq(c.claimable(sid2), 0, "senior 2 waits behind senior 1");
+        assertEq(c.claimable(jid1), 0, "junior waits behind senior");
+        assertEq(c.claimable(jid2), 0, "junior waits behind senior");
+        _assertNoOverDistribution();
 
-        // one senior claims mid-stream
+        // senior 1 claims mid-stream
         vm.prank(srLP);
         c.claim(sid1);
 
-        // chunk 2: another 300 completes the senior face (600 total); junior still nothing
+        // chunk 2: another 300 completes the senior class (600 face total); junior still nothing
         usdc.mint(address(market), 300e18);
         c.pokeRecovery(expiry);
-        assertEq(c.claimable(sid1), 150e18, "senior 1 remainder after its earlier claim");
-        assertEq(c.claimable(sid2), 300e18, "senior 2 now full");
-        assertEq(c.claimable(jid1), 0, "junior still nothing at senior face");
-        assertEq(c.claimable(jid2), 0, "junior still nothing at senior face");
+        assertEq(c.claimable(sid1), 0, "senior 1 already fully claimed");
+        assertEq(c.claimable(sid2), 300e18, "senior 2 now fully paid");
+        assertEq(c.claimable(jid1), 0, "junior still behind senior");
+        assertEq(c.claimable(jid2), 0, "junior still behind senior");
+        _assertNoOverDistribution();
 
-        // chunk 3: surplus splits pro-rata across junior
+        // chunk 3: surplus above the senior face flows to junior FIFO; junior 1 first
         usdc.mint(address(market), 100e18);
         c.pokeRecovery(expiry);
-        assertEq(c.claimable(jid1), 50e18, "junior 1 pro-rata of surplus");
-        assertEq(c.claimable(jid2), 50e18, "junior 2 pro-rata of surplus");
-
+        assertEq(c.claimable(jid1), 100e18, "junior 1 fully paid first (FIFO within class)");
+        assertEq(c.claimable(jid2), 0, "junior 2 waits behind junior 1");
         _assertNoOverDistribution();
     }
 
@@ -441,16 +442,12 @@ contract AttackTest is Test {
         assertEq(c6.senior().convertToAssets(1e18), pps, "senior pps unaffected at 6 decimals");
     }
 
-    // ----------------------------------------------------------------- FINDING (self-review)
-    /// @dev FOUND BY THE no-over-distribution INVARIANT. The redemption queue divides recoveries by
-    ///      a class total (totalJuniorWmtQueued / totalSeniorWmtQueued) that only ever grows and is
-    ///      never reconciled against amounts already claimed. A request that queues AFTER an earlier
-    ///      request has already claimed a recovery is credited a pro-rata slice of that
-    ///      already-distributed USDC. The result: claimable() over-states, total promised exceeds
-    ///      total recovered, and under a partial (sub-par) recovery the earlier claimant captures
-    ///      more than its pro-rata share, leaving the late queuer's claim unbacked.
-    ///      This documents the bug; see the red-team framework "Self-review findings" for fix options.
-    function test_Finding_LateQueuerOverPromisesRecovery() public {
+    // ----------------------------------------------------------------- SR-1 regression (now fixed)
+    /// @dev Regression for the former SR-1 over-promise. The queue now settles each class FIFO from the
+    ///      cash allocated to it, so a request that queues AFTER an earlier request has claimed is NOT
+    ///      credited already-distributed USDC: it simply sits behind in the queue and is paid only from
+    ///      new recovery at its position. claimable() no longer over-states and claims stay backed.
+    function test_LateQueuerNotOverPromised() public {
         TrancheController cc = _deploy(address(sentinel), 18);
         TrancheToken jr = cc.junior();
         address a = address(0xA11);
@@ -462,42 +459,111 @@ contract AttackTest is Test {
         wrapper.mintShares(a, 100e18);
         wrapper.mintShares(b, 100e18);
 
-        // A deposits 100 junior and queues a redemption (owed 100)
         vm.startPrank(a);
         wrapper.approve(address(cc), 100e18);
         cc.depositJunior(100e18, a);
         uint256 aid = cc.requestRedeem(false, jr.balanceOf(a));
         vm.stopPrank();
-
-        uint32 e1 = uint32(block.timestamp + market.withdrawalBatchDuration());
-        vm.warp(e1 + 1);
-
-        // a partial recovery of 100 arrives and A, the only queuer, claims all of it
+        (,,,, uint32 e1) = cc.requests(aid);
+        vm.warp(uint256(e1) + 1);
         usdc.mint(address(market), 100e18);
         cc.pokeRecovery(e1);
         vm.prank(a);
         uint256 aGot = cc.claim(aid);
-        assertEq(aGot, 100e18, "A claims the whole recovery as sole queuer");
-        assertEq(cc.recoveredUSDC(), 100e18);
+        assertEq(aGot, 100e18, "A claims its FIFO position in full");
 
-        // B now deposits 100 junior and queues; no new recovery has arrived
+        // B queues after A claimed; no new recovery has arrived
         vm.startPrank(b);
         wrapper.approve(address(cc), 100e18);
         cc.depositJunior(100e18, b);
         uint256 bid = cc.requestRedeem(false, jr.balanceOf(b));
         vm.stopPrank();
 
-        // BUG 1: claimable() credits B a slice of the already-distributed recovery
-        uint256 bClaimable = cc.claimable(bid);
-        assertGt(bClaimable, 0, "FINDING: late queuer credited already-paid recovery");
+        // FIXED: B is not credited A's already-distributed cash, and nothing is over-promised
+        assertEq(cc.claimable(bid), 0, "late queuer not credited already-paid recovery");
+        assertLe(aGot + cc.claimable(bid), cc.recoveredUSDC(), "no over-distribution");
 
-        // BUG 2: total promised now exceeds total recovered (the invariant that caught this)
-        assertGt(aGot + bClaimable, cc.recoveredUSDC(), "FINDING: over-promise beyond recovered USDC");
-
-        // BUG 3: the promise is unbacked, so B's claim cannot actually settle
+        // B is paid only from NEW recovery, at its position in the queue
+        (,,,, uint32 e2) = cc.requests(bid);
+        vm.warp(uint256(e2) + 1);
+        usdc.mint(address(market), 100e18);
+        cc.pokeRecovery(e2);
+        assertEq(cc.claimable(bid), 100e18, "B paid from new recovery at its position");
         vm.prank(b);
-        vm.expectRevert();
-        cc.claim(bid);
+        assertEq(cc.claim(bid), 100e18, "B's claim settles, backed by real cash");
+    }
+
+    // -------------------------------------------------- option (1): distress gate on junior cash
+    /// @dev Under distress (delinquent or wind-down) junior recovery is escrowed: nothing is released
+    ///      to junior while the senior obligation is uncovered, so first-loss capital cannot exit at
+    ///      par ahead of senior. Once the market is healthy again, the gate lifts.
+    function test_JuniorEscrowedUnderDistressUntilSeniorCovered() public {
+        market.setDelinquent(true);
+        vm.prank(jrLP);
+        uint256 jid = c.requestRedeem(false, 20e18); // value 20 <= maxJuniorWithdraw (25) floor cap
+        (,, uint128 jwmt,, uint32 jexp) = c.requests(jid);
+        assertEq(uint256(jwmt), 20e18);
+
+        usdc.mint(address(market), 50e18); // borrower dribbles, far below the senior obligation (300)
+        vm.warp(uint256(jexp) + 1);
+        c.pokeRecovery(jexp);
+
+        assertEq(c.claimable(jid), 0, "junior escrowed during distress while senior uncovered");
+        assertEq(c.juniorCashAllocated(), 0, "no cash allocated to junior under distress");
+        assertEq(c.recoveredUSDC(), 20e18, "batch only owed the 20 junior face; recovered held for senior");
+
+        // cure: the gate lifts (the subordination floor already bounded the exit size)
+        market.setDelinquent(false);
+        c.pokeRecovery(jexp); // pays 0 new, but re-allocates under the healthy state
+        assertEq(c.claimable(jid), 20e18, "junior released once the market is healthy again");
+    }
+
+    /// @dev Senior priority is measured against the obligation, not the queue: a junior cannot drain
+    ///      recovery while senior that has NOT queued is still owed (the former Gap 5 / SR senior-first
+    ///      hole). The cash that would have leaked to junior is held for the unqueued senior.
+    function test_SeniorFirstProtectsUnqueuedSeniorUnderDistress() public {
+        vm.prank(srLP);
+        uint256 sid = c.requestRedeem(true, 100e18); // queue 100 of 300 senior; 200 stays owed/unqueued
+        assertEq(c.seniorOwed(), 200e18, "200 of senior remains owed and unqueued");
+
+        market.setDelinquent(true);
+        vm.prank(jrLP);
+        uint256 jid = c.requestRedeem(false, 20e18);
+
+        usdc.mint(address(market), 150e18);
+        (,,,, uint32 sExp) = c.requests(sid);
+        (,,,, uint32 jExp) = c.requests(jid);
+        vm.warp((sExp > jExp ? uint256(sExp) : uint256(jExp)) + 1);
+        c.pokeRecovery(sExp);
+        if (jExp != sExp) c.pokeRecovery(jExp);
+
+        assertEq(c.claimable(sid), 100e18, "queued senior paid first");
+        assertEq(c.claimable(jid), 0, "junior held back to protect the unqueued senior obligation");
+        assertEq(c.juniorCashAllocated(), 0, "no junior allocation while senior is uncovered");
+    }
+
+    /// @dev The user's worked example: a 40% loss in wind-down. Junior (first loss) is wiped before
+    ///      senior is touched; senior takes the recovery first, ending at 80 cents on the dollar.
+    function test_WorkedExampleLossWaterfall() public {
+        vm.prank(declarer);
+        c.declareDefault(); // wind-down; junior floor no longer blocks the junior exit
+        uint256 sShares = senior.balanceOf(srLP);
+        uint256 jShares = junior.balanceOf(jrLP);
+        vm.prank(srLP);
+        uint256 sid = c.requestRedeem(true, sShares); // 300 face
+        vm.prank(jrLP);
+        uint256 jid = c.requestRedeem(false, jShares); // 100 face
+
+        usdc.mint(address(market), 240e18); // borrower repays only 60% (a 40% loss)
+        (,,,, uint32 sExp) = c.requests(sid);
+        (,,,, uint32 jExp) = c.requests(jid);
+        vm.warp((sExp > jExp ? uint256(sExp) : uint256(jExp)) + 1);
+        c.pokeRecovery(sExp);
+        if (jExp != sExp) c.pokeRecovery(jExp);
+
+        assertEq(c.claimable(jid), 0, "junior wiped first (first loss)");
+        assertEq(c.claimable(sid), 240e18, "senior takes recovery first: 240 of 300, 80 cents");
+        assertEq(c.seniorCashAllocated() + c.juniorCashAllocated(), c.recoveredUSDC(), "conservation");
     }
 
     // ---- helper: junior redeem all the way to USDC in hand ----
