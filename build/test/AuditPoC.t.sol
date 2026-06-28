@@ -240,4 +240,68 @@ contract AuditPoCTest is Test {
             })
         );
     }
+
+    /// @dev R4 (re-audit): governance can cancel a pending senior-share proposal outright, instead of
+    ///      only being able to overwrite it (which resets the clock) while execution is permissionless.
+    function test_R4_CancelSeniorShareProposal() public {
+        vm.prank(gov);
+        c.proposeSeniorShareBips(5000);
+        assertGt(c.seniorShareEta(), 0, "proposal pending");
+
+        vm.prank(address(0xBAD));
+        vm.expectRevert(bytes("ONLY_GOV"));
+        c.cancelSeniorShareProposal();
+
+        vm.prank(gov);
+        c.cancelSeniorShareProposal();
+        assertEq(c.seniorShareEta(), 0, "eta cleared");
+        assertEq(c.pendingSeniorShareBips(), 0, "pending cleared");
+
+        // after cancel, the proposal cannot be executed even once the old timelock would have elapsed
+        vm.warp(block.timestamp + 2 days + 1);
+        vm.expectRevert(bytes("TIMELOCK"));
+        c.executeSeniorShareBips();
+    }
+
+    /// @dev re-audit low item: proposeGovernance rejects the zero address (mirrors the factory guard).
+    function test_ProposeGovernanceRejectsZero() public {
+        vm.prank(gov);
+        vm.expectRevert(bytes("ZERO_GOV"));
+        c.proposeGovernance(address(0));
+    }
+
+    /// @dev re-audit low item: setDefaultDeclarer guards the zero address and emits an event.
+    function test_SetDefaultDeclarerGuarded() public {
+        vm.prank(gov);
+        vm.expectRevert(bytes("ZERO_DECLARER"));
+        c.setDefaultDeclarer(address(0));
+
+        vm.prank(gov);
+        c.setDefaultDeclarer(address(0xABCD));
+        assertEq(c.defaultDeclarer(), address(0xABCD));
+    }
+
+    /// @dev re-audit low item: a forced external USDC balance drop (modelling a blacklist-and-destroy
+    ///      against the controller) must not brick _allocate via underflow; the guard returns early.
+    function test_AllocateSurvivesForcedBalanceDrop() public {
+        uint256 sShares = senior.balanceOf(srLP);
+        vm.prank(srLP);
+        uint256 id = c.requestRedeem(true, sShares);
+        (,, uint128 wmt,, uint32 expiry) = c.requests(id);
+        usdc.mint(address(market), uint256(wmt));
+        vm.warp(uint256(expiry) + 1);
+        c.pokeRecovery(expiry);
+        uint256 alloc = c.seniorCashAllocated();
+        assertGt(alloc, 0, "senior cash allocated");
+
+        // forcibly remove half the controller's USDC (models USDC admin destroy).
+        // read the balance first so the argument call does not consume the prank.
+        uint256 half = usdc.balanceOf(address(c)) / 2;
+        vm.prank(address(c));
+        usdc.transfer(address(0xdead), half);
+
+        // recoveredUSDC now falls below what is already allocated; sync must NOT revert
+        c.sync();
+        assertLt(c.recoveredUSDC(), alloc, "recoveredUSDC fell below allocated without bricking");
+    }
 }
