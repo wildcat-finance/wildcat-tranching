@@ -211,7 +211,7 @@ These are deliberate. Do not report them as bugs unless you can show they are *e
 - **Senior accrual compounds on each `accrue()` (F1, expected).** `seniorOwed` is updated in place, so frequent permissionless calls compound it toward `e^(r*t)` versus a single linear `1 + r*t`. This is intended and mirrors the Wildcat market's own update-driven compounding, where realised borrower APR is a function of update frequency. It has been live protocol behaviour for over a year. The drift is small (order +0.36% of senior principal per year at 8.5% even under continuous calling) and is not considered worth defending against, since grinding it costs more gas than it yields. Out of scope as a vulnerability unless it can be shown to break a section 9 invariant.
 - **Pre-default accrual sliver dropped (F2).** The `dt` between the last accrual and the default instant is not credited to senior on the commit that trips wind-down. Conservative toward junior/the pool.
 - **WindDown is sticky and `forcedDefault` is irreversible.** Default does not auto-cure.
-- **Stray funds are not sweepable (F7).** USDC sent directly, or recoveries beyond total queued, are stuck (not stolen).
+- **Stray/external USDC is now credited, not stranded (was F7, fixed).** Recovery is derived from the actual balance (`recoveredUSDC = balanceOf + totalClaimedOut`); `pokeRecovery` and a permissionless `sync()` credit any USDC that arrived outside `pokeRecovery` (including a permissionless market `executeWithdrawal`).
 - **Pause is deposit-only.** It never blocks senior or junior exits.
 - **Realised-only freeze.** Upside during delinquency is intentionally not booked.
 
