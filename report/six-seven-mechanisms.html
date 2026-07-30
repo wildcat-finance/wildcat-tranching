@@ -98,6 +98,31 @@
   .tile .v.sr{ color:var(--senior); } .tile .v.jr{ color:var(--junior); }
   .tile .s{ font-size:11.5px; color:var(--muted); margin-top:5px; }
 
+  /* flow map */
+  .diagramwrap{ overflow-x:auto; }
+  .flowmap{ display:block; min-width:940px; width:100%; height:auto; }
+  .flowmap .box{ fill:var(--panel); stroke:var(--rule); stroke-width:1.2; rx:5; }
+  .flowmap .box.entity{ fill:var(--sunk); }
+  .flowmap .box.core{ stroke:var(--ink); stroke-width:1.6; }
+  .flowmap .bar{ fill:var(--sunk); stroke:var(--hair); stroke-width:1; rx:4; }
+  .flowmap .chip-sr{ fill:var(--senior-wash); stroke:var(--senior); stroke-width:1; rx:4; }
+  .flowmap .chip-jr{ fill:var(--junior-wash); stroke:var(--junior); stroke-width:1; rx:4; }
+  .flowmap .chip-mut{ fill:var(--paper); stroke:var(--rule); stroke-width:1; stroke-dasharray:4 3; rx:4; }
+  .flowmap .t{ font-family:var(--sans); font-size:13.5px; font-weight:800; fill:var(--ink); }
+  .flowmap .s{ font-family:var(--sans); font-size:10px; fill:var(--muted); }
+  .flowmap .c{ font-family:var(--mono); font-size:10.5px; font-weight:700; fill:var(--ink); }
+  .flowmap .csm{ font-family:var(--mono); font-size:9.5px; font-weight:700; }
+  .flowmap .csm.sr{ fill:var(--senior); } .flowmap .csm.jr{ fill:var(--junior); }
+  .flowmap .edge{ fill:none; stroke:var(--ink-soft); stroke-width:1.6; }
+  .flowmap .edge.sr{ stroke:var(--senior); }
+  .flowmap .edge.jr{ stroke:var(--junior); }
+  .flowmap .edge.sig{ stroke:var(--muted); stroke-width:1.3; stroke-dasharray:5 4; }
+  .flowmap .badge{ fill:var(--paper); stroke:var(--ink-soft); stroke-width:1.1; }
+  .flowmap .badge-t{ font-family:var(--mono); font-size:10px; font-weight:700; fill:var(--ink); text-anchor:middle; }
+  .fllegend{ list-style:none; margin:4px 0 0; padding:0; display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:6px 22px; font-size:12.5px; color:var(--ink-soft); }
+  .fllegend li{ display:flex; gap:9px; align-items:baseline; }
+  .fllegend .b{ font-family:var(--mono); font-size:10.5px; font-weight:700; color:var(--ink); border:1px solid var(--rule); border-radius:50%; width:18px; height:18px; display:inline-flex; align-items:center; justify-content:center; flex:none; background:var(--panel); position:relative; top:3px; }
+
   /* pinned-state callout */
   .pin{ background:var(--sunk); border:1px solid var(--rule); border-radius:4px; padding:16px 18px; display:flex; flex-direction:column; gap:14px; }
   .gates{ display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:12px; }
@@ -233,7 +258,120 @@
     </div>
   </section>
 
-  <!-- 2 · PINNED -->
+  <!-- 2 · FLOW MAP -->
+  <section>
+    <h2>How the pieces connect <span class="tag">assets solid · state reads dashed</span></h2>
+    <p class="intro">The base Wildcat rail runs down the right: lenders fund the market, the market funds Six Seven Ltd, and the audited 4626 wrapper sits on the market token. The tranche layer attaches on the left — the controller is simply another <span class="num">v-abcUSDC</span> holder, splitting one lender position into two seats. Numbers key the legend below.</p>
+    <div class="diagramwrap">
+      <svg class="flowmap" viewBox="0 -14 1100 620" role="img" aria-label="Flow map of lenders, tranche controller, wrapper, market, borrower, sentinel and factory">
+        <defs>
+          <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--ink-soft)"/></marker>
+          <marker id="ah-sr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--senior)"/></marker>
+          <marker id="ah-jr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--junior)"/></marker>
+          <marker id="ah-mut" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker>
+        </defs>
+
+        <!-- edges under boxes -->
+        <path class="edge sig" d="M125,96 C 320,-6 750,-6 905,96" marker-end="url(#ah-mut)"/>
+        <path class="edge sr" d="M210,116 L396,116" marker-end="url(#ah-sr)"/>
+        <path class="edge"    d="M400,146 L214,146" marker-end="url(#ah)"/>
+        <path class="edge jr" d="M210,236 L396,236" marker-end="url(#ah-jr)"/>
+        <path class="edge"    d="M400,266 L214,266" marker-end="url(#ah)"/>
+        <path class="edge"    d="M650,120 L786,120" marker-end="url(#ah)"/>
+        <path class="edge"    d="M650,210 L786,303" marker-end="url(#ah)"/>
+        <path class="edge"    d="M790,335 L654,242" marker-end="url(#ah)"/>
+        <path class="edge sig" d="M790,368 L654,272" marker-end="url(#ah-mut)"/>
+        <path class="edge sig" d="M525,280 L525,506" marker-end="url(#ah-mut)"/>
+        <path class="edge"    d="M905,170 L905,286" marker-start="url(#ah)" marker-end="url(#ah)"/>
+        <path class="edge"    d="M905,400 L905,506" marker-start="url(#ah)" marker-end="url(#ah)"/>
+        <path class="edge sig" d="M525,62 L525,92" marker-end="url(#ah-mut)"/>
+
+        <!-- factory bar -->
+        <rect class="bar" x="400" y="28" width="250" height="34"/>
+        <text class="c" x="525" y="43" text-anchor="middle">TrancheFactory</text>
+        <text class="s" x="525" y="55" text-anchor="middle">ArchController-gated &#183; one set per market</text>
+
+        <!-- lender entities -->
+        <rect class="box entity" x="40" y="96" width="170" height="64"/>
+        <text class="t" x="125" y="121" text-anchor="middle">Senior lenders</text>
+        <text class="s" x="125" y="137" text-anchor="middle">treasuries &#183; KYC&#8217;d &#183; open</text>
+        <rect class="box entity" x="40" y="216" width="170" height="64"/>
+        <text class="t" x="125" y="241" text-anchor="middle">Junior lenders</text>
+        <text class="s" x="125" y="257" text-anchor="middle">whitelisted first-loss</text>
+
+        <!-- proposed gate chip -->
+        <rect class="chip-mut" x="243" y="177" width="124" height="26"/>
+        <text class="csm" x="305" y="194" text-anchor="middle" fill="var(--muted)">IEnterGate &#183; &#167;12</text>
+
+        <!-- controller -->
+        <rect class="box core" x="400" y="96" width="250" height="184"/>
+        <text class="t" x="525" y="126" text-anchor="middle">TrancheController</text>
+        <text class="s" x="525" y="144" text-anchor="middle">waterfall &#183; subordination &#183; async queue</text>
+        <text class="s" x="525" y="158" text-anchor="middle">day-118 default mirror &#183; realised-only NAV</text>
+        <text class="s" x="525" y="172" text-anchor="middle">holds the pool&#8217;s v-abcUSDC</text>
+        <rect class="chip-sr" x="413" y="234" width="108" height="30"/>
+        <text class="csm sr" x="467" y="253" text-anchor="middle">sr-abcUSDC</text>
+        <rect class="chip-jr" x="529" y="234" width="108" height="30"/>
+        <text class="csm jr" x="583" y="253" text-anchor="middle">jr-abcUSDC</text>
+
+        <!-- wrapper -->
+        <rect class="box" x="790" y="96" width="230" height="74"/>
+        <text class="t" x="905" y="126" text-anchor="middle">v-abcUSDC</text>
+        <text class="s" x="905" y="144" text-anchor="middle">ERC-4626 wrapper &#183; audited</text>
+
+        <!-- market -->
+        <rect class="box" x="790" y="290" width="230" height="110"/>
+        <text class="t" x="905" y="318" text-anchor="middle">abcUSDC market</text>
+        <text class="s" x="905" y="336" text-anchor="middle">10.00% APR &#183; 14-day batches</text>
+        <text class="s" x="905" y="350" text-anchor="middle">grace 28d &#183; reserve ratio 0</text>
+        <text class="s" x="905" y="364" text-anchor="middle">withdrawal queue &#183; grace tracker</text>
+
+        <!-- borrower -->
+        <rect class="box entity" x="790" y="510" width="230" height="70"/>
+        <text class="t" x="905" y="538" text-anchor="middle">Six Seven Ltd</text>
+        <text class="s" x="905" y="556" text-anchor="middle">borrower &#183; open term &#183; 10M / 15M drawn</text>
+
+        <!-- sentinel -->
+        <rect class="box" x="400" y="510" width="250" height="70"/>
+        <text class="t" x="500" y="538" text-anchor="middle">Sanctions sentinel</text>
+        <text class="s" x="500" y="556" text-anchor="middle">every deposit &#183; transfer &#183; claim</text>
+        <rect class="chip-mut" x="576" y="530" width="62" height="26"/>
+        <text class="csm" x="607" y="547" text-anchor="middle" fill="var(--muted)">escrow</text>
+
+        <!-- badges -->
+        <g>
+          <circle class="badge" cx="300" cy="104" r="9"/><text class="badge-t" x="300" y="107.5">1</text>
+          <circle class="badge" cx="300" cy="224" r="9"/><text class="badge-t" x="300" y="227.5">2</text>
+          <circle class="badge" cx="515" cy="19" r="9"/><text class="badge-t" x="515" y="22.5">3</text>
+          <circle class="badge" cx="718" cy="108" r="9"/><text class="badge-t" x="718" y="111.5">4</text>
+          <circle class="badge" cx="695" cy="238" r="9"/><text class="badge-t" x="695" y="241.5">5</text>
+          <circle class="badge" cx="748" cy="297" r="9"/><text class="badge-t" x="748" y="300.5">6</text>
+          <circle class="badge" cx="300" cy="158" r="9"/><text class="badge-t" x="300" y="161.5">7</text>
+          <circle class="badge" cx="920" cy="228" r="9"/><text class="badge-t" x="920" y="231.5">8</text>
+          <circle class="badge" cx="920" cy="453" r="9"/><text class="badge-t" x="920" y="456.5">9</text>
+          <circle class="badge" cx="695" cy="336" r="9"/><text class="badge-t" x="695" y="339.5">10</text>
+          <circle class="badge" cx="543" cy="395" r="9"/><text class="badge-t" x="543" y="398.5">11</text>
+          <circle class="badge" cx="543" cy="79" r="9"/><text class="badge-t" x="543" y="82.5">12</text>
+        </g>
+      </svg>
+    </div>
+    <ol class="fllegend">
+      <li><span class="b">1</span><span>Senior deposits <span class="num">v-abcUSDC</span>, controller mints <span class="num">sr-abcUSDC</span>. Open to any non-sanctioned address today (that gap is F8).</span></li>
+      <li><span class="b">2</span><span>Junior deposits, mints <span class="num">jr-abcUSDC</span> — whitelist-gated. The dashed chip is the proposed <span class="num">IEnterGate</span> pair on both entry edges (entry only; burn and claim never call it).</span></li>
+      <li><span class="b">3</span><span>The on-ramp: lenders put USDC into the market, receive rebasing <span class="num">abcUSDC</span>, wrap it to <span class="num">v-abcUSDC</span> — the asset the tranche layer accepts.</span></li>
+      <li><span class="b">4</span><span>Exit request: <span class="num">requestRedeem</span> burns tranche shares and redeems <span class="num">v-abcUSDC</span> at the <b>live</b> price for market tokens.</span></li>
+      <li><span class="b">5</span><span>The controller queues those market tokens in the market&#8217;s 14-day withdrawal batch.</span></li>
+      <li><span class="b">6</span><span>USDC lands at batch expiry (<span class="num">pokeRecovery</span> / permissionless <span class="num">sync</span>); <span class="num">_allocate</span> fills senior first — reserving the <em>entire</em> <span class="num">seniorOwed</span> while distressed.</span></li>
+      <li><span class="b">7</span><span><span class="num">claim()</span> pays USDC out senior-first, FIFO within class. Sanctioned claimants are paid into a sentinel escrow instead.</span></li>
+      <li><span class="b">8</span><span>The wrapper holds the rebasing market token; <span class="num">scaleFactor</span> conversion, interest only ever accrues upward.</span></li>
+      <li><span class="b">9</span><span>Six Seven Ltd draws USDC and repays plus <span class="num">10.00%</span> APR — and controls that APR, which senior&#8217;s target tracks at <span class="num">80%</span>.</span></li>
+      <li><span class="b">10</span><span>State reads, not asset flows: APR &#8594; senior target; <span class="num">isDelinquent</span> &#8594; mark freeze; <span class="num">timeDelinquent</span> &#8594; day-118 wind-down.</span></li>
+      <li><span class="b">11</span><span>The sentinel is re-checked per user at the tranche layer on every deposit, transfer, and claim.</span></li>
+      <li><span class="b">12</span><span><span class="num">TrancheFactory</span>, registered with the <span class="num">WildcatArchController</span>, deploys one controller + token pair per registered market.</span></li>
+    </ol>
+  </section>
+
+  <!-- 3 · PINNED -->
   <section>
     <h2>The structure is pinned <span class="tag">both gates exactly binding</span></h2>
     <p class="intro">This is the finding that matters commercially. With junior sitting on the floor, both subordination gates return zero: the remaining <span class="num">5,000,000</span> of capacity cannot be sold to senior, and junior cannot leave. Growth is gated entirely on first-loss capital arriving first.</p>
