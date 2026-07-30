@@ -15,14 +15,16 @@
 | Withdrawal cycle (`withdrawalBatchDuration`) | **14 days** | given |
 | Capacity (`maxTotalSupply`) | 15,000,000 | given |
 | Currently supplied | 10,000,000 (66.7% drawn, 5,000,000 headroom) | given |
-| Reserve ratio (`reserveRatioBips`) | **not specified** | — |
-| Delinquency grace period | **not specified** | — |
+| Reserve ratio (`reserveRatioBips`) | **0** | given |
+| Delinquency grace period | **28 days** | given |
 
-Two parameters that matter to the mechanism are not in the brief. The **reserve ratio** is what actually defines delinquency on a Wildcat market, so it sets the trigger the whole distress path hangs off. The **grace period** is the first addend in the default clock. Both are needed before this facility can be priced properly; §8 states what changes across their plausible range.
+These two are the most consequential terms in the sheet and they are not neutral: a zero reserve ratio and a grace period twice the withdrawal cycle together produce a **118-day** default clock with no early-warning signal, and they put the structure in continuous breach of its own subordination floor during any delinquency. §8 works this through — it is the part of this report that most affects how senior should be priced and sold.
 
 Everything below assumes the full 10,000,000 of current supply arrives through the tranche set — i.e. the facility is fully tranched, and the tranche controller is the market's lender of record. A partially-tranched facility works identically; the stack just sits on the tranched sleeve rather than on the whole book.
 
-Naming follows the existing convention: the audited ERC-4626 wrapper is `v-abcUSDC`, and the tranche tokens are `sr-abcUSDC` / `jr-abcUSDC`. See §10 — the code does not currently emit those symbols.
+Naming follows the existing convention: the audited ERC-4626 wrapper is `v-abcUSDC`, and the tranche tokens are `sr-abcUSDC` / `jr-abcUSDC`. See §11 — the code does not currently emit those symbols.
+
+One scoping note for §8. The tranche layer does not compute delinquency; it reads `isDelinquent` and `timeDelinquent` off `MarketState` and inherits whatever the market decides. So the timing analysis below rests on Wildcat market semantics external to this repo (the mocks in `build/test/Mocks.sol` stub both flags directly, so the test suite cannot confirm it). The mechanics are standard — required liquidity counts pending withdrawals at full face, applies the reserve ratio to non-withdrawing supply, and requires accrued protocol fees to be liquid — but the timing conclusions should be confirmed against the deployed market before they go in front of a buyer.
 
 ---
 
@@ -155,7 +157,7 @@ The 14-day `withdrawalBatchDuration` is the clock the whole exit path runs on. O
 1. **`requestRedeem(isSenior, shares)`** — tranche shares burn at the current tranche NAV. For senior, `seniorOwed` is reduced by the exiting share pro-rata. For junior while Active, the request must clear `maxJuniorWithdraw` (today: it cannot, §5). The controller redeems `v-abcUSDC` at the **live** price (the SR-D fix) and calls `market.queueWithdrawal`, which drops the claim into whatever batch is currently open.
 2. **Wait for expiry** — anywhere from 0 to 14 days, depending on where in the cycle the request lands. A holder timing an exit for the start of a fresh batch waits the full 14; one arriving late in a batch waits days. There is no way to choose your batch.
 3. **Settle** — `pokeRecovery(expiry)` calls `market.executeWithdrawal`. This is permissionless on the real market, so USDC can also arrive without the poke; the balance-derived `recoveredUSDC` plus the permissionless `sync()` (the SR-A fix) catches it either way.
-4. **Allocate** — `_allocate()` fills the senior class first, up to the senior face queued, then releases to junior. The reserve held back against junior depends on state: **`seniorWmtQueued` while healthy, the entire `seniorOwed` while distressed.** More on this in §9.
+4. **Allocate** — `_allocate()` fills the senior class first, up to the senior face queued, then releases to junior. The reserve held back against junior depends on state: **`seniorWmtQueued` while healthy, the entire `seniorOwed` while distressed.** More on this in §10.
 5. **`claim(id)`** — FIFO within class, O(1) per request via `faceBefore[id]`. A sanctioned owner is routed to a sentinel escrow instead of paid directly.
 
 **Round-trip expectation:** on a fully-funded batch, up to 14 days plus settlement. Under-funded, the market pays pro-rata and the remainder rolls, so an exit under stress is a multiple of 14 days — and each roll re-tests the senior-priority gate. This is what "semi-liquid" concretely means on this facility: **a two-week floor and no ceiling.**
@@ -164,19 +166,77 @@ The 14-day `withdrawalBatchDuration` is the clock the whole exit path runs on. O
 
 ---
 
-## 8. What "open term" changes
+## 8. The distress clock: what a zero reserve ratio and a 28-day grace produce
+
+### 8.1 The default clock is 118 days
+
+`defaultReached()` fires at `timeDelinquent ≥ delinquencyGracePeriod + defaultPenaltyWindow` = `28 + 90` = **118 days** of accumulated delinquency. In the units that matter to a holder, that is **8.4 withdrawal cycles**. Until day 118 the structure cannot enter wind-down, senior accrual cannot be frozen, and no recovery waterfall can start.
+
+So the honest senior liquidity statement for this facility is: *your exit clears in 14 days if the borrower funds it, and if they do not, the structure cannot force the issue for 118 days — after which recovery depends on off-chain enforcement.*
+
+### 8.2 Grace is twice the withdrawal cycle, and that is the most senior-adverse term here
+
+The cycle is 14 days; grace is 28. So a borrower who ignores a senior exit request gets **two full withdrawal cycles with no penalty rate at all**. Penalty APR only begins on day 29.
+
+For a product whose entire pitch to senior is payment priority, that asymmetry is worth negotiating. Grace at 14 days would align one grace period to one exit cycle, so a borrower who misses a single batch starts paying immediately. This is a market parameter, not a tranche parameter — it is Six Seven Ltd's term, and changing it is a conversation with the borrower rather than a code change.
+
+There is a second-order effect: `timeDelinquent` decays on cure rather than resetting, roughly 1:1 with time cured. A borrower oscillating inside a 28-day grace — delinquent 27 days, cured 27 days, repeating — **never pays a penalty and never approaches the 118-day trigger**, while senior's exits keep failing to clear. The wider the grace, the wider that band. Nothing in the code is broken here; the trigger is simply not reachable by a borrower who stays disciplined about the boundary.
+
+### 8.3 A zero reserve ratio makes delinquency exit-triggered, so there is no early warning
+
+With `reserveRatioBips = 0`, Six Seven Ltd has no obligation to keep any liquidity against the 10,000,000 outstanding. Required liquidity is near zero in steady state, and a queued withdrawal counts toward it at **full face**. Two consequences:
+
+- **The facility reads perfectly healthy right up to the first exit request.** There is no reserve buffer to erode, so there is no gradual signal to monitor. The market flips from non-delinquent to delinquent on the first withdrawal the borrower does not fund.
+- **The distress gate — the strongest senior protection in the system — is dormant until someone tries to leave.** `_distressed()` is false while the market is not delinquent, so `_allocate` reserves only the queued senior face rather than the full `seniorOwed`. The mechanism is correct and it arms exactly when it needs to, but it is reactive by construction. Nobody should expect it to give advance notice.
+
+One caveat that cuts the other way: `accruedProtocolFees` must also be liquid. So a borrower at literally 100% deployment can be delinquent on protocol fees alone. A zero reserve ratio does **not** mean "cannot go delinquent," and a small persistent fee delinquency would keep the mark frozen and `_distressed()` armed continuously — see §8.4 for why that matters more than it sounds.
+
+### 8.4 Junior sits exactly on the floor, so any delinquency breaches subordination immediately
+
+This is the finding I would put in front of a junior buyer.
+
+Junior's value is `realisedValue − seniorOwed`. During delinquency the mark freezes, so `realisedValue` stops growing — but `seniorOwed` keeps accruing at 8.00% for as long as `status == Active`, which is until day 118. Junior absorbs that gap out of its own book value, with **no credit loss anywhere**.
+
+Because junior sits at *exactly* 20%, the breach is not gradual — it begins in the first second of delinquency:
+
+| Delinquency elapsed | Senior accrued | Junior book value | Junior share of TVL |
+|---|---|---|---|
+| 0 | 0 | 2,000,000 | 20.00% (at floor) |
+| 14 days (one cycle) | 24,548 | 1,975,452 | 19.75% |
+| 28 days (grace ends) | 49,096 | 1,950,904 | 19.51% |
+| 118 days (default) | 206,904 | 1,793,096 | **17.93%** |
+
+Senior accrues `640,000 / 365 = 1,753` a day, so a full slide to default costs junior **206,904, or −10.35% of book value**, before any actual loss.
+
+Two things to be precise about. First, this is **recoverable**: on cure, `_refreshMark()` releases the frozen gap in one step and junior gets it back, which is exactly what realised-only accounting is for. It is permanent only if the borrower never cures. Second, breach is **not an error state** — nothing reverts. `meetsSubordination` is only tested on senior deposit, and junior exit is gated by `maxJuniorWithdraw`. Both were already zero (§5). So the practical consequence of breach is that **the facility is frozen to new senior capital for the entire delinquency and cannot self-heal except by junior injecting more first-loss.**
+
+### 8.5 And the one action that heals it is penalised
+
+Restoring the floor after a full 118-day slide takes a junior top-up of `206,904 / 0.8` = **258,630**. Junior *can* deposit during delinquency — only wind-down blocks deposits — but the deposit is credited at the **frozen mark** while the wrapper shares handed over are worth the live price. That is the accepted by-design item "deposits at the frozen mark under-credit the depositor," and here it lands badly: the depositor overpays by exactly the frozen-versus-live gap, which *widens* the longer the delinquency runs and the more penalty interest accrues unbooked.
+
+So the mechanism asks first-loss capital to step in precisely when doing so is most expensive. It is not a bug — it follows directly from Q6 — but it is a real disincentive at the worst moment, and a junior provider will find it. Worth pricing, or worth an explicit side arrangement for emergency junior top-ups.
+
+### 8.6 What I would change
+
+- **Place junior above the floor, not on it.** At the 15,000,000 target size senior accrues ~2,630 a day, so a full 118-day slide drifts ~310,000. Placing junior around 22% instead of 20% buys enough headroom that ordinary delinquency does not immediately breach. The cost is rate: junior at 25% earns 16.00% instead of 18.00%, so the trade is roughly two points of coupon for floor headroom. Put that choice to the junior buyer explicitly.
+- **Negotiate grace toward 14 days** so one grace period equals one exit cycle.
+- **Decide whether 118 days is acceptable.** `defaultPenaltyWindow` accepts any value in `(0, 90 days]`, so the clock can be shortened in code — but the 90-day setting is what makes it a faithful ToU §6.2 mirror. Deviating needs a bilateral Loan Agreement to be defensible, and that is a papering decision, not a parameter tweak.
+
+---
+
+## 9. What "open term" changes
 
 No maturity means there is no scheduled event at which the structure resolves. Three consequences:
 
 **The senior rate is not a locked coupon.** Six Seven Ltd controls `annualInterestBips` and can move it at will over a perpetual line. Senior's target is 80% of whatever it currently is — `currentSeniorRateBips()` reads it live on every accrual. If the borrower cuts to 6%, senior's target is 4.80% from that block forward, with no timelock and no consent. This is the accepted Q4 design (senior tracks the facility rather than bearing rate risk against it), but on an open term it is the single most important thing to disclose to a senior buyer, because there is no maturity at which they get their money back at the original rate. Their remedy is to exit — which is the 14-day queue.
 
-**The only terminal events are closure and the ToU clock.** `defaultReached()` returns true on `isClosed`, on `forcedDefault`, or when `timeDelinquent ≥ delinquencyGracePeriod + 90 days`. With no maturity, that clock is the entire backstop against indefinite delinquency. Note it requires grace to be **exhausted and then lapped** by 90 days — it is not the 90-day cap on grace itself. With grace unspecified, the trigger sits somewhere around 90–97 days of accumulated delinquency for typical settings, and `timeDelinquent` ratchets down on cure rather than resetting, so partial cures do not reset the clock to zero.
+**The only terminal events are closure and the ToU clock.** `defaultReached()` returns true on `isClosed`, on `forcedDefault`, or when `timeDelinquent ≥ delinquencyGracePeriod + 90 days` — here, **118 days** (§8.1). With no maturity, that clock is the entire backstop against indefinite delinquency. Note it requires grace to be **exhausted and then lapped** by 90 days; it is not the 90-day cap on grace itself. And `timeDelinquent` ratchets down on cure rather than resetting, so partial cures do not reset the clock to zero — but by the same token a borrower who cures often enough never reaches it (§8.2).
 
 **Accrual is update-driven and compounds.** `accrueSeniorOwed` is linear per call, so `seniorOwed` compounds at the frequency someone touches the contract. This is adjudicated as protocol-faithful (it mirrors the market's own behaviour), but over a perpetual term the drift between the nominal 8.00% and the realised effective rate is a function of interaction frequency. On a facility with a 14-day cycle there is a natural cadence of pokes and claims, so expect the effective senior rate to sit slightly above 8.00%. It is not unbounded — it is bounded by the facility's own accrual — but senior marketing material should say "8.00% target" and not imply an exact figure.
 
 ---
 
-## 9. Where the mechanisms stand
+## 10. Where the mechanisms stand
 
 **All sixteen design questions are settled and implemented.** The Q1–Q16 decision set in `Design-Risk-Specification.md` is fully built in `build/src/`, with 55 tests passing (52 local, 3 mainnet-fork against the live wrapper and market, plus 128k-call stateful invariants for conservation, junior-first-loss, and no-over-distribution). Nothing in the mechanism design is still on the drawing board.
 
@@ -190,14 +250,14 @@ No maturity means there is no scheduled event at which the structure resolves. T
 
 **Two items are genuinely open, and both are product decisions rather than bugs:**
 
-- **F8, senior credential-gating on transfer.** `sr-abcUSDC` transfers to any non-sanctioned address with no market-credential check. So a non-KYC'd party can acquire senior exposure on the secondary market even though they could not have deposited into the market directly. This is the one honest open design question in the system, and it is *more* pressing here than in the abstract: senior is the product being sold to treasuries and conservative allocators, and it is the tranche whose holder base a compliance desk will ask about. The choice is between delegating per-holder credential checks to the market's own hook or leaving senior freely transferable and sanction-gated only. It needs a decision before this facility is placed, not after.
+- **F8, senior credential-gating on transfer.** `sr-abcUSDC` transfers to any non-sanctioned address with no market-credential check. So a non-KYC'd party can acquire senior exposure on the secondary market even though they could not have deposited into the market directly. This is the one honest open design question in the system, and it is *more* pressing here than in the abstract: senior is the product being sold to treasuries and conservative allocators, and it is the tranche whose holder base a compliance desk will ask about. The choice is between delegating per-holder credential checks to the market's own hook or leaving senior freely transferable and sanction-gated only. It needs a decision before this facility is placed, not after. §12 proposes the mechanism that makes it a per-facility configuration rather than a global choice.
 - **Permit2 infinite allowance.** Inherited from Solady's ERC20 default. Not a drain vector — Permit2 still requires an owner signature and every resulting transfer passes `beforeTrancheTransfer` — so it is a composability-versus-surface trade with no security delta. Fine to leave, but it should be a recorded decision rather than an inherited default.
 
 **On audit status, be precise.** Two full three-pass cycles have been run with the `pashov/skills` `solidity-auditor` tooling — 36 agent-runs per cycle, findings deduplicated and triaged, every actionable item fixed with a regression in `AuditPoC.t.sol`. That is agentic review, and it found real bugs including a genuine senior-priority leak. It is **not** a human audit engagement. `BD-Primer.md` still says "not yet audited," which is now understated in one direction and could be read as overstated in the other; it should say what actually happened. No external human review has been commissioned, and I would not put Six Seven Ltd's 10,000,000 behind agentic review alone.
 
 ---
 
-## 10. One concrete blocker for a second facility
+## 11. One concrete blocker for a second facility
 
 Instantiating on abcUSDC surfaced a gap that a single-market build hides. `TrancheController`'s constructor hardcodes the tranche token metadata:
 
@@ -212,13 +272,86 @@ The fix is small — add `string name` / `string symbol` to `Params` and pass th
 
 ---
 
-## 11. What I would decide next
+## 12. Imported mechanism: Morpho Midnight-style entry gates
+
+*Prompted by the F8 question: could Morpho Midnight's gate system be used in these tranching contracts? Answer: yes — the entry-gate half of it maps onto this architecture almost exactly, it converts F8 from a global product decision into per-facility deployment configuration, and the bridge is already built: Wildcat's `secdemo-gateaccess` repo demonstrates the existing `IRoleProvider` credential stack driving Midnight gates, and the same gate contract can serve the tranche layer unchanged. Sources: the [Midnight concept docs](https://docs.morpho.org/learn/concepts/midnight/), [`IGate.sol`](https://github.com/morpho-org/midnight/blob/main/src/interfaces/IGate.sol) and `Midnight.sol` in [morpho-org/midnight](https://github.com/morpho-org/midnight), the [Morpho Vault V2 gate docs](https://docs.morpho.org/curate/concepts/gates/) for contrast, the [sealed-entity-credentials draft ERC](https://hackmd.io/@wildcatlabs/erc-draft-sealed-entity-credentials), and the `secdemo-gateaccess` demo repo (Wildcat Labs, July 2026).*
+
+### 12.1 What Midnight's gates actually are
+
+Midnight markets may name **up to two optional gate contracts at creation, fixed thereafter**:
+
+```solidity
+interface IEnterGate {
+    function canIncreaseCredit(address account) external view returns (bool);
+    function canIncreaseDebt(address account) external view returns (bool);
+}
+
+interface ILiquidatorGate {
+    function canLiquidate(address account) external view returns (bool);
+}
+```
+
+The protocol consults them with a short-circuit — `enterGate == address(0) || canIncreaseCredit(buyer)` — so a zero gate means unrestricted. The critical property is **what is never gated**: the enter gate applies only to *increasing* a position. Withdrawals, repayments, and collateral exits carry no gate check at all, so a participant can always leave even if the gate contract is malicious or bricked. Gates are policy plug-ins; the core stays immutable and non-custodial.
+
+(Morpho's Vault V2 has a richer four-gate system — `receiveSharesGate` / `sendSharesGate` / `receiveAssetsGate` / `sendAssetsGate`, curator-set behind a timelock. Note that its send-side gates **can** lock users out of exiting, which their own docs flag as the critical risk and mitigate with a `forceDeallocate` escape hatch. That half is the part *not* to import.)
+
+### 12.2 Why the pattern fits this codebase specifically
+
+Design rule 5 here is "never trap a user's exit" — the same invariant Midnight's entry-only gating encodes. And the tranching architecture already enforces it structurally, which is what makes the import nearly free:
+
+- `TrancheToken._beforeTokenTransfer` only consults the controller when `from != address(0) && to != address(0)` — **mint and burn bypass the hook entirely**.
+- `requestRedeem` burns; `claim` transfers USDC, not tranche tokens. Neither routes through `beforeTrancheTransfer`.
+
+So a gate wired into deposits and transfer-receipt **cannot block an exit even if it reverts unconditionally** — the exit path never calls it. Adopting Midnight's pattern costs nothing on the axis its designers cared most about, because this codebase already made the same choice.
+
+The controller also already *contains* two hardcoded gates — it just doesn't call them that: the junior whitelist (`juniorAllowed[to]`, checked in `_deposit` and `beforeTrancheTransfer`) and the sanctions check. F8 exists precisely because senior's entry policy is hardcoded to "anyone non-sanctioned."
+
+### 12.3 The bridge already exists: `WildcatRoleProviderGate`
+
+The `secdemo-gateaccess` repo (presented to Morpho alongside the sealed-entity-credentials draft ERC) settles the make-or-buy question for the gate implementation. Its `WildcatRoleProviderGate` is a Midnight `IEnterGate`/`ILiquidatorGate` whose policy is delegated to **sets of Wildcat `IRoleProvider`s, one set per gated role** (CREDIT / DEBT / LIQUIDATE), carrying over the design rules from Wildcat's `AccessControlHooks`:
+
+- *Pull* providers queried live inside the view gate via guarded staticcalls — a reverting or misbehaving provider is skipped, never bricking the gate (fail-closed, exactly the property §12.4 asks for);
+- *Push* providers (Merkle proofs, signed attestations) staged through a permissionless `refreshCredential` and cached as `{provider, timestamp}` against a per-provider TTL;
+- owner-managed provider sets with a one-way `freeze()` — the same constitutional ratchet the rest of Wildcat uses.
+
+The demo ships with a forge suite (~40 unit cases), a py-evm runtime check (25 assertions executed), and an env-gated mainnet-fork scenario; it is demo-grade and unaudited, but the pattern is proven against Midnight's actual interfaces (mirrored from `morpho-org/midnight` main, July 2026).
+
+**How to use it in the tranche layer — adopt the Midnight gate interface verbatim rather than inventing one:**
+
+- Add `Params.seniorGate` / `Params.juniorGate` as `IEnterGate` pointers, immutable at deployment (Midnight's choice, consistent with `minJuniorBips` being immutable here — mutability, where a policy needs it, lives inside the gate via its provider sets, not in the controller).
+- Check `canIncreaseCredit(receiver)` in `_deposit` and in `beforeTrancheTransfer` on the recipient — the two places tranche exposure can increase. Never in `requestRedeem`, `claim`, or on the sender. "Increase credit" is the semantically correct verb for gaining lender-side tranche exposure, which is why the interface transfers without strain.
+- `address(0)` short-circuits to today's behaviour. The sanctions sentinel stays hardwired and non-optional; gates are additive policy on top, never a replacement for it.
+
+Adopting the interface rather than the shape means **one gate deployment serves both worlds**: the same `WildcatRoleProviderGate` instance that credentials a Midnight market can be pointed at by a tranche set, and the whole existing Wildcat credential stack — balance gates, soulbound markers, Merkle allowlists, sealed-entity-credential providers — reaches the tranche layer with zero new policy code. F8 stops being a design question and becomes provider selection: senior open (zero gate), senior = the market's own credentialed lenders (a provider wrapping the market hook), or whatever a Loan Agreement requires. The junior whitelist (`juniorAllowed` / `setJuniorAllowed`) migrates out of the controller into a provider on the junior gate's CREDIT set, shrinking the audited core (rule 6).
+
+**The `ILiquidatorGate` analogue needs no code at all.** There are no liquidations here; the nearest gated distress actor is the `defaultDeclarer`. It is already an arbitrary address, so a gate-shaped policy contract — the demo's LIQUIDATE role, an M-of-N of lenders, or an attestation matching the Loan Agreement — can sit behind it today with zero controller changes.
+
+### 12.4 The sealed-credential convergence: one predicate, both consequences
+
+The draft ERC's borrower-side provider (`SealedCredentialRoleProvider`) pins trigger class `WILDCAT_DELINQ_90D_V1` — **the same grace-plus-90-days predicate as this controller's `defaultReached()`**. That is not a coincidence to note in passing; it is a mechanism to exploit. If Six Seven Ltd carries a sealed entity credential bound to that trigger class, then on the day `timeDelinquent ≥ grace + 90d` becomes true, two things latch off the same on-chain fact:
+
+- the tranche controller enters **wind-down** — deposits freeze, senior accrual stops, recoveries pay senior-first; and
+- the borrower credential's **disclosure trigger** becomes latchable — Tier S1 (officer names, recourse instructions) unseals publicly, and Tier S2 (service contacts, identity evidence) unseals to qualified recipients.
+
+That closes the loop this report's fine print has been carrying all along: "recovery is part code, part courtroom." The code half (senior-first cash allocation) and the courtroom half (a defined recourse path to the legal entity) would arm on the same block, with no declarer discretion in either. The demo's providers also withdraw a borrower's *entry* credential the moment the trigger merely becomes **latchable** — so a defaulting-in-progress borrower is barred from originating new obligations before the default even finalises. The tranche analogue is automatic (deposits require `Status.Active`), which is a nice confirmation the two systems make the same conservative choice independently.
+
+For this facility the sequencing implication: the trigger contract that the credential binds should read the abcUSDC market's grace tracker — with the given terms, it latches at day 118 (§8.1), and the senior sales conversation can then honestly say *both* priorities arm together, on-chain, at a knowable time.
+
+### 12.5 The one behavioural delta to document
+
+In Midnight a reverting enter gate blocks only new entries. Here, because the recipient check sits in the transfer hook, a reverting `seniorGate` would also freeze **secondary transfers** of senior — the token degrades to hold-or-exit until the gate recovers. Exits remain live throughout (the burn path never calls the gate), so nothing is trapped; but it is a stronger liveness dependency than Midnight's, and it is the failure mode Vault V2's "gates must never revert" rule exists for. `WildcatRoleProviderGate` already handles it at the provider level (guarded staticcalls, misbehaving providers skipped), so the residual risk is only a gate that is *itself* broken — mitigated by using that one audited gate implementation everywhere rather than bespoke gates per market.
+
+**Cost and sequencing:** a `Params` extension, two short-circuit checks against the mirrored `IEnterGate` interface, a provider wrapping the current junior whitelist — plus tests. It touches the same struct as the symbol fix (§11), so both belong in one small pre-deployment PR for abcUSDC. The gate contract itself comes from `secdemo-gateaccess` hardened to production (it is explicitly demo-grade today), which is work that serves the Midnight integration and the tranche layer at once.
+
+---
+
+## 13. What I would decide next
 
 In order, because some of these block others:
 
-1. **Get the reserve ratio and grace period for this market.** They define delinquency and the default clock. The distress-gate mechanism is the most consequential thing in the system and neither of its triggers can be modelled without them.
-2. **Settle F8 (senior credential-gating).** It is a compliance question about the product being sold, it is unresolved, and it changes `beforeTrancheTransfer`.
-3. **Fix the hardcoded token symbols.** Blocks deployment on abcUSDC. Trivial.
+1. **Put the §8 findings to both buyers.** The 118-day default clock, the no-early-warning delinquency trigger, and junior's immediate floor breach during any delinquency are all consequences of the given terms (reserve ratio 0, grace 28d). Negotiate grace toward 14 days if possible; place junior above the floor either way.
+2. **Settle F8 via the gate mechanism (§12).** Adopt Midnight's `IEnterGate` interface in `Params`, back it with `WildcatRoleProviderGate` from `secdemo-gateaccess` (hardened from demo-grade), and decide the senior provider set for this facility — recommendation: a provider wrapping the market's own credential hook if Six Seven Ltd's market runs one; zero gate otherwise. Require Six Seven Ltd to carry a sealed entity credential bound to the `WILDCAT_DELINQ_90D_V1` trigger class so recourse disclosure latches on the same day-118 predicate as wind-down (§12.4).
+3. **Fix the hardcoded token symbols.** Blocks deployment on abcUSDC. Trivial; same PR as the gates.
 4. **Add `claimMany`.** A 14-day cycle accumulates request IDs faster than a long one.
 5. **Confirm the placement sequence with BD.** Junior first, 1,000,000 of it, then 4,000,000 of senior. If that ordering is commercially unworkable, `minJuniorBips` has to change *before* deployment, because it is immutable.
 6. **Commission human audit** before real capital, and correct the audit language in `BD-Primer.md`.
@@ -226,4 +359,4 @@ In order, because some of these block others:
 
 ---
 
-*Derived from `build/src/` at commit `48cc01d`. Facility terms as briefed; reserve ratio and grace period outstanding. Tranche parameters in §2 are proposals, not settings.*
+*Derived from `build/src/` at commit `48cc01d`. Facility terms as briefed (reserve ratio 0 and 28-day grace confirmed by the desk). Tranche parameters in §2 are proposals, not settings. External sources for §12: Morpho Midnight docs, whitepaper, and repository as linked.*

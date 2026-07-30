@@ -144,6 +144,16 @@
   .stepcard .d{ font-size:12px; color:var(--ink-soft); line-height:1.45; }
   .stepcard .clock{ font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:11.5px; color:var(--junior); font-weight:700; margin-top:auto; }
 
+  /* distress clock */
+  .clockwrap{ display:flex; flex-direction:column; gap:8px; }
+  .clocktrack{ display:flex; height:52px; gap:2px; }
+  .cseg{ border-radius:3px; display:flex; flex-direction:column; justify-content:center; padding:0 12px; cursor:default; min-width:0; }
+  .cseg .ct{ font-size:12.5px; font-weight:800; }
+  .cseg .cd{ font-size:10px; letter-spacing:.05em; text-transform:uppercase; opacity:.85; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .cseg.grace{ background:var(--sunk); border:1px solid var(--rule); color:var(--ink-soft); }
+  .cseg.penalty{ background:var(--junior-wash); border:1px solid var(--junior); color:var(--ink); }
+  .cseg.dflt{ background:var(--ink); color:var(--paper); flex:0 0 92px; text-align:center; align-items:center; }
+
   /* status board */
   .board{ display:flex; flex-direction:column; gap:16px; }
   .grp{ display:flex; flex-direction:column; gap:8px; }
@@ -192,8 +202,8 @@
     <div class="cell"><div class="k">Base APR</div><div class="v num">10.00%</div></div>
     <div class="cell"><div class="k">Exit cycle</div><div class="v num">14 days</div></div>
     <div class="cell"><div class="k">Drawn</div><div class="v num">10 / 15M</div></div>
-    <div class="cell"><div class="k">Reserve ratio</div><div class="v tbd">Not given</div></div>
-    <div class="cell"><div class="k">Grace period</div><div class="v tbd">Not given</div></div>
+    <div class="cell"><div class="k">Reserve ratio</div><div class="v num">0</div></div>
+    <div class="cell"><div class="k">Grace period</div><div class="v num">28 days</div></div>
   </div>
 
   <!-- 1 · CAPITAL STACK -->
@@ -320,10 +330,36 @@
     </div>
   </section>
 
-  <!-- 6 · STATUS -->
+  <!-- 6 · DISTRESS CLOCK -->
+  <section>
+    <h2>The distress clock <span class="tag">reserve ratio 0 · grace 28d · window 90d</span></h2>
+    <p class="intro">With a zero reserve ratio the facility reads perfectly healthy until the first exit the borrower does not fund — there is no buffer to erode, so no early warning. From that first unfunded withdrawal, the clock to wind-down runs <span class="num">28 + 90 = 118</span> days: <span class="num">8.4</span> exit cycles. And because <code>timeDelinquent</code> decays on cure rather than resetting, a borrower who cures before day 28 never pays a penalty and never approaches day 118.</p>
+    <div class="clockwrap">
+      <div class="clocktrack">
+        <div class="cseg grace" style="flex:28" data-tip-t="Grace · day 0–28" data-tip-b="Two full withdrawal cycles with no penalty rate at all. Senior exits can be failing to clear this whole time.">
+          <span class="ct">Grace</span><span class="cd">28d · 2 cycles · no penalty</span>
+        </div>
+        <div class="cseg penalty" style="flex:90" data-tip-t="Penalty window · day 28–118" data-tip-b="Penalty APR accrues but is held unrealised (high-watermark). The mark is frozen; seniorOwed keeps accruing against junior.">
+          <span class="ct">Penalty</span><span class="cd">90d · ToU §6.2 window</span>
+        </div>
+        <div class="cseg dflt" data-tip-t="Day 118 · defaultReached()" data-tip-b="Wind-down: deposits freeze, senior accrual stops, recoveries pay senior-first. Same predicate as the WILDCAT_DELINQ_90D_V1 sealed-credential trigger class.">
+          <span class="ct">118</span><span class="cd">wind-down</span>
+        </div>
+      </div>
+      <div class="axisnote"><span>Day 0 · first unfunded exit</span><span>Day 28 · penalty starts</span><span>Day 118 · default latches</span></div>
+    </div>
+    <div class="tiles">
+      <div class="tile"><div class="k">Junior drift to default</div><div class="v jr">−206,904</div><div class="s"><span class="num">−10.35%</span> of book with zero credit loss: the frozen mark vs <span class="num">seniorOwed</span> accruing. Recoverable on cure</div></div>
+      <div class="tile"><div class="k">Junior share at day 118</div><div class="v num">17.93%</div><div class="s">Below the 20% floor from the <em>first second</em> of delinquency — junior starts exactly on it</div></div>
+      <div class="tile"><div class="k">Top-up to restore floor</div><div class="v num">258,630</div><div class="s">Credited at the frozen mark, so the healer overpays — priced worst at the worst moment</div></div>
+      <div class="tile"><div class="k">Asks for the borrower</div><div class="v">Grace → 14d</div><div class="s">One grace period = one exit cycle; and place junior ~22%, not on the floor</div></div>
+    </div>
+  </section>
+
+  <!-- 7 · STATUS -->
   <section>
     <h2>Where the mechanisms stand</h2>
-    <p class="intro">The full Q1–Q16 decision set is built and tested. Five mechanisms moved <em>beyond</em> the design spec under two audit cycles, all of them sharpening senior priority. Six items are genuinely open, and two of those block deployment on this facility.</p>
+    <p class="intro">The full Q1–Q16 decision set is built and tested. Five mechanisms moved <em>beyond</em> the design spec under two audit cycles, all of them sharpening senior priority. Six items are open: one blocks deployment outright, and F8 now has a concrete proposed resolution — Morpho Midnight's entry-gate interface, driven by Wildcat's existing role-provider stack via the <code>secdemo-gateaccess</code> bridge.</p>
     <div class="board">
 
       <div class="grp">
@@ -368,8 +404,8 @@
           <thead><tr><th style="width:66px">Ref</th><th>Item</th><th style="width:132px">Status</th></tr></thead>
           <tbody>
             <tr><td class="ref">blocker</td><td><b>Tranche symbols are hardcoded to <code>sr-wmtUSDC</code>/<code>jr-wmtUSDC</code></b> in the controller constructor, and <code>Params</code> carries no symbol field. Deploying here mints the wrong market's ticker, and every tranche set would share it</td><td class="who">Blocks abcUSDC</td></tr>
-            <tr><td class="ref">F8</td><td><b>Senior credential-gating on transfer.</b> <code>sr-abcUSDC</code> moves to any non-sanctioned address with no market-credential check, so uncredentialed parties can acquire senior exposure on the secondary market</td><td class="who">Decision needed</td></tr>
-            <tr><td class="ref">params</td><td><b>Reserve ratio and grace period are unspecified.</b> The first defines delinquency; the second is the first addend in the default clock. Neither distress trigger can be modelled without them</td><td class="who">Awaiting terms</td></tr>
+            <tr><td class="ref">F8</td><td><b>Senior credential-gating on transfer.</b> <code>sr-abcUSDC</code> moves to any non-sanctioned address with no market-credential check. Candidate resolution: adopt Midnight's <code>IEnterGate</code> in <code>Params</code> (entry-only — deposits and transfer-in; burn/claim never call it), backed by <code>WildcatRoleProviderGate</code> so the existing role-provider stack carries the policy</td><td class="who">Gate PR proposed</td></tr>
+            <tr><td class="ref">terms</td><td><b>The given terms are senior-adverse.</b> Grace at twice the exit cycle gives the borrower two penalty-free missed batches; junior on the floor breaches subordination from the first second of delinquency and the top-up that heals it is penalised by the frozen mark</td><td class="who">Negotiate grace → 14d</td></tr>
             <tr><td class="ref">audit</td><td><b>No human audit commissioned.</b> Two three-pass agentic cycles found real bugs, including a senior-priority leak — but that is not an engagement</td><td class="who">Before real capital</td></tr>
             <tr><td class="ref">UX</td><td><b>No <code>claimMany</code>.</b> One request ID per partial fill per 14-day cycle, each needing its own transaction. O(1) access, so no DoS — just accumulating gas</td><td class="who">Small, safe addition</td></tr>
             <tr><td class="ref">note</td><td><b>Permit2 infinite allowance</b> inherited from Solady's default. Not a drain vector; transfers still pass <code>beforeTrancheTransfer</code></td><td class="who">Record the decision</td></tr>
@@ -383,6 +419,7 @@
   <div class="footnote">
     <p><b>Assumptions.</b> The full 10,000,000 of current supply is assumed to arrive through the tranche set, and junior is assumed to sit exactly on its 20% floor. A partially-tranched facility behaves identically on the tranched sleeve. Tranche parameters (<span class="num">seniorShareBips 8000</span>, <span class="num">minJuniorBips 2000</span>, <span class="num">defaultPenaltyWindow 90d</span>) are proposals for this facility, not settings — <code>minJuniorBips</code> and <code>defaultPenaltyWindow</code> are immutable once deployed.</p>
     <p><b>Caveats.</b> Senior's "8.00%" is a target funded by priority, not a guarantee, and it tracks whatever APR Six Seven Ltd sets — on an open term there is no maturity at which senior recovers principal at the original rate. Accrual is update-driven and compounds with interaction frequency, so the realised senior rate sits slightly above target. Junior can be written to zero before senior loses anything. Recovery after a real default depends on off-chain legal enforcement.</p>
+    <p><b>Gates.</b> The proposed F8 resolution adopts Morpho Midnight's <span class="num">IEnterGate</span> verbatim: two optional gate pointers in <span class="num">Params</span>, checked only where tranche exposure increases, <span class="num">address(0)</span> = open, sanctions sentinel unchanged underneath. Exits are structurally ungateable — mint/burn bypass the transfer hook and <span class="num">claim</span> pays USDC directly. One <span class="num">WildcatRoleProviderGate</span> deployment can serve Midnight markets and tranche sets alike, and a borrower sealed-entity credential pinned to <span class="num">WILDCAT_DELINQ_90D_V1</span> latches recourse disclosure on the same day-118 predicate as wind-down.</p>
     <p>Full workings in <span class="num">report/Six-Seven-Mechanisms-Report.md</span> · design rationale in <span class="num">Design-Risk-Specification.md</span> · audit trail in <span class="num">report/Pashov-Audit-Report{,-Reaudit}.md</span></p>
   </div>
 
