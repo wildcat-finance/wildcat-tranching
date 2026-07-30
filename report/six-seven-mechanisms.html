@@ -51,6 +51,16 @@
   .sheet{ max-width:1080px; margin:0 auto; padding:40px 24px 72px; display:flex; flex-direction:column; gap:34px; }
   .num{ font-family:var(--mono); font-variant-numeric:tabular-nums; }
 
+  /* ── mascot ─────────────────────────────────── */
+  .masthead{ display:flex; gap:26px; align-items:flex-end; }
+  .mhead-text{ flex:1; min-width:0; }
+  .mascotfig{ flex:none; width:168px; display:flex; flex-direction:column; align-items:center; gap:8px; }
+  .bubble{ font-size:12.5px; font-style:italic; background:var(--panel); border:1px solid var(--rule); border-radius:12px; padding:7px 13px; position:relative; color:var(--ink-soft); box-shadow:var(--shadow); white-space:nowrap; }
+  .bubble::after{ content:""; position:absolute; bottom:-6px; left:50%; width:10px; height:10px; background:var(--panel); border-right:1px solid var(--rule); border-bottom:1px solid var(--rule); transform:translateX(-50%) rotate(45deg); }
+  .signoff{ display:flex; align-items:center; gap:13px; margin-top:16px; }
+  .signoff .line{ font-size:12.5px; font-style:italic; color:var(--muted); }
+  @media (max-width:760px){ .mascotfig{ display:none; } }
+
   /* ── masthead ───────────────────────────────── */
   .eyebrow{ font-size:10.5px; letter-spacing:.2em; text-transform:uppercase; color:var(--junior); font-weight:700; }
   h1{ font-size:clamp(28px,4.4vw,42px); font-weight:800; letter-spacing:-.024em; line-height:1.08; margin:10px 0 0; text-wrap:balance; }
@@ -213,11 +223,56 @@
 
 <div class="sheet">
 
-  <header>
-    <div class="eyebrow">Wildcat &nbsp;·&nbsp; In-House Tranching &nbsp;·&nbsp; Mechanisms</div>
-    <h1>Tranching the abcUSDC facility</h1>
-    <p class="standfirst">Every mechanism in the senior/junior layer, instantiated on one real facility: Six Seven Ltd borrowing USDC on an open term, 10,000,000 drawn against 15,000,000 of capacity, exits clearing on a 14-day cycle.</p>
-    <div class="byline">All figures derived from <span class="num">build/src/</span> at commit <span class="num">48cc01d</span> · tranche parameters are proposals, not settings · <span class="num">55</span> tests passing</div>
+  <header class="masthead">
+    <div class="mhead-text">
+      <div class="eyebrow">Wildcat &nbsp;·&nbsp; In-House Tranching &nbsp;·&nbsp; Mechanisms</div>
+      <h1>Tranching the abcUSDC facility</h1>
+      <p class="standfirst">Every mechanism in the senior/junior layer, instantiated on one real facility: Six Seven Ltd borrowing USDC on an open term, 10,000,000 drawn against 15,000,000 of capacity, exits clearing on a 14-day cycle.</p>
+      <div class="byline">All figures derived from <span class="num">build/src/</span> at commit <span class="num">48cc01d</span> · tranche parameters are proposals, not settings · <span class="num">55</span> tests passing</div>
+    </div>
+    <figure class="mascotfig" aria-hidden="true" style="margin:0">
+      <div class="bubble">Pick your seat&nbsp;♥</div>
+      <svg id="mascot" width="150" height="150" viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Wildcat tranching mascot">
+        <path d="M186,196 C 226,188 232,146 208,138 C 226,152 216,180 184,186 Z" fill="#a98bd4"/>
+        <circle cx="208" cy="140" r="7" fill="#e8d9f6"/>
+        <path d="M120,26 C 62,26 40,74 44,120 C 46,152 38,184 30,206 C 58,200 66,188 72,176 C 76,196 68,210 62,220 C 96,214 104,196 108,184 L 132,184 C 136,196 144,214 178,220 C 172,210 164,196 168,176 C 174,188 182,200 210,206 C 202,184 194,152 196,120 C 200,74 178,26 120,26 Z" fill="#b697e0"/>
+        <path d="M62,58 L 44,18 L 92,38 Z" fill="#a98bd4"/>
+        <path d="M64,52 L 53,28 L 82,40 Z" fill="#f0bfd9"/>
+        <path d="M178,58 L 196,18 L 148,38 Z" fill="#a98bd4"/>
+        <path d="M176,52 L 187,28 L 158,40 Z" fill="#f0bfd9"/>
+        <path d="M118,26 C 112,12 128,6 138,10 C 128,12 122,18 124,27 Z" fill="#b697e0"/>
+        <path d="M56,240 C 58,206 84,192 120,192 C 156,192 182,206 184,240 Z" fill="#2b2430"/>
+        <path d="M96,196 C 104,206 136,206 144,196 L 138,216 L 102,216 Z" fill="#3a3142"/>
+        <rect x="108" y="168" width="24" height="28" rx="10" fill="#ffe3d3"/>
+        <ellipse cx="120" cy="118" rx="60" ry="56" fill="#ffeadc"/>
+        <ellipse cx="78" cy="140" rx="11" ry="6" fill="#ffb9c2" opacity=".55"/>
+        <ellipse cx="162" cy="140" rx="11" ry="6" fill="#ffb9c2" opacity=".55"/>
+        <g>
+          <ellipse cx="88" cy="124" rx="13" ry="16" fill="#fff"/>
+          <ellipse cx="88" cy="126" rx="10" ry="13" fill="#2f9e57"/>
+          <ellipse cx="88" cy="129" rx="6" ry="8" fill="#15703a"/>
+          <circle cx="84" cy="120" r="3.4" fill="#fff"/>
+          <circle cx="92" cy="131" r="1.8" fill="#d6f5e2"/>
+          <path d="M74,112 C 80,106 96,106 102,112" fill="none" stroke="#6b5480" stroke-width="3" stroke-linecap="round"/>
+        </g>
+        <g>
+          <ellipse cx="152" cy="124" rx="13" ry="16" fill="#fff"/>
+          <ellipse cx="152" cy="126" rx="10" ry="13" fill="#2f9e57"/>
+          <ellipse cx="152" cy="129" rx="6" ry="8" fill="#15703a"/>
+          <circle cx="148" cy="120" r="3.4" fill="#fff"/>
+          <circle cx="156" cy="131" r="1.8" fill="#d6f5e2"/>
+          <path d="M138,112 C 144,106 160,106 166,112" fill="none" stroke="#6b5480" stroke-width="3" stroke-linecap="round"/>
+        </g>
+        <path d="M76,102 C 82,98 94,98 100,102" fill="none" stroke="#9a7fc4" stroke-width="2.6" stroke-linecap="round"/>
+        <path d="M140,102 C 146,98 158,98 164,102" fill="none" stroke="#9a7fc4" stroke-width="2.6" stroke-linecap="round"/>
+        <path d="M119,141 L 121,141" stroke="#e8a08e" stroke-width="2.4" stroke-linecap="round"/>
+        <path d="M108,150 C 114,159 126,159 132,150 C 126,154 114,154 108,150 Z" fill="#c94f63"/>
+        <path d="M113,153 C 117,157 123,157 127,153" fill="#ef8f9d"/>
+        <path d="M120,32 C 70,32 56,72 60,104 C 66,92 70,86 74,74 C 80,88 78,96 76,106 C 88,98 94,84 96,70 C 102,84 102,94 100,104 C 110,96 116,82 118,66 C 124,82 130,94 140,102 C 140,92 138,82 142,70 C 148,86 154,96 164,104 C 162,94 162,86 166,74 C 172,88 174,94 180,104 C 186,72 170,32 120,32 Z" fill="#c3a6ea"/>
+        <rect x="103" y="176" width="34" height="9" rx="4.5" fill="#241d2b"/>
+        <path d="M120,182 c -5,-6 -13,0 0,9 c 13,-9 5,-15 0,-9 Z" fill="#e560a4"/>
+      </svg>
+    </figure>
   </header>
 
   <div class="termsheet">
@@ -559,6 +614,10 @@
     <p><b>Caveats.</b> Senior's "8.00%" is a target funded by priority, not a guarantee, and it tracks whatever APR Six Seven Ltd sets — on an open term there is no maturity at which senior recovers principal at the original rate. Accrual is update-driven and compounds with interaction frequency, so the realised senior rate sits slightly above target. Junior can be written to zero before senior loses anything. Recovery after a real default depends on off-chain legal enforcement.</p>
     <p><b>Gates.</b> The proposed F8 resolution adopts Morpho Midnight's <span class="num">IEnterGate</span> verbatim: two optional gate pointers in <span class="num">Params</span>, checked only where tranche exposure increases, <span class="num">address(0)</span> = open, sanctions sentinel unchanged underneath. Exits are structurally ungateable — mint/burn bypass the transfer hook and <span class="num">claim</span> pays USDC directly. One <span class="num">WildcatRoleProviderGate</span> deployment can serve Midnight markets and tranche sets alike, and a borrower sealed-entity credential pinned to <span class="num">WILDCAT_DELINQ_90D_V1</span> latches recourse disclosure on the same day-118 predicate as wind-down.</p>
     <p>Full workings in <span class="num">report/Six-Seven-Mechanisms-Report.md</span> · design rationale in <span class="num">Design-Risk-Specification.md</span> · audit trail in <span class="num">report/Pashov-Audit-Report{,-Reaudit}.md</span></p>
+    <div class="signoff">
+      <svg width="52" height="52" viewBox="0 0 240 240" aria-hidden="true"><use href="#mascot"/></svg>
+      <span class="line">senior gets paid first, junior gets paid more — now go build something beautiful. &gt;:3</span>
+    </div>
   </div>
 
 </div>
