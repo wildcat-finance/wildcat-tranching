@@ -1,0 +1,463 @@
+<title>abcUSDC Tranching Mechanisms — Six Seven Ltd</title>
+
+<style>
+  :root{
+    --paper:#fbf8f2; --panel:#ffffff; --sunk:#f5f0e6;
+    --ink:#16130f; --ink-soft:#3a352e; --muted:#6b6359;
+    --hair:#e4ddd1; --rule:#c9bfae;
+    --senior:#008b80; --junior:#b4670d;
+    --senior-wash:#e0efed; --junior-wash:#f7ecdc;
+    --ok:#2f6f4f; --open:#9a3412;
+    --shadow:0 1px 2px rgba(22,19,15,.05);
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --paper:#17140f; --panel:#1f1b15; --sunk:#241f18;
+      --ink:#f2ede3; --ink-soft:#d8d0c2; --muted:#9a9184;
+      --hair:#332d24; --rule:#4a4237;
+      --senior:#189c90; --junior:#c9822f;
+      --senior-wash:#12312e; --junior-wash:#33240f;
+      --ok:#63a97f; --open:#d1774a;
+      --shadow:0 1px 2px rgba(0,0,0,.3);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#17140f; --panel:#1f1b15; --sunk:#241f18;
+    --ink:#f2ede3; --ink-soft:#d8d0c2; --muted:#9a9184;
+    --hair:#332d24; --rule:#4a4237;
+    --senior:#189c90; --junior:#c9822f;
+    --senior-wash:#12312e; --junior-wash:#33240f;
+    --ok:#63a97f; --open:#d1774a;
+    --shadow:0 1px 2px rgba(0,0,0,.3);
+  }
+  :root[data-theme="light"]{
+    --paper:#fbf8f2; --panel:#ffffff; --sunk:#f5f0e6;
+    --ink:#16130f; --ink-soft:#3a352e; --muted:#6b6359;
+    --hair:#e4ddd1; --rule:#c9bfae;
+    --senior:#008b80; --junior:#b4670d;
+    --senior-wash:#e0efed; --junior-wash:#f7ecdc;
+    --ok:#2f6f4f; --open:#9a3412;
+    --shadow:0 1px 2px rgba(22,19,15,.05);
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:var(--sans); font-size:15px; line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  .sheet{ max-width:1080px; margin:0 auto; padding:40px 24px 72px; display:flex; flex-direction:column; gap:34px; }
+  .num{ font-family:var(--mono); font-variant-numeric:tabular-nums; }
+
+  /* ── masthead ───────────────────────────────── */
+  .eyebrow{ font-size:10.5px; letter-spacing:.2em; text-transform:uppercase; color:var(--junior); font-weight:700; }
+  h1{ font-size:clamp(28px,4.4vw,42px); font-weight:800; letter-spacing:-.024em; line-height:1.08; margin:10px 0 0; text-wrap:balance; }
+  .standfirst{ font-size:17px; color:var(--ink-soft); margin:12px 0 0; max-width:62ch; }
+  .byline{ font-size:12.5px; color:var(--muted); margin-top:12px; }
+
+  .termsheet{ display:grid; grid-template-columns:repeat(auto-fit,minmax(126px,1fr)); border:1px solid var(--rule); border-radius:4px; overflow:hidden; background:var(--panel); }
+  .termsheet .cell{ padding:11px 13px; border-right:1px solid var(--hair); }
+  .termsheet .cell:last-child{ border-right:0; }
+  .cell .k{ font-size:9.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--muted); font-weight:700; }
+  .cell .v{ font-size:16px; font-weight:700; margin-top:3px; letter-spacing:-.01em; }
+  .cell .v.tbd{ color:var(--open); }
+
+  /* ── panels ─────────────────────────────────── */
+  section{ display:flex; flex-direction:column; gap:15px; }
+  h2{ font-size:19px; font-weight:800; letter-spacing:-.015em; margin:0; padding-bottom:8px; border-bottom:1.5px solid var(--ink); display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+  h2 .tag{ font-family:var(--mono); font-size:10.5px; letter-spacing:.04em; color:var(--muted); font-weight:400; text-transform:none; margin-left:auto; }
+  .intro{ margin:0; color:var(--ink-soft); max-width:70ch; }
+  .intro code, p code, li code, td code{ font-family:var(--mono); font-size:.88em; background:var(--sunk); padding:1px 4px; border-radius:3px; }
+
+  /* legend */
+  .legend{ display:flex; gap:18px; align-items:center; flex-wrap:wrap; font-size:12.5px; color:var(--ink-soft); }
+  .legend .item{ display:flex; align-items:center; gap:6px; }
+  .swatch{ width:11px; height:11px; border-radius:2px; flex:none; }
+  .swatch.sr{ background:var(--senior); }
+  .swatch.jr{ background:var(--junior); }
+  .swatch.loss{ background:transparent; border:1px solid var(--rule); }
+
+  /* stacked stack bar */
+  .stackwrap{ display:flex; flex-direction:column; gap:8px; }
+  .stack{ display:flex; height:56px; gap:2px; }
+  .stack .seg{ border-radius:3px; display:flex; flex-direction:column; justify-content:center; padding:0 13px; color:#fff; cursor:default; transition:filter .12s; }
+  .stack .seg:hover{ filter:brightness(1.08); }
+  .stack .seg.sr{ background:var(--senior); }
+  .stack .seg.jr{ background:var(--junior); }
+  .stack .seg .amt{ font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:15px; font-weight:700; }
+  .stack .seg .lab{ font-size:10.5px; letter-spacing:.07em; text-transform:uppercase; opacity:.9; }
+  .axisnote{ display:flex; justify-content:space-between; font-size:11.5px; color:var(--muted); }
+
+  /* stat tiles */
+  .tiles{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:11px; }
+  .tile{ background:var(--panel); border:1px solid var(--hair); border-radius:4px; padding:13px 14px; box-shadow:var(--shadow); }
+  .tile .k{ font-size:9.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--muted); font-weight:700; }
+  .tile .v{ font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:27px; font-weight:700; letter-spacing:-.02em; margin-top:5px; line-height:1; }
+  .tile .v.sr{ color:var(--senior); } .tile .v.jr{ color:var(--junior); }
+  .tile .s{ font-size:11.5px; color:var(--muted); margin-top:5px; }
+
+  /* pinned-state callout */
+  .pin{ background:var(--sunk); border:1px solid var(--rule); border-radius:4px; padding:16px 18px; display:flex; flex-direction:column; gap:14px; }
+  .gates{ display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:12px; }
+  .gate{ background:var(--panel); border:1px solid var(--hair); border-radius:4px; padding:12px 14px; }
+  .gate .fn{ font-family:var(--mono); font-size:12px; color:var(--ink-soft); }
+  .gate .out{ font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:31px; font-weight:700; color:var(--open); line-height:1.05; margin-top:4px; }
+  .gate .why{ font-size:11.5px; color:var(--muted); margin-top:3px; }
+
+  .path{ display:flex; flex-direction:column; gap:0; border:1px solid var(--hair); border-radius:4px; overflow:hidden; background:var(--panel); }
+  .path .step{ display:grid; grid-template-columns:22px 1fr auto; gap:12px; align-items:center; padding:11px 14px; border-bottom:1px solid var(--hair); }
+  .path .step:last-child{ border-bottom:0; }
+  .path .step.now{ background:var(--sunk); }
+  .path .step .i{ font-family:var(--mono); font-size:11px; color:var(--muted); font-weight:700; }
+  .path .step .d{ font-size:13.5px; }
+  .path .step .n{ font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:13px; font-weight:700; text-align:right; white-space:nowrap; }
+  .path .step .n em{ font-style:normal; color:var(--muted); font-weight:400; }
+
+  /* waterfall flow */
+  .flow{ display:flex; flex-direction:column; gap:9px; }
+  .flowtrack{ display:flex; height:44px; gap:2px; }
+  .flowtrack .fseg{ border-radius:3px; display:flex; align-items:center; padding:0 12px; color:#fff; font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:13.5px; font-weight:700; cursor:default; }
+  .flowtrack .fseg.sr{ background:var(--senior); } .flowtrack .fseg.jr{ background:var(--junior); }
+  .flowhead{ display:flex; align-items:baseline; gap:10px; font-size:12.5px; color:var(--muted); }
+  .flowhead b{ font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:19px; color:var(--ink); font-weight:700; }
+
+  /* loss ladder */
+  .ladder{ display:flex; flex-direction:column; gap:7px; }
+  .lrow{ display:grid; grid-template-columns:74px 1fr 158px; gap:12px; align-items:center; }
+  .lrow .sc{ font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:12.5px; color:var(--ink-soft); text-align:right; }
+  .lrow.attach .sc{ color:var(--junior); font-weight:700; }
+  .track{ display:flex; height:26px; gap:2px; border:1px solid var(--hair); border-radius:3px; padding:2px; background:var(--panel); }
+  .track .t{ border-radius:2px; cursor:default; }
+  .track .t.sr{ background:var(--senior); } .track .t.jr{ background:var(--junior); }
+  .track .t.loss{ background:repeating-linear-gradient(135deg,var(--rule) 0 3px,transparent 3px 6px); }
+  .lrow .pl{ font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:12px; white-space:nowrap; }
+  .lrow .pl .a{ color:var(--senior); } .lrow .pl .b{ color:var(--junior); }
+  .attachline{ font-size:12px; color:var(--muted); border-left:2px solid var(--junior); padding-left:10px; }
+
+  /* cycle timeline */
+  .cycle{ display:grid; grid-template-columns:repeat(auto-fit,minmax(178px,1fr)); gap:11px; }
+  .stepcard{ background:var(--panel); border:1px solid var(--hair); border-top:2px solid var(--senior); border-radius:4px; padding:12px 13px; display:flex; flex-direction:column; gap:5px; box-shadow:var(--shadow); }
+  .stepcard .t{ font-size:9.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--muted); font-weight:700; }
+  .stepcard .fn{ font-family:var(--mono); font-size:12.5px; font-weight:700; color:var(--ink); word-break:break-word; }
+  .stepcard .d{ font-size:12px; color:var(--ink-soft); line-height:1.45; }
+  .stepcard .clock{ font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:11.5px; color:var(--junior); font-weight:700; margin-top:auto; }
+
+  /* status board */
+  .board{ display:flex; flex-direction:column; gap:16px; }
+  .grp{ display:flex; flex-direction:column; gap:8px; }
+  .grphead{ display:flex; align-items:baseline; gap:9px; font-size:13px; font-weight:800; letter-spacing:.02em; text-transform:uppercase; }
+  .grphead .ct{ font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:12px; font-weight:700; padding:1px 7px; border-radius:9px; }
+  .grphead.ok{ color:var(--ok); } .grphead.ok .ct{ background:var(--senior-wash); color:var(--ok); }
+  .grphead.hd{ color:var(--senior); } .grphead.hd .ct{ background:var(--senior-wash); color:var(--senior); }
+  .grphead.op{ color:var(--open); } .grphead.op .ct{ background:var(--junior-wash); color:var(--open); }
+  .tblwrap{ overflow-x:auto; border:1px solid var(--hair); border-radius:4px; background:var(--panel); }
+  table{ width:100%; border-collapse:collapse; font-size:13.5px; min-width:520px; }
+  th{ text-align:left; font-size:9.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--muted); font-weight:700; padding:9px 13px; border-bottom:1px solid var(--rule); }
+  td{ padding:9px 13px; border-bottom:1px solid var(--hair); vertical-align:top; }
+  tr:last-child td{ border-bottom:0; }
+  td.ref{ font-family:var(--mono); font-size:11.5px; color:var(--muted); white-space:nowrap; }
+  td.who{ white-space:nowrap; font-size:12.5px; color:var(--ink-soft); }
+
+  .footnote{ font-size:12px; color:var(--muted); border-top:1px solid var(--hair); padding-top:14px; max-width:76ch; }
+  .footnote p{ margin:0 0 6px; }
+
+  /* tooltip */
+  #tip{ position:fixed; z-index:50; pointer-events:none; opacity:0; transition:opacity .1s;
+        background:var(--ink); color:var(--paper); font-size:12px; line-height:1.4;
+        padding:7px 10px; border-radius:4px; max-width:250px; box-shadow:0 3px 10px rgba(0,0,0,.22); }
+  #tip .th{ font-weight:700; display:block; }
+  #tip .tv{ font-family:var(--mono); font-variant-numeric:tabular-nums; }
+  @media (prefers-reduced-motion:reduce){ *{ transition:none !important; } }
+  @media (max-width:560px){
+    .lrow{ grid-template-columns:62px 1fr; }
+    .lrow .pl{ grid-column:2; font-size:11.5px; }
+  }
+</style>
+
+<div class="sheet">
+
+  <header>
+    <div class="eyebrow">Wildcat &nbsp;·&nbsp; In-House Tranching &nbsp;·&nbsp; Mechanisms</div>
+    <h1>Tranching the abcUSDC facility</h1>
+    <p class="standfirst">Every mechanism in the senior/junior layer, instantiated on one real facility: Six Seven Ltd borrowing USDC on an open term, 10,000,000 drawn against 15,000,000 of capacity, exits clearing on a 14-day cycle.</p>
+    <div class="byline">All figures derived from <span class="num">build/src/</span> at commit <span class="num">48cc01d</span> · tranche parameters are proposals, not settings · <span class="num">55</span> tests passing</div>
+  </header>
+
+  <div class="termsheet">
+    <div class="cell"><div class="k">Borrower</div><div class="v">Six Seven Ltd</div></div>
+    <div class="cell"><div class="k">Market token</div><div class="v num">abcUSDC</div></div>
+    <div class="cell"><div class="k">Term</div><div class="v">Open</div></div>
+    <div class="cell"><div class="k">Base APR</div><div class="v num">10.00%</div></div>
+    <div class="cell"><div class="k">Exit cycle</div><div class="v num">14 days</div></div>
+    <div class="cell"><div class="k">Drawn</div><div class="v num">10 / 15M</div></div>
+    <div class="cell"><div class="k">Reserve ratio</div><div class="v tbd">Not given</div></div>
+    <div class="cell"><div class="k">Grace period</div><div class="v tbd">Not given</div></div>
+  </div>
+
+  <!-- 1 · CAPITAL STACK -->
+  <section>
+    <h2>The capital stack today <span class="tag">junior at its 20% floor</span></h2>
+    <p class="intro">Junior sits exactly on the subordination floor, so senior leverage is exactly at its <span class="num">4.00×</span> cap. Both figures are enforced on every deposit and every junior exit by <code>WaterfallMath.meetsSubordination</code>.</p>
+    <div class="legend">
+      <span class="item"><span class="swatch sr"></span> Senior · <span class="num">sr-abcUSDC</span> · paid first, loses last</span>
+      <span class="item"><span class="swatch jr"></span> Junior · <span class="num">jr-abcUSDC</span> · paid last, loses first</span>
+    </div>
+    <div class="stackwrap">
+      <div class="stack">
+        <div class="seg sr" style="flex:80" data-tip-t="Senior · sr-abcUSDC" data-tip-b="8,000,000 · 80% of stack · 8.00% target APR · loses nothing until pool loss exceeds 20%">
+          <span class="amt">8,000,000</span><span class="lab">Senior · 80%</span>
+        </div>
+        <div class="seg jr" style="flex:20" data-tip-t="Junior · jr-abcUSDC" data-tip-b="2,000,000 · 20% of stack · 18.00% APR · absorbs the first 2,000,000 of loss in full">
+          <span class="amt">2,000,000</span><span class="lab">Junior · 20%</span>
+        </div>
+      </div>
+      <div class="axisnote"><span class="num">0</span><span>Tranched sleeve <span class="num">10,000,000</span></span><span class="num">10,000,000</span></div>
+    </div>
+    <div class="tiles">
+      <div class="tile"><div class="k">Senior target</div><div class="v sr">8.00%</div><div class="s"><span class="num">80%</span> of the base APR, read live</div></div>
+      <div class="tile"><div class="k">Junior return</div><div class="v jr">18.00%</div><div class="s"><span class="num">1.80×</span> the facility rate</div></div>
+      <div class="tile"><div class="k">Attachment</div><div class="v">20%</div><div class="s">Senior untouched below it</div></div>
+      <div class="tile"><div class="k">Senior leverage</div><div class="v">4.00×</div><div class="s">At the cap; no headroom</div></div>
+    </div>
+  </section>
+
+  <!-- 2 · PINNED -->
+  <section>
+    <h2>The structure is pinned <span class="tag">both gates exactly binding</span></h2>
+    <p class="intro">This is the finding that matters commercially. With junior sitting on the floor, both subordination gates return zero: the remaining <span class="num">5,000,000</span> of capacity cannot be sold to senior, and junior cannot leave. Growth is gated entirely on first-loss capital arriving first.</p>
+    <div class="pin">
+      <div class="gates">
+        <div class="gate">
+          <div class="fn">maxSeniorDeposit(8M, 2M, 2000)</div>
+          <div class="out num">0</div>
+          <div class="why">Cap is <span class="num">2M × 10000 / 2000 = 10M</span>, and TVL is already <span class="num">10M</span>. Any senior deposit reverts on <code>SUBORDINATION</code>.</div>
+        </div>
+        <div class="gate">
+          <div class="fn">maxJuniorWithdraw(8M, 2M, 2000)</div>
+          <div class="out num">0</div>
+          <div class="why"><span class="num">jv × BIPS</span> equals <span class="num">minJuniorBips × tvl</span> exactly, so the function returns zero. Junior is locked while senior stands still.</div>
+        </div>
+      </div>
+      <div class="path">
+        <div class="step now"><span class="i">01</span><span class="d">Today — floor exactly met, nothing can move</span><span class="n">2.0M jr &nbsp;/&nbsp; 8.0M sr &nbsp;<em>→ 10.0M</em></span></div>
+        <div class="step"><span class="i">02</span><span class="d">Junior adds <b>1,000,000</b> — this is the only unlocking move</span><span class="n">3.0M jr &nbsp;/&nbsp; 8.0M sr &nbsp;<em>→ 11.0M</em></span></div>
+        <div class="step"><span class="i">03</span><span class="d">Senior room opens to exactly <b>4,000,000</b>, and filling it lands on capacity</span><span class="n">3.0M jr &nbsp;/&nbsp; 12.0M sr &nbsp;<em>→ 15.0M</em></span></div>
+      </div>
+      <p class="intro" style="font-size:13.5px;margin:0;">So placing this facility is not "sell 5,000,000 of paper". It is <b>source 1,000,000 of first-loss, then sell 4,000,000 of senior, in that order</b>. Junior's <span class="num">18.00%</span> is unchanged throughout, because the ratio never moves. If senior-led placement is commercially necessary, <code>minJuniorBips</code> must be set lower at deployment — it is <code>immutable</code>.</p>
+    </div>
+  </section>
+
+  <!-- 3 · INTEREST -->
+  <section>
+    <h2>Interest waterfall <span class="tag">senior's bucket fills first</span></h2>
+    <p class="intro">The facility generates <span class="num">1,000,000</span> a year. Senior takes its target off its own <span class="num">8,000,000</span>; junior keeps the entire residual against a base of just <span class="num">2,000,000</span>. That is where the amplification comes from — junior earns the spread on the whole facility off a thin slice.</p>
+    <div class="flow">
+      <div class="flowhead">Annual facility interest <b>1,000,000</b> <span>· <span class="num">10,000,000</span> at <span class="num">10.00%</span></span></div>
+      <div class="flowtrack">
+        <div class="fseg sr" style="flex:64" data-tip-t="Senior target — filled first" data-tip-b="640,000 per year = 8.00% on 8,000,000. Rate is annualInterestBips × 8000/10000, capped at the base APR.">640,000 &nbsp;·&nbsp; 8.00% on 8.0M</div>
+        <div class="fseg jr" style="flex:36" data-tip-t="Junior residual — everything left" data-tip-b="360,000 per year = 18.00% on 2,000,000. Junior collects the 2.00% spread across the entire 10,000,000 pool.">360,000 &nbsp;·&nbsp; 18.00% on 2.0M</div>
+      </div>
+      <div class="axisnote"><span>Senior priority claim</span><span>Junior residual</span></div>
+    </div>
+    <div class="tiles">
+      <div class="tile"><div class="k">Junior multiple</div><div class="v jr">1.80×</div><div class="s">Structural at share <span class="num">80%</span> / floor <span class="num">20%</span> — holds at <em>every</em> APR</div></div>
+      <div class="tile"><div class="k">If APR cut to 6%</div><div class="v num">4.80% / 10.80%</div><div class="s">Senior / junior. The borrower can do this at will on an open term</div></div>
+      <div class="tile"><div class="k">Junior at share 100%</div><div class="v num">10.00%</div><div class="s">Degenerate: first-loss for zero premium</div></div>
+      <div class="tile"><div class="k">Rate change lag</div><div class="v num">48h</div><div class="s">Timelock on <code>seniorShareBips</code> only — <em>not</em> on the borrower's APR</div></div>
+    </div>
+  </section>
+
+  <!-- 4 · LOSS -->
+  <section>
+    <h2>Loss waterfall <span class="tag">junior to zero before senior is touched</span></h2>
+    <p class="intro">Each bar is the same <span class="num">10,000,000</span> pool as it shrinks. Junior's slice vanishes first and completely; senior only starts losing once the pool has fallen past the <span class="num">20%</span> attachment point. Nothing here is a mark-to-market path — the contract books a loss only when cash actually comes back short.</p>
+    <div class="legend">
+      <span class="item"><span class="swatch sr"></span> Senior value retained</span>
+      <span class="item"><span class="swatch jr"></span> Junior value retained</span>
+      <span class="item"><span class="swatch loss"></span> Value lost</span>
+    </div>
+    <div class="ladder" id="ladder"></div>
+    <p class="attachline">Above the attachment point senior's loss is <span class="num">(L − 20%) / 80%</span> of its principal. On a one-year view junior's <span class="num">360,000</span> of carry absorbs a <span class="num">3.60%</span> pool loss before its principal is net down; senior's cushion plus its <span class="num">640,000</span> coupon absorbs <span class="num">26.4%</span>.</p>
+  </section>
+
+  <!-- 5 · CYCLE -->
+  <section>
+    <h2>The 14-day exit cycle <span class="tag">two-week floor, no ceiling</span></h2>
+    <p class="intro">Exits are asynchronous and run on the market's own batch clock. A request lands in whatever batch is currently open, so the wait to expiry is anywhere from <span class="num">0</span> to <span class="num">14</span> days — a holder cannot choose their batch. If the batch is under-funded the market pays pro-rata and the remainder rolls, so a stressed exit is a multiple of 14 days, re-testing senior priority on each roll.</p>
+    <div class="cycle">
+      <div class="stepcard">
+        <div class="t">Step 1 · request</div>
+        <div class="fn">requestRedeem()</div>
+        <div class="d">Shares burn at current tranche NAV. The wrapper redemption is sized at the <b>live</b> price, so a delinquency mark-freeze cannot be arbitraged.</div>
+        <div class="clock">t = 0</div>
+      </div>
+      <div class="stepcard">
+        <div class="t">Step 2 · queue</div>
+        <div class="fn">market.queueWithdrawal()</div>
+        <div class="d">The claim joins the open batch. Junior must clear <code>maxJuniorWithdraw</code> first — today it cannot.</div>
+        <div class="clock">0 – 14 days</div>
+      </div>
+      <div class="stepcard">
+        <div class="t">Step 3 · settle</div>
+        <div class="fn">pokeRecovery() / sync()</div>
+        <div class="d">Executes the expired batch. Recovery is balance-derived and <code>sync()</code> is permissionless, so USDC arriving off-path is never stranded.</div>
+        <div class="clock">at expiry</div>
+      </div>
+      <div class="stepcard" style="border-top-color:var(--junior)">
+        <div class="t">Step 4 · allocate</div>
+        <div class="fn">_allocate()</div>
+        <div class="d">Senior class fills first. Junior draws only above the senior reserve — the <b>queued senior face</b> while healthy, the <b>entire <span class="num">seniorOwed</span></b> while distressed.</div>
+        <div class="clock">same block</div>
+      </div>
+      <div class="stepcard">
+        <div class="t">Step 5 · claim</div>
+        <div class="fn">claim(id)</div>
+        <div class="d">FIFO within class, O(1) per request. A sanctioned owner routes to a sentinel escrow. No batch-claim helper exists yet.</div>
+        <div class="clock">on demand</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6 · STATUS -->
+  <section>
+    <h2>Where the mechanisms stand</h2>
+    <p class="intro">The full Q1–Q16 decision set is built and tested. Five mechanisms moved <em>beyond</em> the design spec under two audit cycles, all of them sharpening senior priority. Six items are genuinely open, and two of those block deployment on this facility.</p>
+    <div class="board">
+
+      <div class="grp">
+        <div class="grphead ok">Settled &amp; implemented <span class="ct">16</span></div>
+        <div class="tblwrap"><table>
+          <thead><tr><th style="width:66px">Ref</th><th>Mechanism</th><th style="width:132px">As deployed here</th></tr></thead>
+          <tbody>
+            <tr><td class="ref">Q1 · Q2</td><td>Wraps the audited <code>v-abcUSDC</code> 4626; two tranche tokens plus a thin controller</td><td class="who">Unchanged</td></tr>
+            <tr><td class="ref">Q3</td><td>Senior holds a priority claim, never a funded guarantee</td><td class="who">Unchanged</td></tr>
+            <tr><td class="ref">Q4</td><td>Senior rate derived live from the market's base APR, capped at it</td><td class="who num">8000 bips</td></tr>
+            <tr><td class="ref">Q5</td><td>Loss on realised shortfall only; ToU §6.2 default mirror</td><td class="who num">grace + 90d</td></tr>
+            <tr><td class="ref">Q6</td><td>Valuation frozen at a high-watermark while delinquent</td><td class="who">Unchanged</td></tr>
+            <tr><td class="ref">Q7</td><td>Two-tier waterfall, no reserve pot</td><td class="who">Unchanged</td></tr>
+            <tr><td class="ref">Q8 · Q9</td><td>Fixed subordination floor enforced by hard gating</td><td class="who num">2000 bips</td></tr>
+            <tr><td class="ref">Q10</td><td>Async request → settle → claim, mirroring the batch queue</td><td class="who num">14-day batch</td></tr>
+            <tr><td class="ref">Q11</td><td>Senior-priority allocation of every settlement</td><td class="who">Strengthened →</td></tr>
+            <tr><td class="ref">Q12</td><td>No instant-liquidity buffer; one exit path for everyone</td><td class="who">Unchanged</td></tr>
+            <tr><td class="ref">Q13</td><td>Senior target index plus junior realised residual; oracle-free</td><td class="who">Unchanged</td></tr>
+            <tr><td class="ref">Q14 · Q15</td><td>Sentinel re-checked per user with escrow; junior whitelisted</td><td class="who">Unchanged</td></tr>
+            <tr><td class="ref">Q16</td><td>Immutable logic; 48h timelock; pause halts deposits, never exits</td><td class="who num">RATE_TIMELOCK 2d</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+
+      <div class="grp">
+        <div class="grphead hd">Hardened beyond the spec by audit <span class="ct">5</span></div>
+        <div class="tblwrap"><table>
+          <thead><tr><th style="width:66px">Ref</th><th>What changed</th><th style="width:132px">Why it matters</th></tr></thead>
+          <tbody>
+            <tr><td class="ref">new</td><td><b>Distress gate in <code>_allocate</code>.</b> While delinquent or winding down, junior may only draw cash beyond the <em>entire</em> <code>seniorOwed</code> — not merely the senior face queued</td><td class="who">Protects senior that has not queued yet</td></tr>
+            <tr><td class="ref">R1</td><td><b>Accrual now precedes the wind-down freeze.</b> Cycle one accepted dropping the final interest sliver as conservative; cycle two found it understates <code>seniorOwed</code> and so leaks recovery to junior</td><td class="who">A disposition that flipped</td></tr>
+            <tr><td class="ref">SR-D</td><td><b>Redemptions sized at the live price</b>, not the frozen mark</td><td class="who">Stops mark-freeze arbitrage</td></tr>
+            <tr><td class="ref">SR-A</td><td><b>Balance-derived recovery plus permissionless <code>sync()</code></b></td><td class="who">No stranded USDC</td></tr>
+            <tr><td class="ref">SR-B · R2</td><td><b>Owner-gated factory with two-step ownership transfer</b></td><td class="who">Closes the fake-wrapper vector</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+
+      <div class="grp">
+        <div class="grphead op">Open <span class="ct">6</span></div>
+        <div class="tblwrap"><table>
+          <thead><tr><th style="width:66px">Ref</th><th>Item</th><th style="width:132px">Status</th></tr></thead>
+          <tbody>
+            <tr><td class="ref">blocker</td><td><b>Tranche symbols are hardcoded to <code>sr-wmtUSDC</code>/<code>jr-wmtUSDC</code></b> in the controller constructor, and <code>Params</code> carries no symbol field. Deploying here mints the wrong market's ticker, and every tranche set would share it</td><td class="who">Blocks abcUSDC</td></tr>
+            <tr><td class="ref">F8</td><td><b>Senior credential-gating on transfer.</b> <code>sr-abcUSDC</code> moves to any non-sanctioned address with no market-credential check, so uncredentialed parties can acquire senior exposure on the secondary market</td><td class="who">Decision needed</td></tr>
+            <tr><td class="ref">params</td><td><b>Reserve ratio and grace period are unspecified.</b> The first defines delinquency; the second is the first addend in the default clock. Neither distress trigger can be modelled without them</td><td class="who">Awaiting terms</td></tr>
+            <tr><td class="ref">audit</td><td><b>No human audit commissioned.</b> Two three-pass agentic cycles found real bugs, including a senior-priority leak — but that is not an engagement</td><td class="who">Before real capital</td></tr>
+            <tr><td class="ref">UX</td><td><b>No <code>claimMany</code>.</b> One request ID per partial fill per 14-day cycle, each needing its own transaction. O(1) access, so no DoS — just accumulating gas</td><td class="who">Small, safe addition</td></tr>
+            <tr><td class="ref">note</td><td><b>Permit2 infinite allowance</b> inherited from Solady's default. Not a drain vector; transfers still pass <code>beforeTrancheTransfer</code></td><td class="who">Record the decision</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+
+    </div>
+  </section>
+
+  <div class="footnote">
+    <p><b>Assumptions.</b> The full 10,000,000 of current supply is assumed to arrive through the tranche set, and junior is assumed to sit exactly on its 20% floor. A partially-tranched facility behaves identically on the tranched sleeve. Tranche parameters (<span class="num">seniorShareBips 8000</span>, <span class="num">minJuniorBips 2000</span>, <span class="num">defaultPenaltyWindow 90d</span>) are proposals for this facility, not settings — <code>minJuniorBips</code> and <code>defaultPenaltyWindow</code> are immutable once deployed.</p>
+    <p><b>Caveats.</b> Senior's "8.00%" is a target funded by priority, not a guarantee, and it tracks whatever APR Six Seven Ltd sets — on an open term there is no maturity at which senior recovers principal at the original rate. Accrual is update-driven and compounds with interaction frequency, so the realised senior rate sits slightly above target. Junior can be written to zero before senior loses anything. Recovery after a real default depends on off-chain legal enforcement.</p>
+    <p>Full workings in <span class="num">report/Six-Seven-Mechanisms-Report.md</span> · design rationale in <span class="num">Design-Risk-Specification.md</span> · audit trail in <span class="num">report/Pashov-Audit-Report{,-Reaudit}.md</span></p>
+  </div>
+
+</div>
+
+<div id="tip" role="status" aria-live="polite"></div>
+
+<script>
+// ── loss ladder ──────────────────────────────────────────────────────────────
+// Same 10,000,000 pool at each stress level. Junior absorbs to zero first;
+// senior only impairs past the 20% attachment point.
+var POOL = 10000000, SR = 8000000, JR = 2000000;
+var SCENARIOS = [0, 5, 10, 20, 30, 50];
+
+function money(n){ return n.toLocaleString('en-US'); }
+function pct(n){ return (n === 0 ? '0' : n.toFixed(1).replace('-', '−')) + '%'; }
+
+var ladder = document.getElementById('ladder');
+SCENARIOS.forEach(function(L){
+  var lost     = POOL * L / 100;
+  var value    = POOL - lost;
+  var seniorV  = Math.min(value, SR);
+  var juniorV  = value - seniorV;
+  var srPnl    = (seniorV - SR) / SR * 100;
+  var jrPnl    = (juniorV - JR) / JR * 100;
+  var attach   = (L === 20);
+
+  var row = document.createElement('div');
+  row.className = 'lrow' + (attach ? ' attach' : '');
+
+  var sc = document.createElement('div');
+  sc.className = 'sc';
+  sc.textContent = (L === 0 ? '0%' : '−' + L + '%') + (attach ? ' ◂' : '');
+  row.appendChild(sc);
+
+  var track = document.createElement('div');
+  track.className = 'track';
+  [['sr', seniorV, 'Senior retained', seniorV],
+   ['jr', juniorV, 'Junior retained', juniorV],
+   ['loss', lost, 'Value lost', lost]].forEach(function(seg){
+    if (seg[1] <= 0) return;
+    var d = document.createElement('div');
+    d.className = 't ' + seg[0];
+    d.style.flex = seg[1];
+    d.setAttribute('data-tip-t', seg[2] + ' at a ' + L + '% pool loss');
+    d.setAttribute('data-tip-b', money(Math.round(seg[3])) + ' of 10,000,000');
+    track.appendChild(d);
+  });
+  row.appendChild(track);
+
+  var pl = document.createElement('div');
+  pl.className = 'pl';
+  pl.innerHTML = '<span class="a">sr ' + pct(srPnl) + '</span> &nbsp;<span class="b">jr ' + pct(jrPnl) + '</span>';
+  row.appendChild(pl);
+
+  ladder.appendChild(row);
+});
+
+// ── hover layer ──────────────────────────────────────────────────────────────
+var tip = document.getElementById('tip');
+function showTip(el, x, y){
+  tip.innerHTML = '<span class="th">' + el.getAttribute('data-tip-t') +
+                  '</span><span class="tv">' + el.getAttribute('data-tip-b') + '</span>';
+  tip.style.opacity = '1';
+  var r = tip.getBoundingClientRect();
+  var left = Math.min(Math.max(8, x - r.width / 2), window.innerWidth - r.width - 8);
+  var top  = y - r.height - 12;
+  if (top < 8) top = y + 18;
+  tip.style.left = left + 'px';
+  tip.style.top = top + 'px';
+}
+document.addEventListener('mousemove', function(e){
+  var el = e.target.closest ? e.target.closest('[data-tip-t]') : null;
+  if (el) showTip(el, e.clientX, e.clientY);
+  else tip.style.opacity = '0';
+});
+document.addEventListener('mouseleave', function(){ tip.style.opacity = '0'; });
+</script>
