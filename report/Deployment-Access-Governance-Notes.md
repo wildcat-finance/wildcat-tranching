@@ -16,7 +16,7 @@ Invert it. `deployTranches(market, …)` and the factory **resolves** the wrappe
 - `require(wrapper != address(0), "NO_WRAPPER")` — which is exactly the invariant asked for: **no 4626 facility, no tranche set.**
 - `underlyingVault` leaves `DeployParams` entirely. One fewer trusted input; the fake-vault class dies structurally instead of by owner discipline.
 
-Optional extension: if wrapper deployment on the real factory is permissionless per registered market, the tranche factory can deploy-the-wrapper-if-missing in one transaction. If it's borrower-gated over there, "wrapper first, tranches second" stays a sequencing rule instead. Which of the two depends on the same ABI check.
+Settled (desk confirmed): the wrapper factory's deployment **is permissionless**, so `deployTranches` composes it — resolve the wrapper, deploy it if missing, then deploy the tranche set, all in one transaction. The "no wrapper, no tranche set" invariant becomes self-satisfying rather than a sequencing rule, and the borrower's single `deployTranches(market, …)` call brings up the whole stack atomically: wrapper (if absent) + controller + both tranche tokens. Since the wrapper factory enforces one canonical wrapper per market, the compose is idempotent — deploying against a market that already has its wrapper just resolves it. The outstanding ABI check narrows to pinning exact function names (the registry getter and the deploy entrypoint), not permissioning.
 
 While we're removing trusted inputs: `sentinel` shouldn't be caller-supplied either (resolve the canonical one), and `borrower` stops being a parameter because it's derived from the market. `DeployParams` shrinks to economics + governance + declarer + token symbols.
 
@@ -106,7 +106,7 @@ flowchart TB
     WF["Wildcat4626WrapperFactory"]
     ARCH["ArchController"]
     BORROWER -->|"deployTranches(market, econ+gov+symbols)"| TF
-    TF -.->|"wrapper must exist"| WF
+    TF -->|"resolve — deploy if missing (permissionless)"| WF
     TF -.->|"isRegisteredMarket"| ARCH
   end
 
@@ -142,7 +142,7 @@ flowchart TB
 | # | Decision | Recommendation | Who decides |
 |---|---|---|---|
 | D1 | Factory resolves wrapper; require it exists; drop `underlyingVault`, `sentinel`, `borrower` from params | Yes — structural fix, kills SR-B class outright | Eng |
-| D2 | Deploy-wrapper-if-missing vs sequencing rule | Pending the wrapper-factory ABI check (same check pins `market.borrower()` getter) | Eng, after 5-min check |
+| D2 | ~~Deploy-wrapper-if-missing vs sequencing rule~~ **Resolved: compose.** Wrapper factory is permissionless (desk confirmed), so `deployTranches` deploys the wrapper if missing — one-transaction bring-up of the full stack | Done as a decision; ABI check narrows to pinning getter/entrypoint names (and `market.borrower()`) | Eng |
 | D3 | Entry surface: USDC front door — controller as lender of record (variant B), `abcUSDC` and `v-` also accepted, wrapper retained internally; direct-holding variant A deferred to v2 | Adopt B now; A only alongside a v2 re-audit | Eng (reversed from first draft's "decline raw USDC" on desk pushback) |
 | D4 | Deployment access: borrower-gated, bounds-in-code, **ownerless** factory | Yes — neutrality-compatible, squat-proof, junior deposit ratifies the params | Eng + Foundation sign-off on the neutrality posture |
 | D5 | Concurrency vs supersession | One live set per market; supersession only when incumbent empty/wound-down; never concurrent | Eng (mechanism), desk (policy) |
