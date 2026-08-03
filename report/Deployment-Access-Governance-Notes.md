@@ -20,15 +20,25 @@ Optional extension: if wrapper deployment on the real factory is permissionless 
 
 While we're removing trusted inputs: `sentinel` shouldn't be caller-supplied either (resolve the canonical one), and `borrower` stops being a parameter because it's derived from the market. `DeployParams` shrinks to economics + governance + declarer + token symbols.
 
-## 2. Deposits accept the market token and wrap on the way in
+## 2. One front door: the controller becomes the lender of record
 
-Deposits currently require `v-abcUSDC`, which forces every lender through a manual wrapper round-trip. Accept the market token (`abcUSDC`) directly: pull it, approve the wrapper, `shares = wrapper.deposit(amount, address(this))`, then run the existing logic off the shares actually minted. Everything downstream — `dV`, `MIN_INITIAL`, subordination, pool-favouring rounding — already keys off vault shares and doesn't move. Keep the existing v- path alongside.
+*(This section was first drafted as "auto-wrap `abcUSDC`, decline raw USDC." The desk pushed back on the decline, and the pushback wins — recorded here as reversed.)*
 
-Three things worth saying out loud:
+The winning observation is that **the exit path already treats the controller as a market lender**: `requestRedeem` unwraps and the controller itself calls `queueWithdrawal` / `executeWithdrawal` — lender-of-record operations. The current design enters as a wrapper-user and exits as a market lender; that asymmetry is the inelegant part, and taking USDC at the front door removes it rather than adding novelty.
 
-- **No compliance gap.** The wrapper sanction-checks its depositor (the controller); the controller sanction-checks the end user. Both layers stay covered.
-- **The asymmetry is fine and already exists.** In via `abcUSDC` or `v-`, out via the withdrawal queue in USDC. Auto-wrap doesn't touch the exit story.
-- **We looked at going one step further — accepting raw USDC — and declined.** That would make the controller deposit into the *market* itself: depositor of record, pressure against `maxTotalSupply`, and clearing the market's own deposit hooks. The auto-wrap removes the genuinely annoying hop for none of that cost. And since lenders can only hold `abcUSDC` by being credentialed market lenders anyway, the KYC story stays exactly where it is.
+On "isn't the 4626 wrapper already a lender into the market?" — yes, with one precision that is the whole implementation question. The wrapper is a lender in the **holder-of-claims** sense: one address pooling market tokens for many users, trusted by the market's compliance model, re-enforcing the sentinel per user underneath. It is *not* a lender in the **depositor-of-record** sense — it never calls `market.deposit()`; it receives already-minted `abcUSDC` by transfer and so never clears the market's deposit hooks. The controller-as-lender design extends the proven pattern exactly one step: pooled holder → pooled depositor. The market-side prerequisite is that the controller must be credentialed under the market's hooks policy — trivial in the borrower-deploys world, since the borrower controls that policy and deploys the tranche set; it's one more step in the same ceremony.
+
+Two variants, sequenced:
+
+- **Variant B — adopt now: USDC front door, wrapper retained internally.** Controller pulls USDC → `market.deposit()` as lender of record → wraps the minted `abcUSDC` into `v-` for itself → all existing share-based accounting runs unchanged (`markPps`, the high-watermark freeze, SR-D live-price sizing — none of it moves, because it keys off wrapper shares the controller still holds). Three accepted entry assets — USDC / `abcUSDC` / `v-` — one valuation path, USDC in and USDC out. Small diff, whole product win.
+- **Variant A — defer to v2: drop the wrapper, hold rebasing `abcUSDC` directly.** The full "single location" version, cleaner in the limit — but it rewrites the valuation core against `scaleFactor` directly (watermark freeze, redemption sizing, and the SR-D bug class all re-derive in new denominations), reopening the audited surface for a benefit buyers can't see. Q1's reuse-the-audited-wrapper call was the biggest de-risking decision in the spec; spend it only when a v2 exists anyway. *(If A ever lands, §1's wrapper precondition dissolves with it.)*
+
+Consequences of B worth stating plainly:
+
+- **The buyer base decouples from the market's access policy.** A USDC-only senior buyer never touches the market's hooks and never becomes a Wildcat market lender. That is the distribution feature — and the borrower consents to it by deploying. But it means the market's per-lender ToU/MLA acceptance no longer reaches tranche buyers; the papering has to happen at the tranche layer. Legal question, not code (D9).
+- **The `IEnterGate` work is promoted from hygiene to load-bearing.** With end users invisible to the market's hooks, the tranche gates plus sentinel *are* the entire per-user compliance surface.
+- **The `maxTotalSupply` objection from the first draft is withdrawn** — the capacity constraint exists wherever the deposit happens; a lender minting `abcUSDC` directly hits the same wall. One require with a good error message, and senior capacity is junior-gated before it's market-gated anyway.
+- **Sanction-nuke posture is unchanged precedent.** A pooled depositor has the same whole-pool exposure to address-level sanctioning as the pooled holder (the wrapper) always had; that's the Q14 rationale for re-enforcing per-user at the pool layer, and it carries over as-is.
 
 ## 3. Who deploys: the borrower, inside code bounds — and the factory can lose its owner entirely
 
@@ -106,8 +116,9 @@ flowchart TB
     TC["TrancheController\nsr- / jr-abcUSDC"]
     W["v-abcUSDC wrapper"]
     M["abcUSDC market\n14d batches · grace 28d · reserve 0"]
-    SL -->|"abcUSDC or v- (auto-wrap)"| TC
-    JL -->|"abcUSDC or v- (auto-wrap)"| TC
+    SL -->|"USDC · abcUSDC · v- (one front door)"| TC
+    JL -->|"USDC · abcUSDC · v- (one front door)"| TC
+    TC -->|"deposit USDC — lender of record"| M
     TC -->|"wrap / redeem @ live px"| W
     W <-->|"scaleFactor"| M
     M <-->|"borrow / repay +10%"| BORROWER
@@ -132,14 +143,16 @@ flowchart TB
 |---|---|---|---|
 | D1 | Factory resolves wrapper; require it exists; drop `underlyingVault`, `sentinel`, `borrower` from params | Yes — structural fix, kills SR-B class outright | Eng |
 | D2 | Deploy-wrapper-if-missing vs sequencing rule | Pending the wrapper-factory ABI check (same check pins `market.borrower()` getter) | Eng, after 5-min check |
-| D3 | Auto-wrap `abcUSDC` deposits; keep v- path; decline raw-USDC entry | Yes / yes / decline | Eng |
+| D3 | Entry surface: USDC front door — controller as lender of record (variant B), `abcUSDC` and `v-` also accepted, wrapper retained internally; direct-holding variant A deferred to v2 | Adopt B now; A only alongside a v2 re-audit | Eng (reversed from first draft's "decline raw USDC" on desk pushback) |
 | D4 | Deployment access: borrower-gated, bounds-in-code, **ownerless** factory | Yes — neutrality-compatible, squat-proof, junior deposit ratifies the params | Eng + Foundation sign-off on the neutrality posture |
 | D5 | Concurrency vs supersession | One live set per market; supersession only when incumbent empty/wound-down; never concurrent | Eng (mechanism), desk (policy) |
 | D6 | Governance holder for the abcUSDC facility | Borrower-Safe is legitimate but must be disclosed as "both senior-rate dials + kill switch"; lender-side/neutral governance sells senior better | Desk + borrower, commercial |
 | D7 | `borrowerRecovery` dead-man's switch (30d, incumbent veto, per-deploy bit) | Build the mechanism; default the bit **off** | Eng builds, per-facility choice at deploy |
 | D8 | Allow retiring `defaultDeclarer` to zero | Yes — small, restores the pure ToU mirror as a reachable end state | Eng |
+| D9 | ToU/MLA acceptance for tranche-only buyers (who never touch the market's hooks under D3-B) — does a tranche deposit constitute acceptance, or does the tranche layer need its own papering? | Needs an answer before D3-B ships; gates (F8 PR) become the enforcement point | Legal |
+| D10 | Credential the controller under the market's hooks policy as a deployment-ceremony step (D3-B prerequisite) | Yes — borrower-side step, document in the deploy runbook; a missed step fails loudly (deposits revert) | Desk runbook |
 
-Everything in D1–D3 and D8 belongs in the same pre-deployment PR as the token symbols, the `IEnterGate` pointers, and `claimMany` — one small PR, all touching `Params` / `_deposit` / factory, nothing in the waterfall. D4/D5 change the factory and want the Foundation's nod on posture before code. D6 is a term-sheet conversation. D7 is a mechanism we build once and every facility chooses.
+Everything in D1–D3 and D8 belongs in the same pre-deployment PR as the token symbols, the `IEnterGate` pointers, and `claimMany` — one small PR, all touching `Params` / `_deposit` / factory, nothing in the waterfall — with the caveat that D3-B's USDC front door shouldn't *ship* ahead of D9's legal answer, since under it the gates are the only per-user policy the end buyer ever meets. D4/D5 change the factory and want the Foundation's nod on posture before code. D6 is a term-sheet conversation. D7 is a mechanism we build once and every facility chooses.
 
 ---
 
