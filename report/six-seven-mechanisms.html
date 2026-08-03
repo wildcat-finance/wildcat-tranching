@@ -74,6 +74,11 @@
   .cell .v{ font-size:16px; font-weight:700; margin-top:3px; letter-spacing:-.01em; }
   .cell .v.tbd{ color:var(--open); }
 
+  /* open-decisions bar */
+  .openbar{ display:flex; flex-wrap:wrap; align-items:center; gap:8px 10px; margin-top:-20px; padding:9px 13px; background:var(--junior-wash); border:1px solid var(--junior); border-radius:4px; }
+  .openbar .obl{ font-size:10px; letter-spacing:.11em; text-transform:uppercase; font-weight:800; color:var(--open); margin-right:2px; }
+  .openbar .obi{ font-size:12px; color:var(--ink-soft); background:var(--panel); border:1px solid var(--hair); border-radius:10px; padding:2px 10px; white-space:nowrap; }
+
   /* ── panels ─────────────────────────────────── */
   section{ display:flex; flex-direction:column; gap:15px; }
   h2{ font-size:19px; font-weight:800; letter-spacing:-.015em; margin:0; padding-bottom:8px; border-bottom:1.5px solid var(--ink); display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
@@ -285,6 +290,8 @@
     <div class="cell"><div class="k">Reserve ratio</div><div class="v num">0</div></div>
     <div class="cell"><div class="k">Grace period</div><div class="v num">28 days</div></div>
   </div>
+
+  <div class="openbar"><span class="obl">Decisions outstanding</span><span class="obi">senior entry policy (gates)</span><span class="obi">junior ~22% vs floor</span><span class="obi">grace 28d → 14d ask</span><span class="obi">governance holder</span><span class="obi">ToU papering at tranche layer</span><span class="obi">human audit</span></div>
 
   <!-- 1 · CAPITAL STACK -->
   <section>

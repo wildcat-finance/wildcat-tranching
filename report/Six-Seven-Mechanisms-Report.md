@@ -8,6 +8,23 @@
 
 ---
 
+## Decisions outstanding
+
+The analysis below is complete; these are the calls still open, in the order they bite. Deployment- and governance-level decisions have their own register in `Deployment-Access-Governance-Notes.md`.
+
+| Decision | What it determines | Where argued | Owner |
+|---|---|---|---|
+| **Senior entry policy** — which gate/provider set `sr-abcUSDC` carries, if any | Whether senior exposure is open to any non-sanctioned address or restricted to credentialed holders; under the USDC front door the gates are the *only* per-user compliance surface | §12 | Desk + borrower |
+| **Junior sizing vs the floor** — place junior ~22% or exactly at 20% | At the floor, any delinquency breaches subordination from its first second and freezes the facility to new senior (§8.4); ~2 points of junior coupon buys the headroom | §8.4–8.6 | Junior anchor + desk |
+| **Grace period ask** — negotiate 28d toward 14d | At 28d the borrower gets two penalty-free missed exit cycles, and a disciplined borrower can orbit inside grace indefinitely without ever reaching the default trigger | §8.2 | Desk ↔ borrower |
+| **Governance holder for this facility** | A borrower-held governance controls both senior-rate dials and the un-timelocked wind-down trigger — legitimate, but it must be disclosed to senior buyers in those words | companion notes | Desk + borrower |
+| **Loan Agreement & `defaultDeclarer`** | Zero declarer = pure ToU day-118 mirror; a bilateral agreement names a lender-side declarer and changes the default definition | §2, §12.4 | Legal + desk |
+| **Human audit engagement** | Two agentic audit cycles are not an audit engagement; required before real capital | §10 | Protocol |
+
+Settled design, pending build (one pre-deployment PR): tranche token symbols into `Params` (§11), the entry-gate pointers (§12), `claimMany` (§7), and the deployment/entry changes in the companion notes.
+
+---
+
 ## 1. The facility we are tranching
 
 | Term | Value | Source |
@@ -278,7 +295,7 @@ The fix is small — add `string name` / `string symbol` to `Params` and pass th
 
 ## 12. Imported mechanism: Morpho Midnight-style entry gates
 
-*Prompted by the F8 question: could Morpho Midnight's gate system be used in these tranching contracts? Answer: yes — the entry-gate half of it maps onto this architecture almost exactly, it converts F8 from a global product decision into per-facility deployment configuration, and the bridge is already built: Wildcat's `secdemo-gateaccess` repo demonstrates the existing `IRoleProvider` credential stack driving Midnight gates, and the same gate contract can serve the tranche layer unchanged. Sources: the [Midnight concept docs](https://docs.morpho.org/learn/concepts/midnight/), [`IGate.sol`](https://github.com/morpho-org/midnight/blob/main/src/interfaces/IGate.sol) and `Midnight.sol` in [morpho-org/midnight](https://github.com/morpho-org/midnight), the [Morpho Vault V2 gate docs](https://docs.morpho.org/curate/concepts/gates/) for contrast, the [sealed-entity-credentials draft ERC](https://hackmd.io/@wildcatlabs/erc-draft-sealed-entity-credentials), and the `secdemo-gateaccess` demo repo (Wildcat Labs, July 2026).*
+*The entry-gating design imports Morpho Midnight's gate system — the entry-gate half of it maps onto this architecture almost exactly, it turns the F8 access question into per-facility deployment configuration rather than a global choice, and the bridge already exists: Wildcat's `secdemo-gateaccess` repo demonstrates the existing `IRoleProvider` credential stack driving Midnight gates, and the same gate contract can serve the tranche layer unchanged. Sources: the [Midnight concept docs](https://docs.morpho.org/learn/concepts/midnight/), [`IGate.sol`](https://github.com/morpho-org/midnight/blob/main/src/interfaces/IGate.sol) and `Midnight.sol` in [morpho-org/midnight](https://github.com/morpho-org/midnight), the [Morpho Vault V2 gate docs](https://docs.morpho.org/curate/concepts/gates/) for contrast, the [sealed-entity-credentials draft ERC](https://hackmd.io/@wildcatlabs/erc-draft-sealed-entity-credentials), and the `secdemo-gateaccess` demo repo (Wildcat Labs, July 2026).*
 
 ### 12.1 What Midnight's gates actually are
 
@@ -349,9 +366,9 @@ In Midnight a reverting enter gate blocks only new entries. Here, because the re
 
 ---
 
-## 13. What I would decide next
+## 13. Sequencing
 
-In order, because some of these block others:
+The register at the top of this document lists the open calls; this is the order to take them in, because some block others:
 
 1. **Put the §8 findings to both buyers.** The 118-day default clock, the no-early-warning delinquency trigger, and junior's immediate floor breach during any delinquency are all consequences of the given terms (reserve ratio 0, grace 28d). Negotiate grace toward 14 days if possible; place junior above the floor either way.
 2. **Settle F8 via the gate mechanism (§12).** Adopt Midnight's `IEnterGate` interface in `Params`, back it with `WildcatRoleProviderGate` from `secdemo-gateaccess` (hardened from demo-grade), and decide the senior provider set for this facility — recommendation: a provider wrapping the market's own credential hook if Six Seven Ltd's market runs one; zero gate otherwise. Require Six Seven Ltd to carry a sealed entity credential bound to the `WILDCAT_DELINQ_90D_V1` trigger class so recourse disclosure latches on the same day-118 predicate as wind-down (§12.4).
@@ -363,4 +380,4 @@ In order, because some of these block others:
 
 ---
 
-*Derived from `build/src/` at commit `48cc01d`. Facility terms as briefed (reserve ratio 0 and 28-day grace confirmed by the desk). Tranche parameters in §2 are proposals, not settings. External sources for §12: Morpho Midnight docs, whitepaper, and repository as linked.*
+*Derived from `build/src/` at commit `48cc01d`. Facility terms as provided (reserve ratio 0, 28-day grace). Tranche parameters in §2 are proposals, not settings. External sources for §12: Morpho Midnight docs, whitepaper, and repository as linked. Deployment and governance design: `Deployment-Access-Governance-Notes.md`.*

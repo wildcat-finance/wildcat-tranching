@@ -1,107 +1,105 @@
-# Deployment, Access & Governance — Working Notes
+# Tranching Deployment & Governance — Design Notes
 
 <img src="assets/tranche-mascot.png" alt="Wildcat tranching mascot" width="130" align="right"/>
 
-*Informal notes from the abcUSDC design iteration, written down before they evaporate. This covers four questions the desk raised in sequence: can the factory require a 4626 wrapper, can deposits auto-wrap, who actually deploys a tranche set, and what the governance role really is. None of this is implemented yet — it's the shape we'd build, with the decisions flagged at the end. Code references are to `build/src/` at `48cc01d`.*
+*How a tranche set comes into existence, who can create one, how capital enters, and what the governance role is. This document is self-contained: it states the target design and the decisions still open, in that order. None of it is implemented at `48cc01d` — the contracts there reflect an earlier deployment model (owner-gated factory, wrapper-share deposits). Companions: `Six-Seven-Mechanisms-Report.md` for the tranche mechanics themselves, `Design-Risk-Specification.md` for the original design rationale.*
 
 ---
 
-## 1. The wrapper becomes a precondition, and the factory stops trusting its caller
+## Decisions outstanding
 
-Today `deployTranches` takes `underlyingVault` as a parameter and *derives* the market from it (`vault.market()`). The fake-vault vector this opens is closed only by the owner gate — that was the SR-B fix, and it works by trust rather than by structure.
+Everything below the line is designed; these are the calls that still need an owner before it ships.
 
-Invert it. `deployTranches(market, …)` and the factory **resolves** the wrapper itself:
+| # | Decision | What hangs on it | Owner |
+|---|---|---|---|
+| O1 | **Foundation sign-off on the deployment posture**: borrower-gated, ownerless factory, bounds in code | Blocks the factory build. The design exists *because* of the neutrality constraint (§1), but the Foundation should confirm the posture is right before it's cast in code | Foundation |
+| O2 | **Governance holder per facility**: borrower Safe vs lender-side vs neutral third party | If the borrower holds it, they control both senior-rate dials *and* the un-timelocked wind-down trigger — legitimate, but it must be disclosed to senior buyers in those words. A lender-side governance sells senior more easily | Desk + borrower, per term sheet |
+| O3 | **ToU / MLA papering for tranche-only buyers**: under the USDC front door (§2), buyers never touch the market's hooks, so market-level ToU acceptance never reaches them | Blocks shipping the USDC entry path. Does a tranche deposit constitute acceptance, or does the tranche layer need its own click-through/papering? The entry gates are the enforcement point either way | Legal |
+| O4 | **Governance-recovery bit per facility** (`borrowerRecovery` on/off at deploy) | The mechanism (§6) is built once; each facility chooses. Recommended default: **off** — governance loss is a safe failure mode here, and assurance-maximal facilities should be able to point at the bit | Per-facility, at deploy |
+| O5 | **Supersession policy**: one live controller per market, replacement only when the incumbent is empty or wound down, never concurrent | Mechanism argument in §4 is one-sided (concurrency breaks senior priority at the market layer); needs a policy nod, not analysis | Desk + Foundation |
+| O6 | **Senior entry policy for the first facility** (which gate/provider set, if any) | Covered in the mechanisms report (§12 there); listed here because the USDC front door promotes the gates from hygiene to the *only* per-user compliance surface | Desk + borrower |
 
-- Hold an immutable reference to the `Wildcat4626WrapperFactory` and look up its market → wrapper registry (one canonical wrapper per market, same shape as our own `controllerForMarket`). If the deployed factory turns out to expose only an `isWrapper()` check or a deterministic deploy address rather than a mapping getter, the fallback is accepting the wrapper address but requiring `wrapperFactory.isWrapper(w) && w.market() == market`. *(Five-minute check against the real ABI still owed.)*
-- `require(wrapper != address(0), "NO_WRAPPER")` — which is exactly the invariant asked for: **no 4626 facility, no tranche set.**
-- `underlyingVault` leaves `DeployParams` entirely. One fewer trusted input; the fake-vault class dies structurally instead of by owner discipline.
+Settled design, pending build (no decision left, just engineering): the slimmed factory (§1), the USDC front door (§2), the supersession mechanism (§4), the recovery mechanism (§6), declarer retirement (§6), and pinning three function names against deployed ABIs — the wrapper factory's registry getter, its deploy entrypoint, and the market's `borrower()` getter.
 
-Settled (desk confirmed): the wrapper factory's deployment **is permissionless**, so `deployTranches` composes it — resolve the wrapper, deploy it if missing, then deploy the tranche set, all in one transaction. The "no wrapper, no tranche set" invariant becomes self-satisfying rather than a sequencing rule, and the borrower's single `deployTranches(market, …)` call brings up the whole stack atomically: wrapper (if absent) + controller + both tranche tokens. Since the wrapper factory enforces one canonical wrapper per market, the compose is idempotent — deploying against a market that already has its wrapper just resolves it. The outstanding ABI check narrows to pinning exact function names (the registry getter and the deploy entrypoint), not permissioning.
+---
 
-While we're removing trusted inputs: `sentinel` shouldn't be caller-supplied either (resolve the canonical one), and `borrower` stops being a parameter because it's derived from the market. `DeployParams` shrinks to economics + governance + declarer + token symbols.
+## 1. Deployment: the borrower brings up the whole stack in one transaction
 
-## 2. One front door: the controller becomes the lender of record
+**Who deploys:** the market's borrower, and only the borrower. `deployTranches(market, …)` is gated on `msg.sender == market.borrower()`.
 
-*(This section was first drafted as "auto-wrap `abcUSDC`, decline raw USDC." The desk pushed back on the decline, and the pushback wins — recorded here as reversed.)*
+**What one call does:** the factory checks the market is registered (`ArchController.isRegisteredMarket`), resolves the market's canonical ERC-4626 wrapper from the `Wildcat4626WrapperFactory` — **deploying it in the same transaction if it doesn't exist yet**, which the wrapper factory permits since its deployment is permissionless — then deploys the controller and both tranche tokens. One transaction, full stack, atomic. The "a market must have a 4626 wrapping facility before it can be tranched" invariant is self-satisfying: the factory makes it true rather than checking it. The compose is idempotent, because the wrapper factory enforces one canonical wrapper per market.
 
-The winning observation is that **the exit path already treats the controller as a market lender**: `requestRedeem` unwraps and the controller itself calls `queueWithdrawal` / `executeWithdrawal` — lender-of-record operations. The current design enters as a wrapper-user and exits as a market lender; that asymmetry is the inelegant part, and taking USDC at the front door removes it rather than adding novelty.
+**What the borrower supplies:** economics (`seniorShareBips`, `minJuniorBips`, `defaultPenaltyWindow`), the governance address, the optional `defaultDeclarer`, and the tranche token name/symbols. Nothing else — the wrapper is resolved, the sentinel is canonical, and the borrower address is derived from the market. Every removed parameter is a removed attack surface: there is no fake-wrapper vector when nobody supplies a wrapper.
 
-On "isn't the 4626 wrapper already a lender into the market?" — yes, with one precision that is the whole implementation question. The wrapper is a lender in the **holder-of-claims** sense: one address pooling market tokens for many users, trusted by the market's compliance model, re-enforcing the sentinel per user underneath. It is *not* a lender in the **depositor-of-record** sense — it never calls `market.deposit()`; it receives already-minted `abcUSDC` by transfer and so never clears the market's deposit hooks. The controller-as-lender design extends the proven pattern exactly one step: pooled holder → pooled depositor. The market-side prerequisite is that the controller must be credentialed under the market's hooks policy — trivial in the borrower-deploys world, since the borrower controls that policy and deploys the tranche set; it's one more step in the same ceremony.
+**Why the borrower and not the protocol:** Wildcat Labs and the Wildcat Foundation are bound to neutrality — they cannot select or endorse an attachment point. A Foundation that deploys on borrower application with parameters passed through verbatim is the borrower deploying with extra ceremony, plus the optics of an approval that was never given. And borrower-set terms are not a deviation from Wildcat's model — they *are* the model: on a base market the borrower already sets every term lenders face (APR, capacity, reserve ratio, grace, withdrawal cycle, lender access). The subordination parameters are more terms of the same offer.
 
-Two variants, sequenced:
+**Why this is safe for lenders:** two reasons, one structural and one economic.
 
-- **Variant B — adopt now: USDC front door, wrapper retained internally.** Controller pulls USDC → `market.deposit()` as lender of record → wraps the minted `abcUSDC` into `v-` for itself → all existing share-based accounting runs unchanged (`markPps`, the high-watermark freeze, SR-D live-price sizing — none of it moves, because it keys off wrapper shares the controller still holds). Three accepted entry assets — USDC / `abcUSDC` / `v-` — one valuation path, USDC in and USDC out. Small diff, whole product win.
-- **Variant A — defer to v2: drop the wrapper, hold rebasing `abcUSDC` directly.** The full "single location" version, cleaner in the limit — but it rewrites the valuation core against `scaleFactor` directly (watermark freeze, redemption sizing, and the SR-D bug class all re-derive in new denominations), reopening the audited surface for a benefit buyers can't see. Q1's reuse-the-audited-wrapper call was the biggest de-risking decision in the spec; spend it only when a v2 exists anyway. *(If A ever lands, §1's wrapper precondition dissolves with it.)*
+- *Structural:* neutrality lives in hard-coded bounds — `minJuniorBips` ∈ [5%, 90%], `defaultPenaltyWindow` ≤ 90 days, `seniorShareBips` ≤ 100% — plus the registration check and the wrapper resolution. No discretion exists anywhere in the factory, so the factory needs **no owner at all**. Squatting is impossible: exactly one address in existence can deploy for a given market, and it's the one with the legal identity behind the facility.
+- *Economic:* the subordination gate makes deployment and capital formation separable. A fresh tranche set cannot accept one unit of senior until junior — whitelisted, sophisticated, first-loss — funds it to the floor. Parameters are therefore *ratified by the first junior deposit*: a badly parameterised set isn't a trap, it's inert. The junior anchor is the de facto underwriter, which is exactly who it should be.
 
-Consequences of B worth stating plainly:
+## 2. Entry: one front door, the controller as lender of record
 
-- **The buyer base decouples from the market's access policy.** A USDC-only senior buyer never touches the market's hooks and never becomes a Wildcat market lender. That is the distribution feature — and the borrower consents to it by deploying. But it means the market's per-lender ToU/MLA acceptance no longer reaches tranche buyers; the papering has to happen at the tranche layer. Legal question, not code (D9).
-- **The `IEnterGate` work is promoted from hygiene to load-bearing.** With end users invisible to the market's hooks, the tranche gates plus sentinel *are* the entire per-user compliance surface.
-- **The `maxTotalSupply` objection from the first draft is withdrawn** — the capacity constraint exists wherever the deposit happens; a lender minting `abcUSDC` directly hits the same wall. One require with a good error message, and senior capacity is junior-gated before it's market-gated anyway.
-- **Sanction-nuke posture is unchanged precedent.** A pooled depositor has the same whole-pool exposure to address-level sanctioning as the pooled holder (the wrapper) always had; that's the Q14 rationale for re-enforcing per-user at the pool layer, and it carries over as-is.
+Depositors bring **USDC** (or, equivalently, the market token `abcUSDC`, or wrapper shares `v-abcUSDC` — three accepted assets, one valuation path) and receive senior or junior tranche tokens. For USDC, the controller deposits into the market itself — it is the **lender of record** — receives the market token, and wraps it into `v-` shares for its own custody. All tranche accounting runs on wrapper shares.
 
-## 3. Who deploys: the borrower, inside code bounds — and the factory can lose its owner entirely
+This makes the controller "one more lender among the market's lenders, with extensible functionality" — and that is less novel than it sounds, in two ways:
 
-The current answer is "the factory owner" (Wildcat ops), which was the SR-B fix. It doesn't survive contact with the constitutional structure: **Labs and the Foundation are bound to neutrality.** They can't select or endorse an attachment point. A Foundation that deploys on borrower application, parameters passed through verbatim, is the borrower deploying with extra ceremony — plus the optics of having "approved" numbers it explicitly does not vet. Worst of both. Dropped.
+- **The exit path already works this way.** The controller queues and executes withdrawals on the market directly (`queueWithdrawal` / `executeWithdrawal`) — lender-of-record operations. A design that enters as a wrapper-user but exits as a market lender is asymmetric for no benefit; the front door completes the pattern rather than introducing it.
+- **The 4626 wrapper is precedent for a pooled contract-lender.** The wrapper is a lender in the *holder-of-claims* sense: one address pooling market tokens for many users, trusted by the market's compliance model, re-enforcing the sanctions sentinel per user underneath. What it is not is a *depositor of record* — it never calls `market.deposit()`, so it never clears the market's deposit hooks. The controller extends the proven pattern exactly one step, from pooled holder to pooled depositor. The one new prerequisite: the borrower credentials the controller under their market's hooks policy — a natural step in the deployment ceremony, since the borrower controls that policy and deploys the tranche set. If the step is missed, deposits revert loudly; nothing silent fails.
 
-And the objection to borrower-initiated ("the borrower picks the attachment point of a product sold to lenders") doesn't survive contact with how Wildcat already works, twice over:
+**Why the wrapper stays in the custody path** (rather than the controller holding rebasing `abcUSDC` directly): the entire audited valuation core — the price-per-share watermark, the delinquency freeze, live-price redemption sizing — is written against wrapper shares, and reusing the audited wrapper was the single largest de-risking decision in the original spec. Holding the rebasing token directly is the cleaner end-state (a true single custody location), but it rewrites the valuation core against `scaleFactor` and reopens the audited surface for a benefit buyers can't see. It's a v2 move, to be taken only when a v2 exists for other reasons; if it ever lands, the wrapper precondition in §1 dissolves with it.
 
-1. **On a base market the borrower already sets every term lenders face** — APR, capacity, reserve ratio, grace, cycle, even lender access via their hooks policy. Terms are a transparent take-it-or-leave-it offer and capital votes. `minJuniorBips` is just another term of that offer.
-2. **The subordination gate is an economic ratification step.** A fresh tranche set cannot take one unit of senior until junior funds first — the §5 sequencing from the mechanisms report. So deployment access and capital formation are separable: deploy whatever attach point you like; the parameters are then priced by whether first-loss capital shows up. A badly-parameterised set isn't a trap, it's *inert*. The junior anchor is the de facto underwriter, which is exactly who it should be.
+**Consequences to hold in view:**
 
-So: **`deployTranches(market, …)` gated on `msg.sender == market.borrower()`.** This closes the SR-B squatting vector as tightly as the owner gate did — exactly one address in existence can deploy for a given market, and it's the one with the legal identity behind the facility — without any trusted party. Neutrality lives where it already lives in Wildcat: hard-coded bounds (`minJuniorBips` ∈ [5%, 90%], window ≤ 90d, share ≤ 100%), the `isRegisteredMarket` check, and the wrapper precondition from §1. No discretion anywhere means **no owner is needed at all**: supersession (below) can be borrower-gated under an objective condition too, at which point the factory has no privileged role whatsoever. The most defensible answer to "who deploys" turns out to be: the code does, on the borrower's initiative, inside bounds fixed for everyone in advance.
+- **The buyer base decouples from the market's access policy.** A USDC-only senior buyer never becomes a Wildcat market lender and is invisible to the market's hooks. That's the distribution feature — the borrower consents by deploying — but it means market-level ToU/MLA acceptance never reaches these buyers. Papering moves to the tranche layer (decision O3), and the tranche entry gates become the *entire* per-user compliance surface, not a nice-to-have.
+- **Market capacity applies at deposit like it would to any lender.** If the market is at `maxTotalSupply`, a USDC deposit reverts — same wall a direct lender hits, surfaced with a clear error. In practice senior capacity is junior-gated by the subordination floor before it is market-gated.
+- **Sanctions posture is unchanged from the wrapper's.** A pooled depositor has the same whole-pool exposure to address-level sanctioning as the pooled holder always had; that is precisely why the tranche layer re-enforces the sentinel per user, with escrow, underneath.
 
-*(Mechanical footnote: hangs on the market exposing `borrower()` — Wildcat markets carry the borrower address publicly, but pinning the exact getter belongs in the same ABI check as §1.)*
+## 3. One live controller per market; replacement, never concurrency
 
-## 4. One live controller per market; replacement yes, concurrency never
+Subordination is internal to a controller. At the market layer, two controllers on the same market are simply two pari-passu lenders — and the market's withdrawal batches pay pro-rata across everyone queued. Under stress, controller A's *senior* would compete on equal footing with controller B's *junior* for the same batch cash: someone else's first-loss capital gets paid while your senior waits. "Senior on this facility" would stop meaning one thing, which guts the product's core claim. Concurrency also fragments junior capital (the scarce resource) into thinner cushions, invites arbing two prices for one credit risk, and multiplies the token/integrator surface.
 
-The instinct for multiple controllers per market ("different parameters for different buyers, and the params are immutable anyway") has one killer flaw that only shows up at the market layer:
+What *is* needed is a replacement path, because the risk parameters are immutable: a mis-set floor or renegotiated terms can only be fixed by redeploying. Model it as **supersession** — a borrower may deploy a replacement set for their market only when the incumbent is empty or wound down; the old set retires (deposits closed, exits live forever); the registry points at the current one. One live controller per market at all times, history preserved, no pari-passu dilution ever.
 
-**Subordination is internal to a controller. At the market layer, two controllers are pari-passu lenders.** The market's withdrawal batches pay pro-rata across everyone queued — so under stress, controller A's *senior* competes on equal footing with controller B's *junior* for the same batch cash. Someone else's first-loss capital gets paid while your senior waits. "Senior on this facility" stops meaning one thing, which guts the product's core claim. Everything else piles on: junior capital (already the binding constraint) fragments into thinner cushions, two prices for one credit risk invite arbing the structure instead of underwriting the borrower, and the symbol/integrator confusion multiplies.
+## 4. The governance role: capabilities, not an interface
 
-Where the instinct is right is *replacement*: a mis-set immutable parameter or renegotiated terms need a redeploy path. Model it as **supersession**, not concurrency — a re-deploy for a market is allowed only when the incumbent is empty or wound down; the old set retires (deposits closed, exits live); the registry points at the current one. One live controller per market at all times, history preserved, no pari-passu dilution ever. The "different products on one facility" case we'd also decline on the same grounds — that differentiation belongs in junior sizing above the floor and in secondary pricing.
+The controller never calls *into* the governance address — the role is purely an originator of calls (one modifier, one require, no callbacks, and no funds ever flow to it; this design has no fees). So there is no interface to implement. The requirement is behavioral: **anything that can make arbitrary outbound calls to the controller, forever.** An EOA, a Safe, a timelock contract, or a DAO executor all qualify out of the box; anything that can't originate calls would brick the role. The existing two-step rotation screens for this once — a proposed successor must itself call `acceptGovernance()`, so a call-incapable address simply never completes the handover — though it cannot screen for *ongoing* liveness (a Safe that loses its owners after accepting still bricks; no interface can test for that).
 
-## 5. Governance: there is no interface, only capabilities — and one undelayed power
-
-The controller never calls *into* `governance`; the role is purely an originator of calls (one modifier, one require, no callbacks, no funds flow — this design has no fees). So the "interface" is behavioral: **anything that can make arbitrary outbound calls to the controller, forever.** An EOA, a Safe, a timelock, a DAO executor all work out of the box. Anything that can't originate calls bricks the role — and the existing two-step rotation already screens for that once, since a proposed successor must itself call `acceptGovernance()`. (Screens *once*: a Safe that accepts on day one and loses its owners later still bricks. No interface can test for ongoing liveness.)
-
-What the role actually holds:
+What the role holds:
 
 | Power | Bounded by |
 |---|---|
-| `proposeSeniorShareBips` / cancel | ≤ 100% of APR, 48h timelock, execution permissionless |
-| `setJuniorAllowed` | Entry-gating only; can't touch existing holders |
+| `proposeSeniorShareBips` / cancel | ≤ 100% of the market APR, 48h timelock, execution permissionless |
+| `setJuniorAllowed` | Entry-gating only; cannot touch existing holders |
 | `setDepositsPaused` | Deposits only, never exits |
 | `setDefaultDeclarer` | Non-zero, evented |
 | **`declareDefault`** | **Nothing. Un-timelocked, irreversible, immediate wind-down.** |
 | `proposeGovernance` | Two-step, non-zero |
 
-The fifth row is the one to remember when choosing a holder: governance isn't just parameter-tuning, it's a live kill switch. In a borrower-deployed world, a borrower keeping governance is holding the wind-down button on themselves (mostly self-harm) — but if the borrower also keeps governance they hold **both dials of the senior rate** (base APR market-side, `seniorShareBips` tranche-side). Consistent with Wildcat's model, but it must be disclosed to senior buyers in exactly those words. Naming a lender-side or neutral governance at deploy is the borrower's offer to make, and would make senior easier to sell.
+The fifth row is the one to remember when choosing a holder: governance is not just parameter-tuning, it includes a live, undelayed kill switch. A borrower holding governance is holding the wind-down button on their own facility — mostly self-harm — but a borrower-governance also controls **both dials of the senior rate** (base APR market-side, `seniorShareBips` tranche-side). That's consistent with Wildcat's borrower-sets-terms model, and it must be disclosed to senior buyers in exactly those words (decision O2). An ERC-165 "governance-capable" marker was considered and adds nothing: EOAs can't answer it, and answering it proves nothing about future liveness.
 
-An ERC-165 marker interface for "governance-capable" contracts is possible and buys nothing (EOAs can't answer it; answering doesn't prove future liveness). Skip.
+## 5. Governance recovery: a dead-man's switch with an incumbent veto — or nothing
 
-## 6. Deployer-changeable governance: only as a dead-man's switch with an incumbent veto
+Lost governance is currently stuck forever. Note first that this is a *safe* failure mode: the logic is immutable, the subordination floor is immutable, the senior share freezes at its last value, exits can never be gated, and the terminal default trigger fires with no governance at all. Frozen, not dangerous — so "no recovery path" is a defensible choice, and some facilities will prefer it.
 
-The naive version — deployer holds a standing `setGovernance` — collapses the role: the deployer becomes the real governance with extra steps, and any lender-side governance named as a selling point becomes revocable exactly when it matters. Rejected.
+For facilities that want recovery, exactly one shape preserves both recoverability and non-ruggability:
 
-But the problem is real: lost governance is currently stuck forever. Two honest observations first: (a) frozen-governance is a *safe* failure mode here — logic immutable, floor immutable, share frozen at last value, exits ungateable, and the day-118 ToU mirror fires with no governance at all; so "do nothing" is defensible. (b) If we do want recovery, there is exactly one shape that keeps both properties:
+- **`reclaimGovernance(next)`** — callable only by `market.borrower()` (derived live, never a stored deployer address), starting a long timelock (~30 days), loudly evented.
+- **The incumbent governance can cancel with a single call at any time in the window.** The veto *is* the liveness oracle: dead governance cannot veto, so recovery completes; live governance vetoes in one transaction, so takeover against a functioning holder is impossible. The recovery path is strictly weaker than the role it recovers.
+- Completion still runs through the standard two-step, so governance can't be reclaimed onto a call-incapable address either.
 
-- **`reclaimGovernance(next)`** — callable only by `market.borrower()` (derived live, not a stored deployer), starts a long timelock (~30 days), loudly evented.
-- **Current governance can cancel with one call at any time during the window.** The veto *is* the liveness oracle: dead governance can't veto, so recovery completes; live governance vetoes in one transaction, so takeover against a functioning holder is impossible. The recovery path is strictly weaker than the role it recovers.
-- Completion still runs through the existing two-step, so you can't reclaim onto a bricked address either.
+A standing borrower power to replace governance directly is rejected outright: it would make the borrower the real governance with extra steps, and any lender-side governance named as a selling point would be revocable exactly when it mattered. The existence of the recovery path is therefore a **per-deployment bit** (`borrowerRecovery`), immutable after deploy, readable on-chain, priced by buyers (decision O4).
 
-And per the house philosophy (same as the entry gates): make its *existence* a per-deployment bit — `borrowerRecovery` on/off, immutable, readable on-chain, priced by buyers. Assurance-maximal facilities deploy with it off.
-
-Corollary spotted one layer down: `setDefaultDeclarer` rejects `address(0)`, so a declarer can be appointed but never *retired* back to the pure ToU mirror. That require wants a deliberate zero-exception (or a separate `clearDefaultDeclarer()`), else the discretionary trigger is one-way in the wrong direction.
+One adjacent fix while in this part of the code: `setDefaultDeclarer` currently rejects the zero address, meaning a declarer can be appointed but never *retired* back to the pure Terms-of-Use default trigger. A deliberate zero-exception (or `clearDefaultDeclarer()`) makes the discretion removable — one-way doors should point toward less discretion, not more.
 
 ## The map
 
-Solid = assets, dashed = control/reads. New pieces from these notes are the borrower-deploys rail, the wrapper-existence check, the auto-wrap hop, and the veto-able recovery edge.
+Solid = assets, dashed = control/reads.
 
 ```mermaid
 flowchart TB
   subgraph DEPLOY["deployment rail (once per market)"]
-    BORROWER["Six Seven Ltd\n(market.borrower())"]
+    BORROWER["Borrower\n(market.borrower())"]
     TF["TrancheFactory\nownerless · bounds in code\none live set per market · supersession"]
     WF["Wildcat4626WrapperFactory"]
     ARCH["ArchController"]
@@ -113,17 +111,17 @@ flowchart TB
   subgraph CAPITAL["capital rail (continuous)"]
     SL["Senior lenders"]
     JL["Junior lenders\n(whitelist / gate)"]
-    TC["TrancheController\nsr- / jr-abcUSDC"]
-    W["v-abcUSDC wrapper"]
-    M["abcUSDC market\n14d batches · grace 28d · reserve 0"]
-    SL -->|"USDC · abcUSDC · v- (one front door)"| TC
-    JL -->|"USDC · abcUSDC · v- (one front door)"| TC
+    TC["TrancheController\nsr- / jr- tokens"]
+    W["v- wrapper"]
+    M["Wildcat market\nbatches · grace tracker"]
+    SL -->|"USDC · market token · v- (one front door)"| TC
+    JL -->|"USDC · market token · v- (one front door)"| TC
     TC -->|"deposit USDC — lender of record"| M
     TC -->|"wrap / redeem @ live px"| W
     W <-->|"scaleFactor"| M
-    M <-->|"borrow / repay +10%"| BORROWER
+    M <-->|"borrow / repay + APR"| BORROWER
     M -->|"USDC @ expiry → _allocate → claim, senior-first"| TC
-    TC -.->|"reads: APR · isDelinquent · timeDelinquent (day 118)"| M
+    TC -.->|"reads: APR · isDelinquent · timeDelinquent"| M
   end
 
   subgraph CONTROL["control rail"]
@@ -137,23 +135,6 @@ flowchart TB
   TF ==>|"deploys"| TC
 ```
 
-## Decisions to be made
-
-| # | Decision | Recommendation | Who decides |
-|---|---|---|---|
-| D1 | Factory resolves wrapper; require it exists; drop `underlyingVault`, `sentinel`, `borrower` from params | Yes — structural fix, kills SR-B class outright | Eng |
-| D2 | ~~Deploy-wrapper-if-missing vs sequencing rule~~ **Resolved: compose.** Wrapper factory is permissionless (desk confirmed), so `deployTranches` deploys the wrapper if missing — one-transaction bring-up of the full stack | Done as a decision; ABI check narrows to pinning getter/entrypoint names (and `market.borrower()`) | Eng |
-| D3 | Entry surface: USDC front door — controller as lender of record (variant B), `abcUSDC` and `v-` also accepted, wrapper retained internally; direct-holding variant A deferred to v2 | Adopt B now; A only alongside a v2 re-audit | Eng (reversed from first draft's "decline raw USDC" on desk pushback) |
-| D4 | Deployment access: borrower-gated, bounds-in-code, **ownerless** factory | Yes — neutrality-compatible, squat-proof, junior deposit ratifies the params | Eng + Foundation sign-off on the neutrality posture |
-| D5 | Concurrency vs supersession | One live set per market; supersession only when incumbent empty/wound-down; never concurrent | Eng (mechanism), desk (policy) |
-| D6 | Governance holder for the abcUSDC facility | Borrower-Safe is legitimate but must be disclosed as "both senior-rate dials + kill switch"; lender-side/neutral governance sells senior better | Desk + borrower, commercial |
-| D7 | `borrowerRecovery` dead-man's switch (30d, incumbent veto, per-deploy bit) | Build the mechanism; default the bit **off** | Eng builds, per-facility choice at deploy |
-| D8 | Allow retiring `defaultDeclarer` to zero | Yes — small, restores the pure ToU mirror as a reachable end state | Eng |
-| D9 | ToU/MLA acceptance for tranche-only buyers (who never touch the market's hooks under D3-B) — does a tranche deposit constitute acceptance, or does the tranche layer need its own papering? | Needs an answer before D3-B ships; gates (F8 PR) become the enforcement point | Legal |
-| D10 | Credential the controller under the market's hooks policy as a deployment-ceremony step (D3-B prerequisite) | Yes — borrower-side step, document in the deploy runbook; a missed step fails loudly (deposits revert) | Desk runbook |
-
-Everything in D1–D3 and D8 belongs in the same pre-deployment PR as the token symbols, the `IEnterGate` pointers, and `claimMany` — one small PR, all touching `Params` / `_deposit` / factory, nothing in the waterfall — with the caveat that D3-B's USDC front door shouldn't *ship* ahead of D9's legal answer, since under it the gates are the only per-user policy the end buyer ever meets. D4/D5 change the factory and want the Foundation's nod on posture before code. D6 is a term-sheet conversation. D7 is a mechanism we build once and every facility chooses.
-
 ---
 
-*Companions: `Six-Seven-Mechanisms-Report.md` (mechanisms worked on the live terms), `Design-Risk-Specification.md` (original Q1–Q16), `Pashov-Audit-Report{,-Reaudit}.md` (audit trail). None of the above is implemented at `48cc01d`.*
+*The engineering that falls out of this document — the slimmed borrower-gated factory, the wrapper compose, the USDC front door, the recovery mechanism, declarer retirement — sits in one pre-deployment PR alongside the tranche-token symbol fix, the entry-gate pointers, and `claimMany` (see the mechanisms report). The USDC front door ships only after O3 has a legal answer, since under it the entry gates are the only per-user policy a buyer ever meets.*
