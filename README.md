@@ -16,7 +16,9 @@ booked as profit.
 
 ## Documentation
 - [Tranching-Explained.md](Tranching-Explained.md): plain-language explainer of the whole facility (also rendered to PDF under `report/`).
-- [Design-Risk-Specification.md](Design-Risk-Specification.md): the design and risk decisions behind the model.
+- [Design-Risk-Specification.md](Design-Risk-Specification.md): the design and risk decisions behind the model — Q1–Q16 as built, plus the adopted-pending-build access/deployment/entry decisions (Q17–Q21) and the open-decision register.
+- [report/Six-Seven-Mechanisms-Report.md](report/Six-Seven-Mechanisms-Report.md): every mechanism instantiated on a concrete facility (abcUSDC / Six Seven Ltd), with worked waterfalls, the distress clock, and the entry-gate design; companion infographic in `report/six-seven-mechanisms.html`.
+- [report/Deployment-Access-Governance-Notes.md](report/Deployment-Access-Governance-Notes.md): who deploys, how capital enters, what the governance role is, and the decisions still open.
 - [Red-Team-Technical-Framework.md](Red-Team-Technical-Framework.md): adversarial-review brief: trust model, invariants, and the candidate-weakness list.
 - [BD-Primer.md](BD-Primer.md): structured-credit framing for business development and trading desks.
 - [Wildcat-Tranching-Effort-Assessment.md](Wildcat-Tranching-Effort-Assessment.md): build effort and common-ground assessment vs Strata / Royco / Pareto.
