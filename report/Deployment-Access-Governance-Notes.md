@@ -17,7 +17,7 @@ Everything below the line is designed. These are the calls that still need an ow
 | O5 | **Supersession policy**: one live controller per market, replacement only when the incumbent is empty or wound down, never concurrent | The mechanism argument in §4 only goes one way [concurrency breaks senior priority at the market layer], so this needs a policy nod rather than more analysis | Desk + Foundation |
 | O6 | **Senior entry policy for the first facility** (which gate/provider set, if any) | Covered in the mechanisms report (§12 there). Listed here because the USDC front door makes the gates the only per-user compliance surface, not a nice-to-have | Desk + borrower |
 
-Settled design, pending build — no decision left, just engineering: the slimmed factory (§1), the USDC front door (§2), the supersession mechanism (§4), the recovery mechanism (§6), declarer retirement (§6), and pinning three function names against deployed ABIs (the wrapper factory's registry getter, its deploy entrypoint, and the market's `borrower()` getter).
+Settled design, pending build — no decision left, just engineering: the slimmed factory (§1), the USDC front door (§2), the supersession mechanism (§4), the recovery mechanism (§6), declarer retirement (§6), The deployed ABI names are pinned and verified against mainnet: `wrapperForMarket(address)`, `createWrapper(address)`, `borrower()`, and `depositUpTo(uint256) returns (uint256)` (see the build sheet's X1 row).
 
 ---
 

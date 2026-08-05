@@ -10,7 +10,7 @@ These block specific commits; everything else can be built while they resolve.
 
 | # | Needed | Blocks | From |
 |---|---|---|---|
-| X1 | Exact ABI names: the wrapper factory's market→wrapper getter, its deploy entrypoint, the market's `borrower()` getter, and the market's deposit function signature + return semantics | D, F | 15 minutes against the deployed contracts |
+| X1 | ~~Exact ABI names~~ **Resolved against mainnet** (chain 1, via RPC): registry getter `wrapperForMarket(address) → address` (returns the canonical wrapper, zero for an unknown market — verified live both ways); deploy entrypoint `createWrapper(address)` (verified against the production wrapper's actual deploy tx, `0xe0accabc…ba27`, block 24794633); `market.borrower()` (verified live, returns the borrower address); market deposits are `depositUpTo(uint256) returns (uint256 actual)` and all-or-revert `deposit(uint256)` (selectors verified in the deployed dispatch table; a simulated call passes access control and reverts `NullMintAmount()` on zero, confirming reachability; return arity per canonical Wildcat V2 source). Wrapper factory `0xea6de11f8f3f83c79bd9d8db5517fcfdf2bb148a`, its `archController()` = `0xfeb516d9…45ee4`, and the reference market is hooks-configured (`hooks()` set) — relevant to the D10 credentialing step | — | Done |
 | X2 | Foundation sign-off on the borrower-gated, ownerless factory posture | D | Foundation |
 | X3 | Legal answer on ToU/MLA acceptance for tranche-only buyers (does a tranche deposit constitute acceptance, or does the tranche layer need its own papering?) | F (merge/ship, not build) | Legal |
 | X4 | Confirmation that junior must always be gated (no zero junior gate) — assumed below | B6 | Desk, one word |
@@ -44,8 +44,8 @@ These block specific commits; everything else can be built while they resolve.
 
 ## D. Factory rework
 
-- **D1. Access.** `deployTranches(market, …)` requires `msg.sender == market.borrower()` (getter name from X1).
-- **D2. Wrapper resolution.** Query the wrapper factory's registry (name from X1); if absent, deploy via its permissionless entrypoint in the same transaction. Fallback if no registry getter exists: accept a wrapper argument but require `wrapperFactory.isWrapper(w) && w.market() == market`.
+- **D1. Access.** `deployTranches(market, …)` requires `msg.sender == market.borrower()` (pinned: `borrower()`, verified live).
+- **D2. Wrapper resolution.** `wrapperFactory.wrapperForMarket(market)`; if zero, `wrapperFactory.createWrapper(market)` in the same transaction (both pinned and verified live — the fallback path is no longer needed).
 - **D3. Sentinel.** Immutable constructor parameter of the *factory* (the canonical singleton), never caller-supplied per deployment.
 - **D4. Where do bounds live?** In the controller's constructor, where they already are. The factory adds access, resolution, and registry only — no duplicated requires, one source of truth.
 - **D5. Ownership.** Delete `owner`, `pendingOwner`, `transferOwner`, `acceptOwner`. The factory has no privileged role.
@@ -64,7 +64,7 @@ These block specific commits; everything else can be built while they resolve.
 - **F1. Entry shape.** One pair of entrypoints with an asset-kind enum: `depositSenior(AssetKind kind, uint256 amount, address receiver)` where `AssetKind ∈ {WrapperShares, MarketToken, USDC}` — over six near-identical functions.
   *Existing `depositSenior/Junior(underlyingShares, receiver)` can stay as thin wrappers for back-compat or be removed pre-deployment; nothing live depends on them. Decision: remove — cleaner surface, and there is no deployed integrator to break.*
 - **F2. Approvals.** Exact-amount approve per call via `SafeTransferLib` (handles USDC's non-standard return); no standing max allowances from the controller.
-- **F3. Measuring what arrived.** Use the market deposit's return value if it returns minted tokens, else balance-delta (X1 pins this). Wrap-to-`v-` uses the wrapper's returned share count — the existing valuation path from there down is untouched.
+- **F3. Measuring what arrived.** Use `depositUpTo(uint256)` and its returned actual amount (pinned; `deposit(uint256)` is all-or-revert and returns nothing, so `depositUpTo` + a check on the returned amount gives both the measurement and the capacity behaviour F4 wants). Wrap-to-`v-` uses the wrapper's returned share count — the existing valuation path from there down is untouched.
 - **F4. Capacity.** Let the market revert and bubble a wrapped error (`MARKET_AT_CAPACITY`) rather than pre-checking headroom — pre-checks race with other depositors in the same block.
 - **F5. Controller credentialing under the market's hooks** is operational (deploy runbook), not code. A missed step reverts deposits loudly.
 - **F6. Valuation.** `dV` computed from wrapper shares actually minted, exactly as today. No changes to `_effPps`, the watermark, or sizing.
