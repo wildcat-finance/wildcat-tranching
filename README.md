@@ -1,6 +1,6 @@
 # Wildcat In-House Tranching
 
-Senior/junior credit-tranche vault over a Wildcat ERC-4626 market wrapper (`v-wmtUSDC`).
+Senior/junior credit-tranche vault over a Wildcat ERC-4626 market wrapper (`v-abcUSDC` in the worked example).
 Conservative model: a senior target derived from the facility's base APR (a priority claim, not a guarantee), junior first-loss, a fixed
 subordination floor, realised-only valuation, async redemption routed through the market's batched
 withdrawal queue (senior-first), escrow on sanction, and a default trigger that mirrors Wildcat
@@ -12,7 +12,7 @@ The controller uses reentrancy guards and safe transfers, and values its holding
 is held at a high-watermark while the market is delinquent, so unrealised penalty accrual is never
 booked as profit.
 
-> Not yet audited.
+> Two agentic review cycles complete, every actionable finding regression-pinned. No human audit yet; one precedes real capital.
 
 ## Documentation
 - [Tranching-Explained.md](Tranching-Explained.md): plain-language explainer of the whole facility (also rendered to PDF under `report/`).
@@ -30,13 +30,13 @@ booked as profit.
 build/src/
   libraries/WaterfallMath.sol   # accrual, value/loss split, subordination, ToU default trigger
   TrancheController.sol         # brain: deposits, async redemption, default/wind-down, gating, gov
-  TrancheToken.sol              # Solady ERC20 + permit + ERC-4626 views (sr-/jr-wmtUSDC)
+  TrancheToken.sol              # Solady ERC20 + permit + ERC-4626 views (sr-/jr-, derived per market)
   TrancheFactory.sol            # protocol-level, ArchController-gated, one set per market
   interfaces/IExternal.sol      # lean interfaces matching the Wildcat ABIs
 build/test/
   Tranche.t.sol                 # unit/behaviour tests
   Fuzz.t.sol                    # property fuzz + stateful invariants (conservation, first-loss)
-  Fork.t.sol                    # mainnet-fork tests vs the real v-wmtUSDC + market
+  Fork.t.sol                    # mainnet-fork tests vs a live production wrapper + market
   Mocks.sol                     # full-fidelity mocks (market, wrapper, sentinel, arch, USDC)
 ```
 
@@ -53,7 +53,7 @@ cd build && forge test --no-match-path test/Fork.t.sol
 # mainnet fork only
 cd build && forge test --match-path test/Fork.t.sol -vv
 ```
-The fork suite deposits real `v-wmtUSDC`, decodes the live `MarketState`, and round-trips a
+The fork suite deposits shares of a live production wrapper, decodes the live `MarketState`, and round-trips a
 redemption through the real withdrawal queue. `forge-std` and `solady` are vendored under
 `build/lib`, so the suite builds on clone.
 

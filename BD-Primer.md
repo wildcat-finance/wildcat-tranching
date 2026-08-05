@@ -3,12 +3,12 @@
 *A plain-English summary for business-development and traditional-finance desk operators. Branded PDF: `report/Wildcat-Tranching-BD-Primer.pdf`.*
 
 ## The one-liner
-Take a single private-credit facility, say Wintermute borrowing USDC on Wildcat, and split the lender side into two pieces. A senior tranche earns a priority, target coupon protected by a first-loss buffer. A junior tranche takes the first loss in exchange for leveraged excess spread. Same borrower, same loan, two risk/return profiles, settled and enforced entirely by smart contract. From the borrower's seat nothing changes; it stays a single line of credit ("unitranche to the borrower").
+Take a single private-credit facility, say Six Seven Ltd borrowing USDC on Wildcat, and split the lender side into two pieces. A senior tranche earns a priority, target coupon protected by a first-loss buffer. A junior tranche takes the first loss in exchange for leveraged excess spread. Same borrower, same loan, two risk/return profiles, settled and enforced entirely by smart contract. From the borrower's seat nothing changes; it stays a single line of credit ("unitranche to the borrower").
 
 ## 1. The structure, in terms you already use
 | Structured-credit concept | How it shows up here |
 |---|---|
-| Senior / junior tranches | Two transferable tokens, `sr-wmtUSDC` and `jr-wmtUSDC`, each a claim on the same facility |
+| Senior / junior tranches | Two transferable tokens, `sr-abcUSDC` and `jr-abcUSDC`, each a claim on the same facility |
 | Attachment / subordination | Junior ≥ **20% of capital**, so senior sits behind a 20% first-loss cushion; senior leverage capped ~4× |
 | Interest waterfall | Facility interest pays the senior's target coupon first; residual ("excess spread") to junior |
 | Loss waterfall | Losses hit junior to zero before senior is touched: strict first-loss, enforced in code |
@@ -17,15 +17,15 @@ Take a single private-credit facility, say Wintermute borrowing USDC on Wildcat,
 | Event of default | Mirrors the facility's own legal default (90 days past grace) on-chain, triggering an orderly senior-first wind-down |
 
 ## 2. Lifecycle
-- **Subscribe.** A KYC'd lender deposits into senior or junior and gets the token. Junior is restricted to qualified first-loss providers.
+- **Subscribe.** A KYC'd lender deposits into senior or junior and gets the token. Deposits are taken in the market token or its wrapped `v-` form; a raw market-token deposit is wrapped on the way in. Junior is restricted to qualified first-loss providers.
 - **Accrue.** The senior token accretes toward its target coupon. Junior captures everything above it, levered, because it earns the spread on the whole facility against a thin slice.
 - **Redeem.** Exits run through the facility's redemption queue (request/claim), not instant daily liquidity; partial proceeds pay senior first.
 - **Default & recovery.** On a facility default, the senior's accrued claim freezes and the structure winds down. Recoveries, including off-chain legal enforcement, distribute senior-first, with junior absorbing the shortfall.
 
 ## 3. The two products
-**Senior · `sr-wmtUSDC`** is for capital preservation. A priority coupon set as a share of the facility APR (around 6.8% at an 8.5% facility rate), with a 20% junior buffer beneath. Loss only after junior is wiped. Queue-based, first in line on exit. *Buyers: treasuries, conservative credit, cash-plus.*
+**Senior · `sr-abcUSDC`** is for capital preservation. A priority coupon set as a share of the facility APR (around 6.8% at an 8.5% facility rate), with a 20% junior buffer beneath. Loss only after junior is wiped. Queue-based, first in line on exit. *Buyers: treasuries, conservative credit, cash-plus.*
 
-**Junior · `jr-wmtUSDC`** is levered first-loss "equity". Excess spread amplified (~4× the slice), no protection, first dollar of loss, can go to zero. Queue-based, paid after senior. *Buyers: credit funds, prop desks, yield-seekers.*
+**Junior · `jr-abcUSDC`** is levered first-loss "equity". Excess spread amplified (~4× the slice), no protection, first dollar of loss, can go to zero. Queue-based, paid after senior. *Buyers: credit funds, prop desks, yield-seekers.*
 
 ## 4. Why it appeals
 - **Senior buyer:** a defined priority coupon on a name you can underwrite, behind a hard 20% first-loss buffer, with collateral and waterfall visible on-chain in real time. Higher than bills/MMF, with an explicit subordination level.

@@ -2,7 +2,7 @@
 
 <img src="assets/tranche-mascot.png" alt="Wildcat tranching mascot" width="120" align="right"/>
 
-*Every question the pre-deployment PR has to answer, written out. The what-and-why is settled in `Design-Risk-Specification.md` §IX and `Deployment-Access-Governance-Notes.md`; this sheet is the implementation-level question list — the decisions an engineer hits while building, each with a recommendation where one is defensible, and a flag where the answer comes from outside the PR. Nothing here touches the waterfall.*
+*Every question the pre-deployment PR has to answer, written out. The what-and-why is settled in `Design-Risk-Specification.md` §IX and `Deployment-Access-Governance-Notes.md`; this sheet is the implementation-level list — the decisions an engineer hits while building. These are now locked as decisions rather than recommendations, bar the ones flagged as needing answers from outside the PR. Nothing here touches the waterfall.*
 
 ---
 
@@ -21,18 +21,17 @@ These block specific commits; everything else can be built while they resolve.
 
 ## A. Per-market token metadata
 
-- **A1. Supplied or derived?** Pass `name`/`symbol` explicitly in `DeployParams`, or derive on-chain from `IERC20(market).symbol()` (`"sr-" + symbol`)?
-  *Recommendation: supplied explicitly, with the factory defaulting from the market symbol when the fields are empty. Explicit wins on determinism (market symbols can be long, weird, or non-ASCII); the default keeps the common case zero-thought.*
-- **A2. Validation?** Require non-empty after defaulting; no on-chain length cap (wallets truncate fine).
+- **A1. Decided: derived on-chain.** The controller reads `IERC20(market).symbol()` at construction and mints `"Senior Tranched <SYM>"` / `sr-<SYM>` and `"Junior Tranched <SYM>"` / `jr-<SYM>`. `DeployParams` carries no name or symbol field, which is one less caller-supplied input and one less way for two facilities to end up with the same ticker.
+- **A2. Validation.** Require a non-empty market symbol at construction; no length cap (wallets truncate fine). A market with a broken `symbol()` fails deployment loudly, which is the right outcome.
 - **A3. Decimals** stay a params field, default 18. No change.
 
 ## B. Entry gates
 
 - **B1. Which interface, exactly?** Import Morpho Midnight's `IEnterGate` verbatim and call only `canIncreaseCredit(receiver)`; `canIncreaseDebt` goes unused (there is no borrower side here).
-  *Recommendation: verbatim import, unused function documented. A bespoke one-function interface would cost the shared-gate-deployment property for zero gain.*
+  *Decision: verbatim import, unused function documented. A bespoke one-function interface would cost the shared-gate-deployment property for zero gain.*
 - **B2. Where checked?** `_deposit` on the receiver, and `beforeTrancheTransfer` on the recipient. Never on the sender, never in `requestRedeem` or `claim` — mint/burn already bypass the transfer hook, which is what makes exits structurally ungateable. One check per exposure-increasing edge, no more.
 - **B3. Revert handling?** Plain call (the hook is `view`, so the gate call is naturally static) — a reverting gate blocks entry and secondary transfers but never exits.
-  *Recommendation: plain call, no try/catch. Guarding belongs in the gate implementation (the role-provider gate already fail-closes per provider); double-guarding in the controller hides gate bugs. Document for gate authors: return `false`, don't revert.*
+  *Decision: plain call, no try/catch. Guarding belongs in the gate implementation (the role-provider gate already fail-closes per provider); double-guarding in the controller hides gate bugs. Document for gate authors: return `false`, don't revert.*
 - **B4. Junior whitelist migration.** Remove `juniorAllowed` and `setJuniorAllowed` from the controller entirely; ship a minimal `WhitelistGate` (owner-managed mapping implementing `IEnterGate`) as the default junior gate.
   *Note: this removes a power from the controller's governance table — whitelist management moves to the gate's owner. The spec's Q16 power inventory needs the corresponding edit on merge.*
 - **B5. Mutability.** Both gate pointers immutable, set in the constructor from `Params`. Policy mutability lives inside the gate.
@@ -58,14 +57,14 @@ These block specific commits; everything else can be built while they resolve.
 ## E. Supersession
 
 - **E1. The predicate.** Replacement allowed when the incumbent's `status == WindDown`, **or** both tranche supplies are zero. An incumbent in wind-down keeps paying claims forever — replacement never touches it; the registry pointer is the only thing that moves.
-  *The exact "empty" definition is the one genuinely fiddly call in this PR: supplies-zero is clean and sufficient (no supply ⇒ no claims left to originate), but confirm no request can exist with both supplies zero and unclaimed cash — burned-at-request shares mean it can, so claims must remain payable on the retired controller regardless. They are: `claim` has no status gate.*
+  *The exact "empty" definition is the fiddliest call in this PR. Supplies-zero is clean and sufficient [no supply, so no new claims can originate], but note a request can exist with both supplies zero and unclaimed cash — shares burn at request time — so claims must stay payable on the retired controller regardless. They do: `claim` has no status gate.*
 - **E2. Who calls.** The borrower, same gate as D1.
 - **E3. Does the incumbent get a flag?** No forced state change on the old controller. Retirement is a registry fact, not a controller state — WindDown already froze deposits where it matters, and an empty-Active incumbent has nothing at stake.
 
 ## F. USDC front door *(build now, merge/ship behind X3)*
 
 - **F1. Entry shape.** One pair of entrypoints with an asset-kind enum: `depositSenior(AssetKind kind, uint256 amount, address receiver)` where `AssetKind ∈ {WrapperShares, MarketToken, USDC}` — over six near-identical functions.
-  *Existing `depositSenior/Junior(underlyingShares, receiver)` can stay as thin wrappers for back-compat or be removed pre-deployment; nothing live depends on them. Recommendation: remove — cleaner surface, and there is no deployed integrator to break.*
+  *Existing `depositSenior/Junior(underlyingShares, receiver)` can stay as thin wrappers for back-compat or be removed pre-deployment; nothing live depends on them. Decision: remove — cleaner surface, and there is no deployed integrator to break.*
 - **F2. Approvals.** Exact-amount approve per call via `SafeTransferLib` (handles USDC's non-standard return); no standing max allowances from the controller.
 - **F3. Measuring what arrived.** Use the market deposit's return value if it returns minted tokens, else balance-delta (X1 pins this). Wrap-to-`v-` uses the wrapper's returned share count — the existing valuation path from there down is untouched.
 - **F4. Capacity.** Let the market revert and bubble a wrapped error (`MARKET_AT_CAPACITY`) rather than pre-checking headroom — pre-checks race with other depositors in the same block.

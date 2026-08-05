@@ -21,7 +21,7 @@ The analysis below is complete; these are the calls still open, in the order the
 | **Loan Agreement & `defaultDeclarer`** | Zero declarer = pure ToU day-118 mirror; a bilateral agreement names a lender-side declarer and changes the default definition | §2, §12.4 | Legal + desk |
 | **Human audit engagement** | Two agentic audit cycles are not an audit engagement; required before real capital | §10 | Protocol |
 
-Settled design, pending build (one pre-deployment PR): tranche token symbols into `Params` (§11), the entry-gate pointers (§12), `claimMany` (§7), and the deployment/entry changes in the companion notes.
+Settled design, pending build (one pre-deployment PR): tranche token metadata derived from the market symbol (§11), the entry-gate pointers (§12), `claimMany` (§7), and the deployment/entry changes in the companion notes.
 
 ---
 
@@ -76,7 +76,7 @@ At 10,000,000 supplied with junior exactly at its 20% floor:
 | Junior `jr-abcUSDC` | 2,000,000 | 20% |
 | **Total** | **10,000,000** | 100% |
 
-Senior leverage is **4.00×** — exactly at the cap. This is the binding state, and §5 shows it has a consequence people usually miss.
+Senior leverage is **4.00×**, right at the cap. This is the binding state, and §5 works through what that actually means for placement.
 
 ---
 
@@ -133,7 +133,7 @@ Both subordination gates are exactly binding right now. Running the library func
 
 So on the 5,000,000 of remaining capacity: **senior cannot deposit a single unit, and junior cannot withdraw a single unit.** The facility's growth is gated entirely on junior, and junior's exit is gated entirely on senior shrinking.
 
-The path to capacity is therefore fixed, and it is pleasingly exact:
+The path to capacity is therefore fixed, and the arithmetic lands exactly:
 
 | Step | Junior | Senior | TVL | `maxSeniorDeposit` after |
 |---|---|---|---|---|
@@ -143,7 +143,7 @@ The path to capacity is therefore fixed, and it is pleasingly exact:
 
 1,000,000 of new first-loss capital unlocks exactly 4,000,000 of senior and lands precisely on the 15,000,000 capacity. Junior's rate stays 18.00% throughout, because the ratio is unchanged.
 
-**This is the operational finding.** Placing this facility is not "sell 5,000,000 of paper." It is "source 1,000,000 of first-loss, then sell 4,000,000 of senior, in that order." Sequencing it the other way round reverts on `SUBORDINATION`. If BD wants senior-led placement, the structure needs a warehousing arrangement where a junior provider commits first, or `minJuniorBips` needs to be set lower at deployment — and that is an immutable, one-shot decision.
+**This is the operational finding.** Placing this facility isn't "sell 5,000,000 of paper". It's "source 1,000,000 of first-loss, then sell 4,000,000 of senior, in that order" — sequence it the other way round and it reverts on `SUBORDINATION`. If BD wants senior-led placement, the structure needs a warehousing arrangement where a junior provider commits first, or `minJuniorBips` set lower at deployment. That one is immutable, so it's a one-shot decision.
 
 ---
 
@@ -162,7 +162,7 @@ Losses run the same waterfall from the bottom. Junior absorbs to zero before sen
 
 Senior's loss-given-default above the attachment point is `(L − 20%) / 80%` of its principal — a 30% pool loss costs senior 12.5%, a 50% pool loss costs it 37.5%.
 
-Two break-evens worth quoting to buyers, on a one-year view:
+Two break-evens to quote to buyers, on a one-year view:
 
 - **Junior** earns 360,000, which is **3.60% of the pool**. One year of carry absorbs a 3.60% pool loss before junior's principal is net down. Principal is exhausted at 20%.
 - **Senior** earns 640,000 against a 2,000,000 cushion, so cushion plus coupon absorbs a **26.4%** pool loss before senior is net down on the year.
@@ -183,7 +183,7 @@ The 14-day `withdrawalBatchDuration` is the clock the whole exit path runs on. O
 
 **Round-trip expectation:** on a fully-funded batch, up to 14 days plus settlement. Under-funded, the market pays pro-rata and the remainder rolls, so an exit under stress is a multiple of 14 days — and each roll re-tests the senior-priority gate. This is what "semi-liquid" concretely means on this facility: **a two-week floor and no ceiling.**
 
-**One rough edge.** `claim` is per-request, and there is no batch-claim helper. A senior holder exiting in tranches across a stressed period accumulates one request ID per 14-day cycle, each needing its own transaction. Access is O(1) so there is no DoS, but a holder with a dozen partial fills pays a dozen gas costs. On a 14-day cycle that accumulates faster than on a long one. A `claimMany(uint256[])` is a small, safe addition and I would add it before this facility goes live.
+**One rough edge.** `claim` is per-request and there's no batch-claim helper, so a senior holder exiting in tranches across a stressed period accumulates one request ID per 14-day cycle, each needing its own transaction. Access is O(1) so there's no DoS, but a holder with a dozen partial fills pays a dozen gas costs, and a 14-day cycle accumulates them faster than a long one would. `claimMany(uint256[])` is a small, safe addition and I'd add it before this facility goes live.
 
 ---
 
@@ -193,13 +193,13 @@ The 14-day `withdrawalBatchDuration` is the clock the whole exit path runs on. O
 
 `defaultReached()` fires at `timeDelinquent ≥ delinquencyGracePeriod + defaultPenaltyWindow` = `28 + 90` = **118 days** of accumulated delinquency. In the units that matter to a holder, that is **8.4 withdrawal cycles**. Until day 118 the structure cannot enter wind-down, senior accrual cannot be frozen, and no recovery waterfall can start.
 
-So the honest senior liquidity statement for this facility is: *your exit clears in 14 days if the borrower funds it, and if they do not, the structure cannot force the issue for 118 days — after which recovery depends on off-chain enforcement.*
+So the senior liquidity statement for this facility, said plainly: *your exit clears in 14 days if the borrower funds it, and if they don't, the structure can't force the issue for 118 days, after which recovery depends on off-chain enforcement.*
 
 ### 8.2 Grace is twice the withdrawal cycle, and that is the most senior-adverse term here
 
 The cycle is 14 days; grace is 28. So a borrower who ignores a senior exit request gets **two full withdrawal cycles with no penalty rate at all**. Penalty APR only begins on day 29.
 
-For a product whose entire pitch to senior is payment priority, that asymmetry is worth negotiating. Grace at 14 days would align one grace period to one exit cycle, so a borrower who misses a single batch starts paying immediately. This is a market parameter, not a tranche parameter — it is Six Seven Ltd's term, and changing it is a conversation with the borrower rather than a code change.
+For a product whose entire pitch to senior is payment priority, I'd push on that asymmetry. Grace at 14 days would align one grace period to one exit cycle, so a borrower who misses a single batch starts paying immediately. It's a market parameter rather than a tranche parameter — Six Seven Ltd's term — so changing it is a conversation with the borrower, not a code change.
 
 There is a second-order effect: `timeDelinquent` decays on cure rather than resetting, roughly 1:1 with time cured. A borrower oscillating inside a 28-day grace — delinquent 27 days, cured 27 days, repeating — **never pays a penalty and never approaches the 118-day trigger**, while senior's exits keep failing to clear. The wider the grace, the wider that band. Nothing in the code is broken here; the trigger is simply not reachable by a borrower who stays disciplined about the boundary.
 
@@ -229,7 +229,7 @@ Because junior sits at *exactly* 20%, the breach is not gradual — it begins in
 
 Senior accrues `640,000 / 365 = 1,753` a day, so a full slide to default costs junior **206,904, or −10.35% of book value**, before any actual loss.
 
-Two things to be precise about. First, this is **recoverable**: on cure, `_refreshMark()` releases the frozen gap in one step and junior gets it back, which is exactly what realised-only accounting is for. It is permanent only if the borrower never cures. Second, breach is **not an error state** — nothing reverts. `meetsSubordination` is only tested on senior deposit, and junior exit is gated by `maxJuniorWithdraw`. Both were already zero (§5). So the practical consequence of breach is that **the facility is frozen to new senior capital for the entire delinquency and cannot self-heal except by junior injecting more first-loss.**
+Two things to keep straight. First, this is **recoverable**: on cure, `_refreshMark()` releases the frozen gap in one step and junior gets it back, which is what realised-only accounting is for. It only becomes permanent if the borrower never cures. Second, breach is **not an error state** — nothing reverts. `meetsSubordination` is only tested on senior deposit, and junior exit is gated by `maxJuniorWithdraw`. Both were already zero (§5). So the practical consequence of breach is that **the facility is frozen to new senior capital for the entire delinquency and cannot self-heal except by junior injecting more first-loss.**
 
 ### 8.5 And the one action that heals it is penalised
 
@@ -264,17 +264,17 @@ No maturity means there is no scheduled event at which the structure resolves. T
 **Five mechanisms were added or changed by the audit cycles, beyond what the spec describes.** These are the substantive movements since the design doc, and they all sharpened senior priority:
 
 1. **The distress gate in `_allocate` is new.** The spec (Q11) said senior-priority allocation of settled proceeds. What is built is stronger: while distressed — delinquent *or* in wind-down — junior may only draw cash beyond the **entire** `seniorOwed`, not merely the senior face actually queued. This protects senior that has not queued yet, and it is what stops first-loss capital walking out during a slow-motion default. This mechanism is not in the design spec and should be written back into it.
-2. **Accrual now happens before the wind-down freeze.** The first audit cycle *accepted* dropping the final interest sliver at the default boundary as conservative. The re-audit reversed that: because the distress gate reserves `seniorOwed`, an understated `seniorOwed` enlarges junior's ceiling and leaks recovery to junior ahead of senior. `accrue()` now books interest while still Active and tests for default last, and `checkDefault` / `declareDefault` / `pokeRecovery` / `sync` all accrue first. A disposition that flipped from "accepted" to "bug" on second look is worth remembering.
+2. **Accrual now happens before the wind-down freeze.** The first audit cycle *accepted* dropping the final interest sliver at the default boundary as conservative. The re-audit reversed that: because the distress gate reserves `seniorOwed`, an understated `seniorOwed` enlarges junior's ceiling and leaks recovery to junior ahead of senior. `accrue()` now books interest while still Active and tests for default last, and `checkDefault` / `declareDefault` / `pokeRecovery` / `sync` all accrue first. A disposition that flipped from "accepted" to "bug" on second look; remember that one.
 3. **Redemptions are sized at the live price, not the frozen mark** (SR-D). Sizing at the frozen mark while the wrapper pays at the live price let an exiter during delinquency book unrealised penalty appreciation and dilute stayers.
 4. **Recovery is balance-derived, with a permissionless `sync()`** (SR-A). `market.executeWithdrawal` is permissionless, so USDC could arrive outside the measured delta and strand.
 5. **The factory is owner-gated with two-step ownership** (SR-B, R2), which also closes the fake-wrapper vector.
 
-**Two items are genuinely open, and both are product decisions rather than bugs:**
+**Two items remain open, and both are product decisions rather than bugs:**
 
-- **F8, senior credential-gating on transfer.** `sr-abcUSDC` transfers to any non-sanctioned address with no market-credential check. So a non-KYC'd party can acquire senior exposure on the secondary market even though they could not have deposited into the market directly. This is the one honest open design question in the system, and it is *more* pressing here than in the abstract: senior is the product being sold to treasuries and conservative allocators, and it is the tranche whose holder base a compliance desk will ask about. The choice is between delegating per-holder credential checks to the market's own hook or leaving senior freely transferable and sanction-gated only. It needs a decision before this facility is placed, not after. §12 proposes the mechanism that makes it a per-facility configuration rather than a global choice.
+- **F8, senior credential-gating on transfer.** `sr-abcUSDC` transfers to any non-sanctioned address with no market-credential check. So a non-KYC'd party can acquire senior exposure on the secondary market even though they could not have deposited into the market directly. This is the one real open design question in the system, and it's *more* pressing here than in the abstract: senior is the product being sold to treasuries and conservative allocators, and it is the tranche whose holder base a compliance desk will ask about. The choice is between delegating per-holder credential checks to the market's own hook or leaving senior freely transferable and sanction-gated only. It needs a decision before this facility is placed, not after. §12 proposes the mechanism that makes it a per-facility configuration rather than a global choice.
 - **Permit2 infinite allowance.** Inherited from Solady's ERC20 default. Not a drain vector — Permit2 still requires an owner signature and every resulting transfer passes `beforeTrancheTransfer` — so it is a composability-versus-surface trade with no security delta. Fine to leave, but it should be a recorded decision rather than an inherited default.
 
-**On audit status, be precise.** Two full three-pass agentic review cycles have been run — 12 specialist attacker agents per pass, 36 agent-runs per cycle, findings deduplicated and triaged, every actionable item fixed with a regression in `AuditPoC.t.sol`. That process found real bugs including a genuine senior-priority leak. It is **not** a human audit engagement. `BD-Primer.md` still says "not yet audited," which is now understated in one direction and could be read as overstated in the other; it should say what actually happened. No external human review has been commissioned, and I would not put Six Seven Ltd's 10,000,000 behind agentic review alone.
+**On audit status, precision matters.** Two full three-pass agentic review cycles have been run: 12 specialist attacker agents per pass, 36 agent-runs per cycle, findings deduplicated and triaged, every actionable item fixed with a regression in `AuditPoC.t.sol`. That process found real bugs, including a senior-priority leak. It is **not** a human audit engagement. No external human review has been commissioned, and I wouldn't put Six Seven Ltd's 10,000,000 behind agentic review alone.
 
 ---
 
@@ -289,7 +289,7 @@ junior = new TrancheToken("Wildcat Junior Tranche", "jr-wmtUSDC", p.shareDecimal
 
 `Params` carries no name or symbol field. So deploying against Six Seven Ltd's market mints tokens symbolled **`sr-wmtUSDC` / `jr-wmtUSDC`** — the wrong market's ticker — and every tranche set on every market gets identical symbols. The factory is explicitly built to deploy one set per registered market, so this contradicts the architecture rather than merely being cosmetic: two live facilities would be indistinguishable in wallets, block explorers, accounting exports, and any integrator's token list.
 
-The fix is small — add `string name` / `string symbol` to `Params` and pass them through `deployTranches`, or derive them from `IERC20(market).symbol()` on-chain. Either way it is a required change before a second facility, and it is the kind of thing only a second facility reveals.
+The fix is small and decided: derive the metadata on-chain from `IERC20(market).symbol()`, minting `"Senior Tranched <SYM>"` / `sr-<SYM>` and the junior equivalents. It is a required change before a second facility, and it is the kind of thing only a second facility reveals.
 
 ---
 
@@ -349,14 +349,14 @@ Adopting the interface rather than the shape means **one gate deployment serves 
 
 ### 12.4 The sealed-credential convergence: one predicate, both consequences
 
-The draft ERC's borrower-side provider (`SealedCredentialRoleProvider`) pins trigger class `WILDCAT_DELINQ_90D_V1` — **the same grace-plus-90-days predicate as this controller's `defaultReached()`**. That is not a coincidence to note in passing; it is a mechanism to exploit. If Six Seven Ltd carries a sealed entity credential bound to that trigger class, then on the day `timeDelinquent ≥ grace + 90d` becomes true, two things latch off the same on-chain fact:
+The draft ERC's borrower-side provider (`SealedCredentialRoleProvider`) pins trigger class `WILDCAT_DELINQ_90D_V1` — **the same grace-plus-90-days predicate as this controller's `defaultReached()`**. That's not a coincidence to note in passing — it's a mechanism to use. If Six Seven Ltd carries a sealed entity credential bound to that trigger class, then on the day `timeDelinquent ≥ grace + 90d` becomes true, two things latch off the same on-chain fact:
 
 - the tranche controller enters **wind-down** — deposits freeze, senior accrual stops, recoveries pay senior-first; and
 - the borrower credential's **disclosure trigger** becomes latchable — Tier S1 (officer names, recourse instructions) unseals publicly, and Tier S2 (service contacts, identity evidence) unseals to qualified recipients.
 
-That closes the loop this report's fine print has been carrying all along: "recovery is part code, part courtroom." The code half (senior-first cash allocation) and the courtroom half (a defined recourse path to the legal entity) would arm on the same block, with no declarer discretion in either. The demo's providers also withdraw a borrower's *entry* credential the moment the trigger merely becomes **latchable** — so a defaulting-in-progress borrower is barred from originating new obligations before the default even finalises. The tranche analogue is automatic (deposits require `Status.Active`), which is a nice confirmation the two systems make the same conservative choice independently.
+That closes the loop on "recovery is part code, part courtroom", which the fine print has carried all along. The code half (senior-first cash allocation) and the courtroom half (a defined recourse path to the legal entity) would arm on the same block, with no declarer discretion in either. The demo's providers also withdraw a borrower's *entry* credential the moment the trigger merely becomes **latchable** — so a defaulting-in-progress borrower is barred from originating new obligations before the default even finalises. The tranche analogue is automatic [deposits require `Status.Active`], and it's reassuring that the two systems made the same conservative choice independently.
 
-For this facility the sequencing implication: the trigger contract that the credential binds should read the abcUSDC market's grace tracker — with the given terms, it latches at day 118 (§8.1), and the senior sales conversation can then honestly say *both* priorities arm together, on-chain, at a knowable time.
+For this facility the sequencing implication: the trigger contract the credential binds should read the abcUSDC market's grace tracker. With the given terms it latches at day 118 (§8.1), and the senior sales conversation can then say, accurately, that *both* priorities arm together, on-chain, at a knowable time.
 
 ### 12.5 The one behavioural delta to document
 

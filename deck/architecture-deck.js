@@ -24,7 +24,7 @@ let s = pres.addSlide(); s.background={color:INK};
 kicker(s,"WILDCAT  ·  IN-HOUSE TRANCHING",AMBERB);
 s.addText([{text:"Architecture &\n",options:{color:WHITE}},{text:"Design Overview",options:{color:AMBERB}}],
   {x:ML,y:2.2,w:9.6,h:1.9,fontFace:F,fontSize:42,bold:true,lineSpacingMultiple:1.03,margin:0});
-s.addText("A senior / junior credit-tranche vault layered on the Wildcat v-wmtUSDC market wrapper: its contracts, how it attaches, the design decisions, and the properties it guarantees.",
+s.addText("A senior / junior credit-tranche vault layered on the Wildcat v-abcUSDC market wrapper: its contracts, how it attaches, the design decisions, and the properties it guarantees.",
   {x:ML,y:4.55,w:9.5,h:1.1,fontFace:F,fontSize:15.5,color:"C9BFAE",lineSpacingMultiple:1.2,margin:0});
 const mx=10.8, mw=1.95;
 s.addShape(pres.shapes.ROUNDED_RECTANGLE,{x:mx,y:2.45,w:mw,h:0.62,rectRadius:0.06,fill:{color:AMBERB},line:{type:"none"}});
@@ -62,7 +62,7 @@ const rows=[
   [hdr("Contract"),hdr("Role")],
   [mono("WaterfallMath"),cl("Pure tranche math: senior accrual, value/loss split, subordination, ToU default trigger.")],
   [mono("TrancheController"),cl("Immutable orchestrator: deposits, async redemption queue, default/wind-down, subordination gating, per-user sanctions + escrow. Reentrancy-guarded; safe transfers.")],
-  [mono("senior / junior"),cl("sr-wmtUSDC / jr-wmtUSDC: Solady ERC20 + EIP-2612 permit with an ERC-4626 value-view surface. Senior open to KYC'd lenders; junior whitelisted.")],
+  [mono("senior / junior"),cl("sr-abcUSDC / jr-abcUSDC: Solady ERC20 + EIP-2612 permit with an ERC-4626 value-view surface. Senior open to KYC'd lenders; junior whitelisted.")],
   [mono("TrancheFactory"),cl("Registered at the WildcatArchController; one tranche set per registered market, gated on isRegisteredMarket.")],
   [mono("IExternal"),cl("Interfaces to the Wildcat 4626 wrapper, market (state + withdrawal queue), sentinel, and arch controller.")],
 ];
@@ -75,8 +75,8 @@ s = pres.addSlide(); s.background={color:LIGHTBG};
 kicker(s,"HOW IT ATTACHES"); title(s,"A vault on top of an unchanged market");
 const boxes=[
   {t:"USDC",code:"",fill:WHITE},
-  {t:"Wildcat market",code:"wmtUSDC",fill:WHITE},
-  {t:"ERC-4626 wrapper",code:"v-wmtUSDC",fill:CREAM},
+  {t:"Wildcat market",code:"abcUSDC",fill:WHITE},
+  {t:"ERC-4626 wrapper",code:"v-abcUSDC",fill:CREAM},
   {t:"TrancheController",code:"holds + waterfall",fill:INK},
 ];
 const bw=2.62,bgap=0.5,bx0=ML+(CW-(4*bw+3*bgap))/2,by=2.1,bh=1.25;
@@ -88,9 +88,9 @@ boxes.forEach((b,i)=>{ const x=bx0+i*(bw+bgap);
 const cxC=bx0+3*(bw+bgap);
 s.addShape(pres.shapes.LINE,{x:cxC+bw/2,y:by+bh,w:0,h:0.4,line:{color:AMBER,width:2,endArrowType:"triangle"}});
 s.addShape(pres.shapes.ROUNDED_RECTANGLE,{x:cxC-0.1,y:by+bh+0.4,w:bw/2-0.05,h:0.55,rectRadius:0.06,fill:{color:AMBERB},line:{type:"none"}});
-s.addText("sr-wmtUSDC",{x:cxC-0.1,y:by+bh+0.4,w:bw/2-0.05,h:0.55,align:"center",valign:"middle",bold:true,color:INK,fontFace:F,fontSize:10,margin:0});
+s.addText("sr-abcUSDC",{x:cxC-0.1,y:by+bh+0.4,w:bw/2-0.05,h:0.55,align:"center",valign:"middle",bold:true,color:INK,fontFace:F,fontSize:10,margin:0});
 s.addShape(pres.shapes.ROUNDED_RECTANGLE,{x:cxC+bw/2,y:by+bh+0.4,w:bw/2-0.05,h:0.55,rectRadius:0.06,fill:{color:INK2},line:{color:"4A4031",width:1}});
-s.addText("jr-wmtUSDC",{x:cxC+bw/2,y:by+bh+0.4,w:bw/2-0.05,h:0.55,align:"center",valign:"middle",bold:true,color:"E8DDC9",fontFace:F,fontSize:10,margin:0});
+s.addText("jr-abcUSDC",{x:cxC+bw/2,y:by+bh+0.4,w:bw/2-0.05,h:0.55,align:"center",valign:"middle",bold:true,color:"E8DDC9",fontFace:F,fontSize:10,margin:0});
 card(s,ML,4.95,CW,1.25,WHITE);
 s.addText([{text:"Deployment:  ",options:{bold:true,color:INK}},
   {text:"the ",options:{color:INKSOFT}},{text:"TrancheFactory",options:{fontFace:"Courier New",color:AMBER}},
@@ -129,7 +129,7 @@ s.addText([
 const props=[
   "Built on Solady's audited ERC20, ReentrancyGuard and SafeTransferLib; share conversions round in favour of the pool.",
   "Covered by a Foundry suite: unit / behaviour, property fuzz, and stateful-invariant tests.",
-  "Mainnet-fork tests exercise deposit, valuation and a full redemption round-trip against the live v-wmtUSDC facility and its withdrawal queue.",
+  "Mainnet-fork tests exercise deposit, valuation and a full redemption round-trip against a live production facility and its withdrawal queue.",
 ];
 yy=3.55; props.forEach(t=>{ circle(s,ML+0.05,yy+0.02,0.16,"",GREEN,WHITE,8);
   s.addText(t,{x:ML+0.33,y:yy-0.05,w:CW-0.4,h:0.6,fontFace:F,fontSize:12.5,color:INKSOFT,lineSpacingMultiple:1.12,margin:0}); yy+=0.72; });
@@ -143,7 +143,7 @@ s = pres.addSlide(); s.background={color:INK};
 kicker(s,"SUMMARY",AMBERB);
 s.addText([{text:"Senior & junior, ",options:{color:WHITE}},{text:"on-chain.",options:{color:AMBERB}}],
   {x:ML,y:2.4,w:11.5,h:1.5,fontFace:F,fontSize:42,bold:true,margin:0});
-s.addText("A conservative, oracle-free, first-loss credit-tranche vault over the Wildcat v-wmtUSDC facility: senior priority with a 20% junior cushion, realised-only valuation, async senior-first redemption, and an on-chain mirror of the facility's own default terms.",
+s.addText("A conservative, oracle-free, first-loss credit-tranche vault over the Wildcat v-abcUSDC facility: senior priority with a 20% junior cushion, realised-only valuation, async senior-first redemption, and an on-chain mirror of the facility's own default terms.",
   {x:ML,y:3.8,w:11,h:1.7,fontFace:F,fontSize:17,color:"D8CEBE",lineSpacingMultiple:1.3,margin:0});
 s.addShape(pres.shapes.LINE,{x:ML,y:6.7,w:CW,h:0,line:{color:"3A3325",width:1}});
 s.addText([{text:"Wildcat",options:{bold:true,color:"C9B89A"}},{text:"  ·  In-House Tranching: Architecture & Design Overview",options:{color:"8A8174"}}],{x:ML,y:6.85,w:11,h:0.35,fontFace:F,fontSize:11,margin:0});
