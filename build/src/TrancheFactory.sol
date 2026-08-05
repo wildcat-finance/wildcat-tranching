@@ -57,6 +57,8 @@ contract TrancheFactory {
         address borrower;
         address governance;
         address defaultDeclarer;
+        address seniorGate;
+        address juniorGate;
         uint256 seniorShareBips;
         uint256 minJuniorBips;
         uint256 defaultPenaltyWindow;
@@ -78,6 +80,8 @@ contract TrancheFactory {
                 borrower: p.borrower,
                 governance: p.governance,
                 defaultDeclarer: p.defaultDeclarer,
+                seniorGate: p.seniorGate,
+                juniorGate: p.juniorGate,
                 seniorShareBips: p.seniorShareBips,
                 minJuniorBips: p.minJuniorBips,
                 defaultPenaltyWindow: p.defaultPenaltyWindow,

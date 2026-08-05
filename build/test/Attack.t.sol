@@ -3,6 +3,7 @@ pragma solidity ^0.8.25;
 
 import "forge-std/Test.sol";
 import {TrancheController} from "../src/TrancheController.sol";
+import {WhitelistGate} from "../src/WhitelistGate.sol";
 import {TrancheToken} from "../src/TrancheToken.sol";
 import {MockERC20, MockMarket, MockWrapper, MockSentinel} from "./Mocks.sol";
 
@@ -44,6 +45,7 @@ contract ReentrantSentinel {
 }
 
 contract AttackTest is Test {
+    WhitelistGate internal jrGate = new WhitelistGate(address(this));
     MockERC20 usdc;
     MockMarket market;
     MockWrapper wrapper;
@@ -73,8 +75,7 @@ contract AttackTest is Test {
 
         wrapper.mintShares(srLP, 100_000_000e18);
         wrapper.mintShares(jrLP, 100_000_000e18);
-        vm.prank(gov);
-        c.setJuniorAllowed(jrLP, true);
+        jrGate.setAllowed(jrLP, true);
 
         _depositJunior(jrLP, 100e18); // value 100
         _depositSenior(srLP, 300e18); // value 300, junior 25% of TVL, seniorOwed 300
@@ -88,6 +89,8 @@ contract AttackTest is Test {
                 borrower: borrower,
                 governance: gov,
                 defaultDeclarer: declarer,
+                seniorGate: address(0),
+                juniorGate: address(jrGate),
                 seniorShareBips: SENIOR_SHARE_BIPS,
                 minJuniorBips: MIN_JUNIOR_BIPS,
                 defaultPenaltyWindow: WINDOW,
@@ -150,8 +153,7 @@ contract AttackTest is Test {
         // rather than minting nothing: no silent loss. Inflating pps enough to threaten a realistic
         // deposit needs a donation far larger than that deposit, so it is not a profitable theft.
         address victim = address(0xBEEF1);
-        vm.prank(gov);
-        c.setJuniorAllowed(victim, true);
+        jrGate.setAllowed(victim, true);
         wrapper.mintShares(victim, 1e4); // below pps -> would round to zero shares
         vm.startPrank(victim);
         wrapper.approve(address(c), 1e4);
@@ -176,8 +178,7 @@ contract AttackTest is Test {
         c.accrue();
 
         address victim = address(0xBEEF2);
-        vm.prank(gov);
-        c.setJuniorAllowed(victim, true);
+        jrGate.setAllowed(victim, true);
         wrapper.mintShares(victim, 50e18);
         uint256 vShares = _depositJunior(victim, 50e18); // 50 * 100 / 1000 = 5 shares
         assertEq(vShares, 5e18, "victim mints fair nonzero shares");
@@ -300,8 +301,7 @@ contract AttackTest is Test {
         address jr2 = address(0x1022);
         wrapper.mintShares(sr2, 1_000e18);
         wrapper.mintShares(jr2, 1_000e18);
-        vm.prank(gov);
-        c.setJuniorAllowed(jr2, true);
+        jrGate.setAllowed(jr2, true);
         _depositJunior(jr2, 100e18); // junior total value 200
         _depositSenior(sr2, 300e18); // senior total value 600, junior 25%
 
@@ -375,8 +375,7 @@ contract AttackTest is Test {
 
         wrapper.mintShares(srLP, 1_000e18);
         wrapper.mintShares(jrLP, 1_000e18);
-        vm.prank(gov);
-        cc.setJuniorAllowed(jrLP, true);
+        jrGate.setAllowed(jrLP, true);
 
         vm.startPrank(jrLP);
         wrapper.approve(address(cc), 100e18);
@@ -420,8 +419,7 @@ contract AttackTest is Test {
 
         wrapper.mintShares(srLP, 1_000e18);
         wrapper.mintShares(jrLP, 1_000e18);
-        vm.prank(gov);
-        c6.setJuniorAllowed(jrLP, true);
+        jrGate.setAllowed(jrLP, true);
         vm.startPrank(jrLP);
         wrapper.approve(address(c6), 100e18);
         uint256 jsh = c6.depositJunior(100e18, jrLP);
@@ -452,10 +450,8 @@ contract AttackTest is Test {
         TrancheToken jr = cc.junior();
         address a = address(0xA11);
         address b = address(0xB22);
-        vm.startPrank(gov);
-        cc.setJuniorAllowed(a, true);
-        cc.setJuniorAllowed(b, true);
-        vm.stopPrank();
+        jrGate.setAllowed(a, true);
+        jrGate.setAllowed(b, true);
         wrapper.mintShares(a, 100e18);
         wrapper.mintShares(b, 100e18);
 

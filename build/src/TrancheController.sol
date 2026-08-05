@@ -2,6 +2,7 @@
 pragma solidity ^0.8.25;
 
 import {WaterfallMath} from "./libraries/WaterfallMath.sol";
+import {IEnterGate} from "./interfaces/IEnterGate.sol";
 import {TrancheToken} from "./TrancheToken.sol";
 import {IUnderlying4626, IWildcatMarket, ISentinelLike, IERC20, MarketState} from "./interfaces/IExternal.sol";
 import {ReentrancyGuard} from "solady/utils/ReentrancyGuard.sol";
@@ -38,7 +39,12 @@ contract TrancheController is ReentrancyGuard {
     uint256 public pendingSeniorShareBips;
     uint256 public seniorShareEta;
     bool public depositsPaused;
-    mapping(address => bool) public juniorAllowed;
+    /// @notice Entry gates (Morpho Midnight IEnterGate), fixed at deployment. Checked only where
+    ///         tranche exposure increases (deposit receiver, transfer recipient) and never on the
+    ///         exit path, so a gate can never trap value. Zero senior gate = open; the junior gate
+    ///         is mandatory (junior is first-loss and must always be credentialed).
+    IEnterGate public immutable seniorGate;
+    IEnterGate public immutable juniorGate;
 
     // ----- accounting (in asset terms) -----
     uint256 public seniorOwed;
@@ -94,7 +100,6 @@ contract TrancheController is ReentrancyGuard {
     event SeniorShareProposed(uint256 shareBips, uint256 eta);
     event SeniorShareSet(uint256 shareBips);
     event SeniorShareProposalCancelled();
-    event JuniorAllowed(address indexed account, bool allowed);
     event DepositsPaused(bool paused);
     event DefaultDeclarerSet(address indexed declarer);
     event GovernanceProposed(address indexed pending);
@@ -106,6 +111,8 @@ contract TrancheController is ReentrancyGuard {
         address borrower;
         address governance;
         address defaultDeclarer;
+        address seniorGate;   // zero = senior open (sanctions-only)
+        address juniorGate;    // mandatory
         uint256 seniorShareBips;
         uint256 minJuniorBips;
         uint256 defaultPenaltyWindow;
@@ -119,6 +126,7 @@ contract TrancheController is ReentrancyGuard {
         require(p.seniorShareBips <= MAX_SENIOR_SHARE_BIPS, "BAD_SHARE");
         require(p.minJuniorBips >= 500 && p.minJuniorBips <= 9000, "BAD_SUBORDINATION");
         require(p.defaultPenaltyWindow > 0 && p.defaultPenaltyWindow <= MAX_PENALTY_WINDOW, "BAD_WINDOW");
+        require(p.juniorGate != address(0), "NO_JUNIOR_GATE");
 
         underlyingVault = IUnderlying4626(p.underlyingVault);
         market = IWildcatMarket(IUnderlying4626(p.underlyingVault).market());
@@ -130,6 +138,8 @@ contract TrancheController is ReentrancyGuard {
         seniorShareBips = p.seniorShareBips;
         minJuniorBips = p.minJuniorBips;
         defaultPenaltyWindow = p.defaultPenaltyWindow;
+        seniorGate = IEnterGate(p.seniorGate);
+        juniorGate = IEnterGate(p.juniorGate);
 
         // Token metadata is derived from the market's own symbol so every facility's tranche
         // set carries its own ticker with nothing caller-supplied.
@@ -274,7 +284,7 @@ contract TrancheController is ReentrancyGuard {
         require(status == Status.Active, "NOT_ACTIVE");
         require(!depositsPaused, "DEPOSITS_PAUSED");
         require(!_isSanctioned(receiver) && !_isSanctioned(msg.sender), "SANCTIONED");
-        if (!isSenior) require(juniorAllowed[receiver], "JUNIOR_NOT_WHITELISTED");
+        require(_gateAllows(isSenior, receiver), isSenior ? "SENIOR_GATED" : "JUNIOR_GATED");
 
         uint256 dV = _assetsOf(underlyingShares);
         require(dV > 0, "ZERO_VALUE");
@@ -456,7 +466,17 @@ contract TrancheController is ReentrancyGuard {
     // ============================================================ transfer hook + sanctions
     function beforeTrancheTransfer(address token, address from, address to, uint256) external view {
         require(!_isSanctioned(from) && !_isSanctioned(to), "SANCTIONED");
-        if (token == address(junior)) require(juniorAllowed[to], "JUNIOR_NOT_WHITELISTED");
+        bool isSenior = token == address(senior);
+        require(_gateAllows(isSenior, to), isSenior ? "SENIOR_GATED" : "JUNIOR_GATED");
+    }
+
+    /// @dev Entry-gate consultation: exposure to a tranche may only increase for an account the
+    ///      class gate admits. Plain static call by design — a reverting gate blocks entry and
+    ///      transfer-in but never exits (mint/burn bypass the hook; claim pays USDC directly).
+    function _gateAllows(bool isSenior, address account) internal view returns (bool) {
+        IEnterGate gate = isSenior ? seniorGate : juniorGate;
+        if (address(gate) == address(0)) return true;
+        return gate.canIncreaseCredit(account);
     }
 
     function _isSanctioned(address account) internal view returns (bool) {
@@ -487,11 +507,6 @@ contract TrancheController is ReentrancyGuard {
         pendingSeniorShareBips = 0;
         seniorShareEta = 0;
         emit SeniorShareProposalCancelled();
-    }
-
-    function setJuniorAllowed(address account, bool allowed) external onlyGovernance {
-        juniorAllowed[account] = allowed;
-        emit JuniorAllowed(account, allowed);
     }
 
     function setDepositsPaused(bool paused) external onlyGovernance {

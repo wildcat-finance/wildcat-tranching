@@ -4,11 +4,13 @@ pragma solidity ^0.8.25;
 import "forge-std/Test.sol";
 import {WaterfallMath} from "../src/libraries/WaterfallMath.sol";
 import {TrancheController} from "../src/TrancheController.sol";
+import {WhitelistGate} from "../src/WhitelistGate.sol";
 import {TrancheToken} from "../src/TrancheToken.sol";
 import {MockERC20, MockMarket, MockWrapper, MockSentinel} from "./Mocks.sol";
 
 /// @notice Property fuzzing on the pure waterfall math.
 contract WaterfallFuzzTest is Test {
+    WhitelistGate internal jrGate = new WhitelistGate(address(this));
     function testFuzz_splitConservesAndJuniorFirst(uint256 realised, uint256 owed) public pure {
         realised = bound(realised, 0, 1e33);
         owed = bound(owed, 0, 1e33);
@@ -54,6 +56,7 @@ contract WaterfallFuzzTest is Test {
 ///         moves, time, donations, delinquency toggles, the ToU default clock, and recovery+claims.
 ///         Every controller call is wrapped so the fuzzer keeps exploring through expected reverts.
 contract InvariantHandler is Test {
+    WhitelistGate internal jrGate = new WhitelistGate(address(this));
     TrancheController public c;
     MockWrapper public w;
     MockMarket public m;
@@ -131,6 +134,7 @@ contract InvariantHandler is Test {
 }
 
 contract TrancheInvariantTest is Test {
+    WhitelistGate internal jrGate = new WhitelistGate(address(this));
     TrancheController c;
     MockWrapper w;
     MockMarket m;
@@ -150,6 +154,8 @@ contract TrancheInvariantTest is Test {
                 borrower: address(0xB0110),
                 governance: address(this),
                 defaultDeclarer: address(this),
+                seniorGate: address(0),
+                juniorGate: address(jrGate),
                 seniorShareBips: 10000,
                 minJuniorBips: 2000,
                 defaultPenaltyWindow: 90 days,
@@ -157,12 +163,12 @@ contract TrancheInvariantTest is Test {
             })
         );
         handler = new InvariantHandler(c, w, m, usdc);
-        c.setJuniorAllowed(address(handler), true);
+        jrGate.setAllowed(address(handler), true);
 
         // seed a balanced position so deposits have a basis
         w.mintShares(address(this), 1000e18);
         w.approve(address(c), 1000e18);
-        c.setJuniorAllowed(address(this), true);
+        jrGate.setAllowed(address(this), true);
         c.depositJunior(200e18, address(this));
         c.depositSenior(500e18, address(this));
 

@@ -3,6 +3,7 @@ pragma solidity ^0.8.25;
 
 import "forge-std/Test.sol";
 import {TrancheController} from "../src/TrancheController.sol";
+import {WhitelistGate} from "../src/WhitelistGate.sol";
 import {IUnderlying4626, IWildcatMarket, MarketState} from "../src/interfaces/IExternal.sol";
 
 /// @notice Fork tests against the REAL deployed Wildcat contracts on Ethereum mainnet.
@@ -11,6 +12,7 @@ import {IUnderlying4626, IWildcatMarket, MarketState} from "../src/interfaces/IE
 ///         mirror reads live delinquency state, and that redemption queues against the real
 ///         batched withdrawal queue.
 contract ForkTest is Test {
+    WhitelistGate internal jrGate = new WhitelistGate(address(this));
     string RPC = "https://eth-main.hinterlight.net";
 
     address constant WRAPPER = 0xF65460B84c13eeb911303336Ab0f9D63CC79839f; // v-wmtUSDC
@@ -42,6 +44,8 @@ contract ForkTest is Test {
                 borrower: address(0xB0110), // unused while sentinel is zero; non-zero per ZERO_BORROWER guard
                 governance: address(this),
                 defaultDeclarer: address(this),
+                seniorGate: address(0),
+                juniorGate: address(jrGate),
                 seniorShareBips: 10000, // senior takes 100% of the live base APR
                 minJuniorBips: 2000,
                 defaultPenaltyWindow: 90 days,
@@ -93,7 +97,7 @@ contract ForkTest is Test {
             emit log("SKIP: deal could not set v-wmtUSDC balance on this wrapper");
             return;
         }
-        c.setJuniorAllowed(jrLP, true);
+        jrGate.setAllowed(jrLP, true);
 
         vm.startPrank(jrLP);
         IUnderlying4626(WRAPPER).approve(address(c), 1000e6);
@@ -123,7 +127,7 @@ contract ForkTest is Test {
             return;
         }
         // junior leg first so the senior deposit satisfies the subordination floor
-        c.setJuniorAllowed(jrLP, true);
+        jrGate.setAllowed(jrLP, true);
         vm.startPrank(jrLP);
         IUnderlying4626(WRAPPER).approve(address(c), 1000e6);
         c.depositJunior(1000e6, jrLP);

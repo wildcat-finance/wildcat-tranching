@@ -3,6 +3,7 @@ pragma solidity ^0.8.25;
 
 import "forge-std/Test.sol";
 import {TrancheController} from "../src/TrancheController.sol";
+import {WhitelistGate} from "../src/WhitelistGate.sol";
 import {TrancheToken} from "../src/TrancheToken.sol";
 import {MockERC20, MockMarket, MockWrapper, MockSentinel} from "./Mocks.sol";
 
@@ -11,6 +12,7 @@ import {MockERC20, MockMarket, MockWrapper, MockSentinel} from "./Mocks.sol";
 ///         these target the view functions integrators actually read: asset, totalAssets,
 ///         convertToAssets, convertToShares, pricePerShare.
 contract ViewPropsTest is Test {
+    WhitelistGate internal jrGate = new WhitelistGate(address(this));
     MockERC20 usdc;
     MockMarket market;
     MockWrapper wrapper;
@@ -35,6 +37,8 @@ contract ViewPropsTest is Test {
                 borrower: address(0xB0110),
                 governance: gov,
                 defaultDeclarer: address(0xDEC),
+                seniorGate: address(0),
+                juniorGate: address(jrGate),
                 seniorShareBips: 8000,
                 minJuniorBips: 2000,
                 defaultPenaltyWindow: 90 days,
@@ -45,8 +49,7 @@ contract ViewPropsTest is Test {
         junior = c.junior();
         wrapper.mintShares(srLP, 1e30);
         wrapper.mintShares(jrLP, 1e30);
-        vm.prank(gov);
-        c.setJuniorAllowed(jrLP, true);
+        jrGate.setAllowed(jrLP, true);
     }
 
     function _depJ(uint256 a) internal {

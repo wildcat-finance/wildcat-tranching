@@ -3,6 +3,7 @@ pragma solidity ^0.8.25;
 
 import "forge-std/Test.sol";
 import {TrancheController} from "../src/TrancheController.sol";
+import {WhitelistGate} from "../src/WhitelistGate.sol";
 import {TrancheToken} from "../src/TrancheToken.sol";
 import {TrancheFactory} from "../src/TrancheFactory.sol";
 import {MockERC20, MockMarket, MockWrapper, MockSentinel, MockArch} from "./Mocks.sol";
@@ -14,6 +15,7 @@ import {MockERC20, MockMarket, MockWrapper, MockSentinel, MockArch} from "./Mock
 ///         penalty appreciation that the high-watermark valuation deliberately freezes, at the
 ///         expense of holders who stay. This test asserts the (buggy) over-redemption to document it.
 contract AuditPoCTest is Test {
+    WhitelistGate internal jrGate = new WhitelistGate(address(this));
     MockERC20 usdc;
     MockMarket market;
     MockWrapper wrapper;
@@ -38,6 +40,8 @@ contract AuditPoCTest is Test {
                 borrower: address(0xB0110),
                 governance: gov,
                 defaultDeclarer: address(0xDEC),
+                seniorGate: address(0),
+                juniorGate: address(jrGate),
                 seniorShareBips: 10000,
                 minJuniorBips: 2000,
                 defaultPenaltyWindow: 90 days,
@@ -48,8 +52,7 @@ contract AuditPoCTest is Test {
         junior = c.junior();
         wrapper.mintShares(srLP, 1_000e18);
         wrapper.mintShares(jrLP, 1_000e18);
-        vm.prank(gov);
-        c.setJuniorAllowed(jrLP, true);
+        jrGate.setAllowed(jrLP, true);
         // deposits at price 1.0 -> markPps frozen at 1.0
         vm.startPrank(jrLP);
         wrapper.approve(address(c), 100e18);
@@ -117,6 +120,8 @@ contract AuditPoCTest is Test {
             borrower: address(0xB0110),
             governance: g,
             defaultDeclarer: address(0xDEC),
+            seniorGate: address(0),
+            juniorGate: address(jrGate),
             seniorShareBips: 8000,
             minJuniorBips: 2000,
             defaultPenaltyWindow: 90 days
@@ -233,6 +238,8 @@ contract AuditPoCTest is Test {
                 borrower: address(0),
                 governance: gov,
                 defaultDeclarer: address(0xDEC),
+                seniorGate: address(0),
+                juniorGate: address(jrGate),
                 seniorShareBips: 10000,
                 minJuniorBips: 2000,
                 defaultPenaltyWindow: 90 days,

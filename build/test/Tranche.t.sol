@@ -3,11 +3,13 @@ pragma solidity ^0.8.25;
 
 import "forge-std/Test.sol";
 import {TrancheController} from "../src/TrancheController.sol";
+import {WhitelistGate} from "../src/WhitelistGate.sol";
 import {TrancheFactory} from "../src/TrancheFactory.sol";
 import {TrancheToken} from "../src/TrancheToken.sol";
 import {MockERC20, MockMarket, MockWrapper, MockSentinel, MockArch} from "./Mocks.sol";
 
 contract TrancheTest is Test {
+    WhitelistGate internal jrGate = new WhitelistGate(address(this));
     MockERC20 usdc;
     MockMarket market;
     MockWrapper wrapper;
@@ -39,6 +41,8 @@ contract TrancheTest is Test {
                 borrower: borrower,
                 governance: gov,
                 defaultDeclarer: declarer,
+                seniorGate: address(0),
+                juniorGate: address(jrGate),
                 seniorShareBips: SENIOR_SHARE_BIPS,
                 minJuniorBips: MIN_JUNIOR_BIPS,
                 defaultPenaltyWindow: WINDOW,
@@ -50,8 +54,7 @@ contract TrancheTest is Test {
 
         wrapper.mintShares(srLP, 10_000_000e18);
         wrapper.mintShares(jrLP, 10_000_000e18);
-        vm.prank(gov);
-        c.setJuniorAllowed(jrLP, true);
+        jrGate.setAllowed(jrLP, true);
 
         _depositJunior(jrLP, 100e18); // value 100
         _depositSenior(srLP, 300e18); // value 300 -> junior 25% of TVL
@@ -148,6 +151,73 @@ contract TrancheTest is Test {
         assertEq(c.seniorOwed(), owedBefore, "accrual halted at default");
     }
 
+    function test_JuniorGateMandatory() public {
+        vm.expectRevert(bytes("NO_JUNIOR_GATE"));
+        new TrancheController(
+            TrancheController.Params({
+                underlyingVault: address(wrapper),
+                sentinel: address(sentinel),
+                borrower: borrower,
+                governance: gov,
+                defaultDeclarer: declarer,
+                seniorGate: address(0),
+                juniorGate: address(0),
+                seniorShareBips: SENIOR_SHARE_BIPS,
+                minJuniorBips: MIN_JUNIOR_BIPS,
+                defaultPenaltyWindow: WINDOW,
+                shareDecimals: 18
+            })
+        );
+    }
+
+    function test_SeniorGate_entryOnly() public {
+        // second controller with a credentialed senior gate
+        WhitelistGate srGate = new WhitelistGate(address(this));
+        TrancheController c2 = new TrancheController(
+            TrancheController.Params({
+                underlyingVault: address(wrapper),
+                sentinel: address(sentinel),
+                borrower: borrower,
+                governance: gov,
+                defaultDeclarer: declarer,
+                seniorGate: address(srGate),
+                juniorGate: address(jrGate),
+                seniorShareBips: SENIOR_SHARE_BIPS,
+                minJuniorBips: MIN_JUNIOR_BIPS,
+                defaultPenaltyWindow: WINDOW,
+                shareDecimals: 18
+            })
+        );
+        jrGate.setAllowed(jrLP, true);
+        srGate.setAllowed(srLP, true);
+        vm.prank(jrLP);
+        wrapper.approve(address(c2), type(uint256).max);
+        vm.prank(jrLP);
+        c2.depositJunior(100e18, jrLP);
+
+        // ungated senior deposit blocked
+        address stranger = address(0x51124);
+        wrapper.mintShares(stranger, 10e18);
+        vm.startPrank(stranger);
+        wrapper.approve(address(c2), type(uint256).max);
+        vm.expectRevert(bytes("SENIOR_GATED"));
+        c2.depositSenior(10e18, stranger);
+        vm.stopPrank();
+
+        // gated senior deposits fine; transfer-in to ungated recipient blocked
+        vm.startPrank(srLP);
+        wrapper.approve(address(c2), type(uint256).max);
+        c2.depositSenior(100e18, srLP);
+        TrancheToken sr2 = c2.senior();
+        vm.expectRevert(bytes("SENIOR_GATED"));
+        sr2.transfer(stranger, 1e18);
+        // exit path never consults the gate: un-credential srLP, redemption still works
+        vm.stopPrank();
+        srGate.setAllowed(srLP, false);
+        vm.prank(srLP);
+        c2.requestRedeem(true, 10e18);
+    }
+
     function test_DerivedTokenMetadata() public view {
         assertEq(senior.name(), "Senior Tranched abcUSDC");
         assertEq(senior.symbol(), "sr-abcUSDC");
@@ -167,6 +237,8 @@ contract TrancheTest is Test {
                 borrower: borrower,
                 governance: gov,
                 defaultDeclarer: declarer,
+                seniorGate: address(0),
+                juniorGate: address(jrGate),
                 seniorShareBips: SENIOR_SHARE_BIPS,
                 minJuniorBips: MIN_JUNIOR_BIPS,
                 defaultPenaltyWindow: WINDOW,
@@ -307,7 +379,7 @@ contract TrancheTest is Test {
         wrapper.mintShares(rando, 100e18);
         vm.startPrank(rando);
         wrapper.approve(address(c), 10e18);
-        vm.expectRevert(bytes("JUNIOR_NOT_WHITELISTED"));
+        vm.expectRevert(bytes("JUNIOR_GATED"));
         c.depositJunior(10e18, rando);
         vm.stopPrank();
     }
@@ -339,6 +411,7 @@ contract TrancheTest is Test {
 }
 
 contract TrancheFactoryTest is Test {
+    WhitelistGate internal jrGate = new WhitelistGate(address(this));
     function test_FactoryGatesOnRegisteredMarket() public {
         MockERC20 usdc = new MockERC20("USD Coin", "USDC");
         MockMarket market = new MockMarket(address(usdc));
@@ -353,6 +426,8 @@ contract TrancheFactoryTest is Test {
             borrower: address(0xB0110),
             governance: address(0x6011),
             defaultDeclarer: address(0xDEC),
+            seniorGate: address(0),
+            juniorGate: address(jrGate),
             seniorShareBips: 8000,
             minJuniorBips: 2000,
             defaultPenaltyWindow: 90 days
