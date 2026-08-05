@@ -144,6 +144,7 @@ contract TrancheInvariantTest is Test {
     function setUp() public {
         usdc = new MockERC20("USD Coin", "USDC");
         m = new MockMarket(address(usdc));
+        m.setBorrower(address(0xB0110));
         w = new MockWrapper(address(m));
         MockSentinel sentinel = new MockSentinel();
 
@@ -151,7 +152,6 @@ contract TrancheInvariantTest is Test {
             TrancheController.Params({
                 underlyingVault: address(w),
                 sentinel: address(sentinel),
-                borrower: address(0xB0110),
                 governance: address(this),
                 defaultDeclarer: address(this),
                 seniorGate: address(0),

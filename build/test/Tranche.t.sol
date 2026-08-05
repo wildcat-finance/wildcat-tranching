@@ -6,7 +6,7 @@ import {TrancheController} from "../src/TrancheController.sol";
 import {WhitelistGate} from "../src/WhitelistGate.sol";
 import {TrancheFactory} from "../src/TrancheFactory.sol";
 import {TrancheToken} from "../src/TrancheToken.sol";
-import {MockERC20, MockMarket, MockWrapper, MockSentinel, MockArch} from "./Mocks.sol";
+import {MockERC20, MockMarket, MockWrapper, MockWrapperFactory, MockSentinel, MockArch} from "./Mocks.sol";
 
 contract TrancheTest is Test {
     WhitelistGate internal jrGate = new WhitelistGate(address(this));
@@ -31,6 +31,7 @@ contract TrancheTest is Test {
     function setUp() public {
         usdc = new MockERC20("USD Coin", "USDC");
         market = new MockMarket(address(usdc));
+        market.setBorrower(borrower);
         wrapper = new MockWrapper(address(market));
         sentinel = new MockSentinel();
 
@@ -38,7 +39,6 @@ contract TrancheTest is Test {
             TrancheController.Params({
                 underlyingVault: address(wrapper),
                 sentinel: address(sentinel),
-                borrower: borrower,
                 governance: gov,
                 defaultDeclarer: declarer,
                 seniorGate: address(0),
@@ -158,7 +158,6 @@ contract TrancheTest is Test {
             TrancheController.Params({
                 underlyingVault: address(wrapper),
                 sentinel: address(sentinel),
-                borrower: borrower,
                 governance: gov,
                 defaultDeclarer: declarer,
                 seniorGate: address(0),
@@ -236,7 +235,6 @@ contract TrancheTest is Test {
             TrancheController.Params({
                 underlyingVault: address(wrapper),
                 sentinel: address(sentinel),
-                borrower: borrower,
                 governance: gov,
                 defaultDeclarer: declarer,
                 seniorGate: address(0),
@@ -257,7 +255,6 @@ contract TrancheTest is Test {
             TrancheController.Params({
                 underlyingVault: address(wrapper),
                 sentinel: address(sentinel),
-                borrower: borrower,
                 governance: gov,
                 defaultDeclarer: declarer,
                 seniorGate: address(srGate),
@@ -308,6 +305,7 @@ contract TrancheTest is Test {
 
     function test_EmptyMarketSymbolRevertsDeployment() public {
         MockMarket m2 = new MockMarket(address(usdc));
+        m2.setBorrower(borrower);
         m2.setSymbol("");
         MockWrapper w2 = new MockWrapper(address(m2));
         vm.expectRevert(bytes("NO_SYMBOL"));
@@ -315,7 +313,6 @@ contract TrancheTest is Test {
             TrancheController.Params({
                 underlyingVault: address(w2),
                 sentinel: address(sentinel),
-                borrower: borrower,
                 governance: gov,
                 defaultDeclarer: declarer,
                 seniorGate: address(0),
@@ -494,18 +491,10 @@ contract TrancheTest is Test {
 
 contract TrancheFactoryTest is Test {
     WhitelistGate internal jrGate = new WhitelistGate(address(this));
-    function test_FactoryGatesOnRegisteredMarket() public {
-        MockERC20 usdc = new MockERC20("USD Coin", "USDC");
-        MockMarket market = new MockMarket(address(usdc));
-        MockWrapper wrapper = new MockWrapper(address(market));
-        MockSentinel sentinel = new MockSentinel();
-        MockArch arch = new MockArch();
-        TrancheFactory factory = new TrancheFactory(address(arch));
+    address constant BORROWER = address(0xB0110);
 
-        TrancheFactory.DeployParams memory p = TrancheFactory.DeployParams({
-            underlyingVault: address(wrapper),
-            sentinel: address(sentinel),
-            borrower: address(0xB0110),
+    function _p() internal view returns (TrancheFactory.DeployParams memory) {
+        return TrancheFactory.DeployParams({
             governance: address(0x6011),
             defaultDeclarer: address(0xDEC),
             seniorGate: address(0),
@@ -515,16 +504,79 @@ contract TrancheFactoryTest is Test {
             defaultPenaltyWindow: 90 days,
             borrowerRecovery: false
         });
+    }
 
+    function _fresh() internal returns (MockMarket market, MockWrapperFactory wf, MockArch arch, TrancheFactory factory) {
+        MockERC20 usdc = new MockERC20("USD Coin", "USDC");
+        market = new MockMarket(address(usdc));
+        market.setBorrower(BORROWER);
+        wf = new MockWrapperFactory();
+        arch = new MockArch();
+        MockSentinel sentinel = new MockSentinel();
+        factory = new TrancheFactory(address(arch), address(wf), address(sentinel));
+    }
+
+    function test_Factory_borrowerGatedAndRegistered() public {
+        (MockMarket market, MockWrapperFactory wf, MockArch arch, TrancheFactory factory) = _fresh();
+
+        // only the market's borrower may deploy: squatting is structurally impossible
+        vm.expectRevert(bytes("ONLY_BORROWER"));
+        factory.deployTranches(address(market), _p());
+
+        vm.prank(BORROWER);
         vm.expectRevert(bytes("MARKET_NOT_REGISTERED"));
-        factory.deployTranches(p);
+        factory.deployTranches(address(market), _p());
 
         arch.setRegistered(address(market), true);
-        address ctrl = factory.deployTranches(p);
+        // wrapper missing: the factory composes its deployment in the same transaction
+        assertEq(wf.wrapperForMarket(address(market)), address(0));
+        vm.prank(BORROWER);
+        address ctrl = factory.deployTranches(address(market), _p());
+        address wrapper = wf.wrapperForMarket(address(market));
+        assertTrue(wrapper != address(0), "wrapper composed");
+        assertEq(address(TrancheController(ctrl).underlying()), wrapper, "controller wired to composed wrapper");
         assertEq(factory.controllerForMarket(address(market)), ctrl);
         assertEq(factory.controllersLength(), 1);
+        assertEq(TrancheController(ctrl).borrower(), BORROWER, "borrower derived from the market");
+    }
 
-        vm.expectRevert(bytes("TRANCHES_EXIST"));
-        factory.deployTranches(p);
+    function test_Factory_supersessionOnlyWhenWoundDownOrEmpty() public {
+        (MockMarket market, MockWrapperFactory wf, MockArch arch, TrancheFactory factory) = _fresh();
+        arch.setRegistered(address(market), true);
+        vm.prank(BORROWER);
+        address first = factory.deployTranches(address(market), _p());
+
+        // live incumbent (funded) blocks replacement
+        MockWrapper wrapper = MockWrapper(wf.wrapperForMarket(address(market)));
+        address jrLP = address(0x10110);
+        jrGate.setAllowed(jrLP, true);
+        wrapper.mintShares(jrLP, 100e18);
+        vm.startPrank(jrLP);
+        wrapper.approve(first, type(uint256).max);
+        TrancheController(first).depositJunior(100e18, jrLP);
+        vm.stopPrank();
+        vm.prank(BORROWER);
+        vm.expectRevert(bytes("INCUMBENT_LIVE"));
+        factory.deployTranches(address(market), _p());
+
+        // wound-down incumbent allows it; the registry moves, the old set keeps its claims
+        market.setTimeDelinquent(uint32(market.delinquencyGracePeriod() + 90 days));
+        TrancheController(first).checkDefault();
+        assertEq(uint256(TrancheController(first).status()), uint256(TrancheController.Status.WindDown));
+        vm.prank(BORROWER);
+        address second = factory.deployTranches(address(market), _p());
+        assertEq(factory.controllerForMarket(address(market)), second, "registry points at the replacement");
+        assertEq(factory.controllersLength(), 2, "history preserved");
+        assertTrue(first != second);
+    }
+
+    function test_Factory_resolveIsIdempotent() public {
+        (MockMarket market, MockWrapperFactory wf, MockArch arch, TrancheFactory factory) = _fresh();
+        arch.setRegistered(address(market), true);
+        // wrapper pre-exists: the factory resolves rather than deploying a second one
+        address pre = wf.createWrapper(address(market));
+        vm.prank(BORROWER);
+        address ctrl = factory.deployTranches(address(market), _p());
+        assertEq(address(TrancheController(ctrl).underlying()), pre, "resolved, not redeployed");
     }
 }

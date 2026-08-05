@@ -67,6 +67,7 @@ contract AttackTest is Test {
     function setUp() public {
         usdc = new MockERC20("USD Coin", "USDC");
         market = new MockMarket(address(usdc));
+        market.setBorrower(address(0xB0110));
         wrapper = new MockWrapper(address(market));
         sentinel = new MockSentinel();
         c = _deploy(address(sentinel), 18);
@@ -86,7 +87,6 @@ contract AttackTest is Test {
             TrancheController.Params({
                 underlyingVault: address(wrapper),
                 sentinel: sent,
-                borrower: borrower,
                 governance: gov,
                 defaultDeclarer: declarer,
                 seniorGate: address(0),

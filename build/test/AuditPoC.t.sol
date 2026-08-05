@@ -6,7 +6,7 @@ import {TrancheController} from "../src/TrancheController.sol";
 import {WhitelistGate} from "../src/WhitelistGate.sol";
 import {TrancheToken} from "../src/TrancheToken.sol";
 import {TrancheFactory} from "../src/TrancheFactory.sol";
-import {MockERC20, MockMarket, MockWrapper, MockSentinel, MockArch} from "./Mocks.sol";
+import {MockERC20, MockMarket, MockWrapper, MockWrapperFactory, MockSentinel, MockArch} from "./Mocks.sol";
 
 /// @notice PoC for the headline external-review finding (SR-D): during delinquency, requestRedeem
 ///         sizes the wrapper-share redemption at the FROZEN mark (_effPps) but underlyingVault.redeem
@@ -31,13 +31,13 @@ contract AuditPoCTest is Test {
     function setUp() public {
         usdc = new MockERC20("USD Coin", "USDC");
         market = new MockMarket(address(usdc));
+        market.setBorrower(address(0xB0110));
         wrapper = new MockWrapper(address(market));
         sentinel = new MockSentinel();
         c = new TrancheController(
             TrancheController.Params({
                 underlyingVault: address(wrapper),
                 sentinel: address(sentinel),
-                borrower: address(0xB0110),
                 governance: gov,
                 defaultDeclarer: address(0xDEC),
                 seniorGate: address(0),
@@ -113,12 +113,14 @@ contract AuditPoCTest is Test {
         assertEq(c.claim(id), uint256(wmt), "claim now settles");
     }
 
-    /// @dev SR-B (fixed): deployTranches is owner-gated and validates governance/sentinel.
-    function _dp(address g, address s) internal view returns (TrancheFactory.DeployParams memory) {
+    /// @dev SR-B (fixed, superseded by the ownerless factory): deployment cannot be squatted.
+    ///      The original finding was front-running the canonical controllerForMarket slot with
+    ///      hostile params; the fix was an owner gate. The factory is now ownerless and gated on
+    ///      msg.sender == market.borrower() instead, which closes the same vector with no trusted
+    ///      party: for any market exactly one address can deploy. (R2, two-step factory ownership,
+    ///      is void with it -- there is no owner role left to strand.)
+    function _dp(address g) internal view returns (TrancheFactory.DeployParams memory) {
         return TrancheFactory.DeployParams({
-            underlyingVault: address(wrapper),
-            sentinel: s,
-            borrower: address(0xB0110),
             governance: g,
             defaultDeclarer: address(0xDEC),
             seniorGate: address(0),
@@ -132,20 +134,23 @@ contract AuditPoCTest is Test {
 
     function test_SR_B_DeployTranchesGated() public {
         MockArch arch = new MockArch();
-        TrancheFactory factory = new TrancheFactory(address(arch)); // owner = this test contract
+        MockWrapperFactory wf = new MockWrapperFactory();
+        wf.setWrapper(address(market), address(wrapper));
+        TrancheFactory factory = new TrancheFactory(address(arch), address(wf), address(sentinel));
         arch.setRegistered(address(market), true);
 
+        // anyone who is not the market's borrower is refused: the squat vector stays closed
         vm.prank(address(0xBAD));
-        vm.expectRevert(bytes("ONLY_OWNER"));
-        factory.deployTranches(_dp(gov, address(sentinel)));
+        vm.expectRevert(bytes("ONLY_BORROWER"));
+        factory.deployTranches(address(market), _dp(gov));
 
+        // hostile params still bubble the controller's own guards
+        vm.prank(address(0xB0110));
         vm.expectRevert(bytes("ZERO_GOV"));
-        factory.deployTranches(_dp(address(0), address(sentinel)));
+        factory.deployTranches(address(market), _dp(address(0)));
 
-        vm.expectRevert(bytes("ZERO_SENTINEL"));
-        factory.deployTranches(_dp(gov, address(0)));
-
-        address ctrl = factory.deployTranches(_dp(gov, address(sentinel))); // owner, valid params
+        vm.prank(address(0xB0110));
+        address ctrl = factory.deployTranches(address(market), _dp(gov));
         assertEq(factory.controllerForMarket(address(market)), ctrl);
     }
 
@@ -193,51 +198,20 @@ contract AuditPoCTest is Test {
         assertEq(c.seniorOwed(), 330e18, "seniorOwed frozen at the accrued value, not the stale one");
     }
 
-    /// @dev R2 (re-audit): factory ownership transfer is two-step (propose + accept), matching the
-    ///      controller's governance rotation, so a mistyped/uncontrolled successor cannot strand it.
-    function test_R2_FactoryTwoStepOwner() public {
-        MockArch arch = new MockArch();
-        TrancheFactory factory = new TrancheFactory(address(arch)); // owner = this test contract
-        address newOwner = address(0xA11CE);
-
-        vm.prank(address(0xBAD));
-        vm.expectRevert(bytes("ONLY_OWNER"));
-        factory.transferOwner(newOwner);
-
-        // propose: ownership does NOT move yet
-        factory.transferOwner(newOwner);
-        assertEq(factory.pendingOwner(), newOwner, "pending set");
-        assertEq(factory.owner(), address(this), "owner unchanged until accepted");
-
-        // only the proposed successor can accept
-        vm.prank(address(0xBAD));
-        vm.expectRevert(bytes("NOT_PENDING"));
-        factory.acceptOwner();
-
-        vm.prank(newOwner);
-        factory.acceptOwner();
-        assertEq(factory.owner(), newOwner, "ownership transferred on accept");
-        assertEq(factory.pendingOwner(), address(0), "pending cleared");
-    }
+    // R2 (re-audit, two-step factory ownership) is void: the factory is ownerless. The vector it
+    // guarded (stranding a privileged role on a bad address) no longer exists; see the SR-B note.
 
     /// @dev R3 (re-audit): borrower must be non-zero; it keys every sentinel sanctions/escrow call.
+    ///      The borrower is now derived from the market rather than supplied, so the guard fires
+    ///      when a market carries no borrower address.
     function test_R3_ZeroBorrowerRejected() public {
-        MockArch arch = new MockArch();
-        TrancheFactory factory = new TrancheFactory(address(arch));
-        arch.setRegistered(address(market), true);
-
-        TrancheFactory.DeployParams memory p = _dp(gov, address(sentinel));
-        p.borrower = address(0);
-        vm.expectRevert(bytes("ZERO_BORROWER"));
-        factory.deployTranches(p);
-
-        // the controller constructor guards it directly too
+        MockMarket m3 = new MockMarket(address(usdc)); // borrower never set
+        MockWrapper w3 = new MockWrapper(address(m3));
         vm.expectRevert(bytes("ZERO_BORROWER"));
         new TrancheController(
             TrancheController.Params({
-                underlyingVault: address(wrapper),
+                underlyingVault: address(w3),
                 sentinel: address(sentinel),
-                borrower: address(0),
                 governance: gov,
                 defaultDeclarer: address(0xDEC),
                 seniorGate: address(0),

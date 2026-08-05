@@ -2,83 +2,82 @@
 pragma solidity ^0.8.25;
 
 import {TrancheController} from "./TrancheController.sol";
-import {IUnderlying4626, IArchControllerLike} from "./interfaces/IExternal.sol";
+import {IWildcatMarket, IArchControllerLike, IWrapperFactoryLike} from "./interfaces/IExternal.sol";
 
 /// @title TrancheFactory
-/// @notice Protocol-level factory for senior/junior tranche sets, one per Wildcat market.
-/// @dev Mirrors `Wildcat4626WrapperFactory`: takes the `WildcatArchController` and gates
-///      deployment on `isRegisteredMarket`, so tranching rides the protocol's own deployment
-///      rails. Derives the market from the wrapper (`underlying.market()`). One set per market.
+/// @notice Ownerless, borrower-gated factory for senior/junior tranche sets: one live set per
+///         registered Wildcat market. All neutrality lives in hard-coded bounds (enforced by the
+///         controller's constructor) plus the registration check and wrapper resolution below --
+///         there is no discretion anywhere, so the factory has no privileged role at all.
+/// @dev    Squatting is impossible by construction: for any market exactly one address can deploy,
+///         and it is the one with the legal identity behind the facility. Deployment and capital
+///         formation are separable besides -- a fresh set cannot accept senior until whitelisted
+///         first-loss capital funds it to the floor, so parameters are ratified by the first
+///         junior deposit.
 contract TrancheFactory {
     IArchControllerLike public immutable archController;
-    /// @notice Only the owner may deploy tranche sets. Deployment is caller-supplied (governance,
-    ///         sentinel, the vault itself), so leaving it open lets anyone front-run and squat the
-    ///         canonical controllerForMarket slot, or register a fake vault whose market() returns a
-    ///         real registered market. Gating to a trusted owner closes both.
-    address public owner;
-    address public pendingOwner;
+    IWrapperFactoryLike public immutable wrapperFactory;
+    /// @notice The canonical sanctions sentinel, fixed for every deployment; never caller-supplied.
+    address public immutable sentinel;
 
-    mapping(address => address) public controllerForMarket; // market => TrancheController
-    address[] public allControllers;
+    mapping(address => address) public controllerForMarket; // market => current TrancheController
+    address[] public allControllers; // full history, superseded sets included
 
     event TranchesDeployed(
         address indexed market, address indexed underlying, address controller, address senior, address junior
     );
-    event OwnerProposed(address indexed pending);
-    event OwnerTransferred(address indexed from, address indexed to);
+    event TranchesSuperseded(address indexed market, address indexed retired, address indexed current);
 
-    constructor(address _archController) {
+    constructor(address _archController, address _wrapperFactory, address _sentinel) {
         require(_archController != address(0), "ZERO_ARCH");
+        require(_wrapperFactory != address(0), "ZERO_WRAPPER_FACTORY");
+        require(_sentinel != address(0), "ZERO_SENTINEL");
         archController = IArchControllerLike(_archController);
-        owner = msg.sender;
-        emit OwnerTransferred(address(0), msg.sender);
+        wrapperFactory = IWrapperFactoryLike(_wrapperFactory);
+        sentinel = _sentinel;
     }
 
-    /// @notice Two-step ownership transfer, mirroring TrancheController's governance rotation: the
-    ///         owner proposes a successor who must accept, so ownership can never be stranded on a
-    ///         typo'd or uncontrolled address.
-    function transferOwner(address next) external {
-        require(msg.sender == owner, "ONLY_OWNER");
-        require(next != address(0), "ZERO_OWNER");
-        pendingOwner = next;
-        emit OwnerProposed(next);
-    }
-
-    function acceptOwner() external {
-        require(msg.sender == pendingOwner, "NOT_PENDING");
-        emit OwnerTransferred(owner, pendingOwner);
-        owner = pendingOwner;
-        pendingOwner = address(0);
-    }
-
+    /// @dev Everything else the controller needs is resolved or derived: the wrapper from the
+    ///      wrapper factory (deployed if missing), the sentinel from this factory, the borrower
+    ///      and token metadata from the market itself.
     struct DeployParams {
-        address underlyingVault; // the market's ERC-4626 wrapper (v-wmtUSDC)
-        address sentinel;
-        address borrower;
         address governance;
-        address defaultDeclarer;
-        address seniorGate;
-        address juniorGate;
+        address defaultDeclarer; // zero unless a Loan Agreement names one
+        address seniorGate;      // zero = senior open (sanctions-only)
+        address juniorGate;      // mandatory
         uint256 seniorShareBips;
         uint256 minJuniorBips;
         uint256 defaultPenaltyWindow;
         bool borrowerRecovery;
     }
 
-    function deployTranches(DeployParams calldata p) external returns (address controllerAddr) {
-        require(msg.sender == owner, "ONLY_OWNER");
-        require(p.governance != address(0), "ZERO_GOV");
-        require(p.sentinel != address(0), "ZERO_SENTINEL");
-        require(p.borrower != address(0), "ZERO_BORROWER");
-        address market = IUnderlying4626(p.underlyingVault).market();
+    function deployTranches(address market, DeployParams calldata p) external returns (address controllerAddr) {
+        require(msg.sender == IWildcatMarket(market).borrower(), "ONLY_BORROWER");
         require(archController.isRegisteredMarket(market), "MARKET_NOT_REGISTERED");
-        require(controllerForMarket[market] == address(0), "TRANCHES_EXIST");
+
+        // One live set per market. Replacement (supersession) only once the incumbent is wound
+        // down or empty; a retired set keeps paying claims forever, the registry just moves on.
+        address incumbent = controllerForMarket[market];
+        if (incumbent != address(0)) {
+            TrancheController old = TrancheController(incumbent);
+            bool wound = old.status() == TrancheController.Status.WindDown;
+            bool empty = old.senior().totalSupply() == 0 && old.junior().totalSupply() == 0;
+            require(wound || empty, "INCUMBENT_LIVE");
+        }
+
+        // Resolve the market's canonical 4626 wrapper; bring it into existence if it is missing.
+        // The wrapper factory is permissionless and enforces one wrapper per market, so this is
+        // idempotent, and the "a market must have a wrapping facility" rule is made true rather
+        // than checked.
+        address wrapper = wrapperFactory.wrapperForMarket(market);
+        if (wrapper == address(0)) {
+            wrapper = wrapperFactory.createWrapper(market);
+        }
 
         TrancheController c = new TrancheController(
             TrancheController.Params({
-                underlyingVault: p.underlyingVault,
-                sentinel: p.sentinel,
-                borrower: p.borrower,
+                underlyingVault: wrapper,
+                sentinel: sentinel,
                 governance: p.governance,
                 defaultDeclarer: p.defaultDeclarer,
                 seniorGate: p.seniorGate,
@@ -91,10 +90,13 @@ contract TrancheFactory {
             })
         );
 
+        if (incumbent != address(0)) {
+            emit TranchesSuperseded(market, incumbent, address(c));
+        }
         controllerForMarket[market] = address(c);
         allControllers.push(address(c));
         controllerAddr = address(c);
-        emit TranchesDeployed(market, p.underlyingVault, controllerAddr, address(c.senior()), address(c.junior()));
+        emit TranchesDeployed(market, wrapper, controllerAddr, address(c.senior()), address(c.junior()));
     }
 
     function controllersLength() external view returns (uint256) {

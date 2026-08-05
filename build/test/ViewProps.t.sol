@@ -28,13 +28,13 @@ contract ViewPropsTest is Test {
     function setUp() public {
         usdc = new MockERC20("USD Coin", "USDC");
         market = new MockMarket(address(usdc));
+        market.setBorrower(address(0xB0110));
         wrapper = new MockWrapper(address(market));
         sentinel = new MockSentinel();
         c = new TrancheController(
             TrancheController.Params({
                 underlyingVault: address(wrapper),
                 sentinel: address(sentinel),
-                borrower: address(0xB0110),
                 governance: gov,
                 defaultDeclarer: address(0xDEC),
                 seniorGate: address(0),

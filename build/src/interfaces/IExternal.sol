@@ -58,6 +58,11 @@ interface ISentinelLike {
     function createEscrow(address borrower, address account, address asset) external returns (address);
 }
 
+interface IWrapperFactoryLike {
+    function wrapperForMarket(address market) external view returns (address);
+    function createWrapper(address market) external returns (address);
+}
+
 interface IArchControllerLike {
     function isRegisteredMarket(address market) external view returns (bool);
 }

@@ -12,7 +12,7 @@ import {IUnderlying4626, IWildcatMarket, MarketState} from "../src/interfaces/IE
 ///         mirror reads live delinquency state, and that redemption queues against the real
 ///         batched withdrawal queue.
 contract ForkTest is Test {
-    WhitelistGate internal jrGate = new WhitelistGate(address(this));
+    WhitelistGate internal jrGate; // constructed post-fork-selection: pre-fork deployments vanish
     string RPC = "https://eth-main.hinterlight.net";
 
     address constant WRAPPER = 0xF65460B84c13eeb911303336Ab0f9D63CC79839f; // v-wmtUSDC
@@ -34,14 +34,14 @@ contract ForkTest is Test {
             forked = false;
             return;
         }
+        jrGate = new WhitelistGate(address(this));
         wrapper = IUnderlying4626(WRAPPER);
         market = IWildcatMarket(wrapper.market());
 
         c = new TrancheController(
             TrancheController.Params({
                 underlyingVault: WRAPPER,
-                sentinel: address(0), // sanctions logic is unit-tested; skip on fork
-                borrower: address(0xB0110), // unused while sentinel is zero; non-zero per ZERO_BORROWER guard
+                sentinel: address(0), // sanctions logic is unit-tested; skip on fork // unused while sentinel is zero; non-zero per ZERO_BORROWER guard
                 governance: address(this),
                 defaultDeclarer: address(this),
                 seniorGate: address(0),

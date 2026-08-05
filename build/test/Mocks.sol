@@ -146,6 +146,26 @@ contract MockMarket {
 }
 
 /// @notice Mock v-wmtUSDC: ERC-4626 wrapper over the market token, priced by a settable WAD.
+contract MockWrapperFactory {
+    mapping(address => address) public wrapperForMarket;
+    bool public createReverts;
+
+    function setWrapper(address market, address wrapper) external {
+        wrapperForMarket[market] = wrapper;
+    }
+
+    function setCreateReverts(bool r) external {
+        createReverts = r;
+    }
+
+    function createWrapper(address market) external returns (address w) {
+        require(!createReverts, "WRAPPER_FACTORY_REVERT");
+        require(wrapperForMarket[market] == address(0), "WRAPPER_EXISTS");
+        w = address(new MockWrapper(market));
+        wrapperForMarket[market] = w;
+    }
+}
+
 contract MockWrapper {
     string public constant name = "v-wmtUSDC";
     uint256 public totalSupply;

@@ -120,7 +120,6 @@ contract TrancheController is ReentrancyGuard {
     struct Params {
         address underlyingVault;
         address sentinel;
-        address borrower;
         address governance;
         address defaultDeclarer;
         address seniorGate;   // zero = senior open (sanctions-only)
@@ -135,7 +134,6 @@ contract TrancheController is ReentrancyGuard {
     constructor(Params memory p) {
         require(p.underlyingVault != address(0), "ZERO_ADDR");
         require(p.governance != address(0), "ZERO_GOV");
-        require(p.borrower != address(0), "ZERO_BORROWER");
         require(p.seniorShareBips <= MAX_SENIOR_SHARE_BIPS, "BAD_SHARE");
         require(p.minJuniorBips >= 500 && p.minJuniorBips <= 9000, "BAD_SUBORDINATION");
         require(p.defaultPenaltyWindow > 0 && p.defaultPenaltyWindow <= MAX_PENALTY_WINDOW, "BAD_WINDOW");
@@ -145,7 +143,8 @@ contract TrancheController is ReentrancyGuard {
         market = IWildcatMarket(IUnderlying4626(p.underlyingVault).market());
         baseAsset = IERC20(market.asset());
         sentinel = ISentinelLike(p.sentinel);
-        borrower = p.borrower;
+        borrower = IWildcatMarket(market).borrower();
+        require(borrower != address(0), "ZERO_BORROWER");
         governance = p.governance;
         defaultDeclarer = p.defaultDeclarer;
         seniorShareBips = p.seniorShareBips;
