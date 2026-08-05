@@ -27,6 +27,8 @@ interface IWildcatMarket {
     function delinquencyGracePeriod() external view returns (uint256);
     function withdrawalBatchDuration() external view returns (uint256);
     function asset() external view returns (address); // the base asset (USDC)
+    function borrower() external view returns (address);
+    function symbol() external view returns (string memory);
     function queueWithdrawal(uint256 amount) external returns (uint32 expiry);
     function executeWithdrawal(address account, uint32 expiry) external returns (uint256);
     // ERC20 surface of the market token (wmtUSDC)

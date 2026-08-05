@@ -148,6 +148,57 @@ contract TrancheTest is Test {
         assertEq(c.seniorOwed(), owedBefore, "accrual halted at default");
     }
 
+    function test_DerivedTokenMetadata() public view {
+        assertEq(senior.name(), "Senior Tranched abcUSDC");
+        assertEq(senior.symbol(), "sr-abcUSDC");
+        assertEq(junior.name(), "Junior Tranched abcUSDC");
+        assertEq(junior.symbol(), "jr-abcUSDC");
+    }
+
+    function test_EmptyMarketSymbolRevertsDeployment() public {
+        MockMarket m2 = new MockMarket(address(usdc));
+        m2.setSymbol("");
+        MockWrapper w2 = new MockWrapper(address(m2));
+        vm.expectRevert(bytes("NO_SYMBOL"));
+        new TrancheController(
+            TrancheController.Params({
+                underlyingVault: address(w2),
+                sentinel: address(sentinel),
+                borrower: borrower,
+                governance: gov,
+                defaultDeclarer: declarer,
+                seniorShareBips: SENIOR_SHARE_BIPS,
+                minJuniorBips: MIN_JUNIOR_BIPS,
+                defaultPenaltyWindow: WINDOW,
+                shareDecimals: 18
+            })
+        );
+    }
+
+    function test_ClaimMany() public {
+        // three partial senior exits, each its own request id across separate batches
+        uint256 sShares = senior.balanceOf(srLP);
+        uint256[] memory ids = new uint256[](4);
+        uint32[3] memory expiries;
+        for (uint256 i; i < 3; ++i) {
+            vm.prank(srLP);
+            ids[i] = c.requestRedeem(true, sShares / 4);
+            expiries[i] = uint32(block.timestamp + market.withdrawalBatchDuration());
+            vm.warp(block.timestamp + market.withdrawalBatchDuration() + 1);
+        }
+        ids[3] = ids[2]; // duplicate: second occurrence must claim zero, not revert
+        usdc.mint(address(market), 300e18);
+        for (uint256 i; i < 3; ++i) c.pokeRecovery(expiries[i]);
+
+        uint256 expected = c.claimable(ids[0]) + c.claimable(ids[1]) + c.claimable(ids[2]);
+        assertGt(expected, 0, "something claimable");
+        uint256 total = c.claimMany(ids);
+        assertEq(total, expected, "claimMany sums per-id claims");
+        assertEq(usdc.balanceOf(srLP), expected, "paid to request owner");
+        // second pass over the same ids is a no-op, not a revert
+        assertEq(c.claimMany(ids), 0);
+    }
+
     function test_DeclareDefaultOverride() public {
         vm.prank(declarer);
         c.declareDefault();

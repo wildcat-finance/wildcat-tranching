@@ -131,8 +131,12 @@ contract TrancheController is ReentrancyGuard {
         minJuniorBips = p.minJuniorBips;
         defaultPenaltyWindow = p.defaultPenaltyWindow;
 
-        senior = new TrancheToken("Wildcat Senior Tranche", "sr-wmtUSDC", p.shareDecimals, true);
-        junior = new TrancheToken("Wildcat Junior Tranche", "jr-wmtUSDC", p.shareDecimals, false);
+        // Token metadata is derived from the market's own symbol so every facility's tranche
+        // set carries its own ticker with nothing caller-supplied.
+        string memory sym = market.symbol();
+        require(bytes(sym).length > 0, "NO_SYMBOL");
+        senior = new TrancheToken(string.concat("Senior Tranched ", sym), string.concat("sr-", sym), p.shareDecimals, true);
+        junior = new TrancheToken(string.concat("Junior Tranched ", sym), string.concat("jr-", sym), p.shareDecimals, false);
 
         lastAccrual = block.timestamp;
         status = Status.Active;
@@ -416,6 +420,19 @@ contract TrancheController is ReentrancyGuard {
     }
 
     function claim(uint256 id) external nonReentrant returns (uint256 amt) {
+        amt = _claim(id);
+    }
+
+    /// @notice Claim any number of requests in one transaction. Per-id logic identical to
+    ///         claim(); ids with nothing claimable are skipped rather than reverting, so a
+    ///         holder with many partial fills across 14-day cycles settles them all at once.
+    function claimMany(uint256[] calldata ids) external nonReentrant returns (uint256 total) {
+        for (uint256 i; i < ids.length; ++i) {
+            total += _claim(ids[i]);
+        }
+    }
+
+    function _claim(uint256 id) internal returns (uint256 amt) {
         Request storage r = requests[id];
         amt = claimable(id);
         if (amt == 0) return 0;

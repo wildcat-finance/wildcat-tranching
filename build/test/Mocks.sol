@@ -61,8 +61,18 @@ contract MockMarket {
     mapping(address => mapping(uint32 => uint256)) public owed; // account => expiry => wmt queued
     mapping(address => mapping(uint32 => uint256)) public paid; // account => expiry => USDC paid
 
+    string internal _symbol = "abcUSDC";
+
     constructor(address _usdc) {
         asset = _usdc;
+    }
+
+    function symbol() external view returns (string memory) {
+        return _symbol;
+    }
+
+    function setSymbol(string calldata s_) external {
+        _symbol = s_;
     }
 
     function mintTokens(address to, uint256 a) external {
