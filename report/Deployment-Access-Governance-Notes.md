@@ -1,7 +1,5 @@
 # Tranching Deployment & Governance — Design Notes
 
-<img src="assets/tranche-mascot.png" alt="Wildcat tranching mascot" width="130" align="right"/>
-
 *How a tranche set comes into existence, who can create one, how capital enters, and what the governance role actually is. This document stands alone: the target design plus the decisions still open, in that order. None of it is implemented at `48cc01d` — the contracts there reflect an earlier deployment model (owner-gated factory, wrapper-share deposits). Companions: `Six-Seven-Mechanisms-Report.md` for the tranche mechanics, `Design-Risk-Specification.md` for the original rationale.*
 
 ---

@@ -1,7 +1,5 @@
 # Pre-Deployment PR — Build Sheet
 
-<img src="assets/tranche-mascot.png" alt="Wildcat tranching mascot" width="120" align="right"/>
-
 *Every question the pre-deployment PR has to answer, written out. The what-and-why is settled in `Design-Risk-Specification.md` §IX and `Deployment-Access-Governance-Notes.md`; this sheet is the implementation-level list — the decisions an engineer hits while building. These are now locked as decisions rather than recommendations, bar the ones flagged as needing answers from outside the PR. Nothing here touches the waterfall.*
 
 ---

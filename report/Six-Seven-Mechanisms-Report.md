@@ -1,10 +1,6 @@
 # Mechanisms Report: Tranching the abcUSDC Facility (Six Seven Ltd)
 
-<img src="assets/tranche-mascot.png" alt="Wildcat tranching mascot — a purple-haired catgirl in a dark hoodie with a heart choker" width="150" align="right"/>
-
 *Where the tranching mechanisms stand, instantiated on a concrete facility rather than in the abstract. Every number below is derived from the code in `build/src/`, not from the marketing copy. Companion infographic: `report/six-seven-mechanisms.html`.*
-
-*Mascot: vector rendition pending the official art — swap `report/assets/tranche-mascot.png` to rebrand every placement at once.*
 
 ---
 
