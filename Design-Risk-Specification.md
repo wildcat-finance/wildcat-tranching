@@ -1,13 +1,13 @@
 # Design & Risk Specification: Wildcat In-House Tranching
 
-*The design and risk specification for Wildcat's senior/junior tranching. Each decision is stated with the alternatives considered and the rationale; the closing section states the resulting system. Sections I–VIII (Q1–Q16) are implemented and tested (`build/src/`, two adversarial audit cycles, 55 tests passing); section IX (Q17–Q21) records decisions adopted in the abcUSDC facility iteration that are designed but not yet built. Facility-specific analysis lives in `report/Six-Seven-Mechanisms-Report.md`; deployment and governance detail in `report/Deployment-Access-Governance-Notes.md`.*
+*The design and risk specification for Wildcat's senior/junior tranching. Each decision is stated with the alternatives considered and the rationale; the closing section states the resulting system. Sections I–VIII (Q1–Q16) are implemented and tested (`build/src/`, two adversarial audit cycles); section IX (Q17–Q21) records the access, deployment and entry decisions from the abcUSDC facility iteration, now also implemented (69 tests passing: 65 local + 4 mainnet-fork including a live USDC round trip). Facility-specific analysis lives in `report/Six-Seven-Mechanisms-Report.md`; deployment and governance detail in `report/Deployment-Access-Governance-Notes.md`.*
 
 ## Status & decisions outstanding
 
 | Status | Scope |
 |---|---|
 | **Implemented & audited** | Q1–Q16, including the audit-cycle hardening folded into their answers below (distress-gated allocation, accrual-before-freeze, live-price exit sizing, balance-derived recovery, two-step rotations) |
-| **Adopted, pending build** | Q17–Q21 plus per-market token metadata — one pre-deployment PR, nothing in the waterfall |
+| **Implemented, awaiting review** | Q17–Q21 plus per-market token metadata — landed as the pre-deployment change set, nothing in the waterfall touched; the USDC entry path ships to production only after the ToU/MLA legal answer |
 | **Open** | Foundation sign-off on the Q19 deployment posture · governance holder per facility (Q21) · ToU/MLA papering for tranche-only buyers (Q18) · recovery bit default per facility (Q21) · senior gate provider set per facility (Q17) · human audit engagement before real capital |
 
 The conservative bias behind every decision below:
@@ -38,7 +38,7 @@ A structural property of Wildcat shapes everything: the market token's `scaleFac
 - **(c)** A single ERC-1155 with senior/junior IDs.
 
 **Decision:** (b), two tranche tokens plus a controller.
-**Why:** this is the proven shape. Each tranche is a standard, independently-composable token, so integrators, accounting and permit all behave the way callers already expect. The controller isolates the waterfall logic in one auditable place, and senior and junior accounting stay separated. Token metadata is derived on-chain from the market's own symbol — `"Senior Tranched <SYM>"` / `sr-<SYM>` and the junior equivalents (pending build) — so each facility's tranche set carries its own market's ticker with nothing caller-supplied.
+**Why:** this is the proven shape. Each tranche is a standard, independently-composable token, so integrators, accounting and permit all behave the way callers already expect. The controller isolates the waterfall logic in one auditable place, and senior and junior accounting stay separated. Token metadata is derived on-chain from the market's own symbol — `"Senior Tranched <SYM>"` / `sr-<SYM>` and the junior equivalents — so each facility's tranche set carries its own market's ticker with nothing caller-supplied.
 
 ---
 
@@ -192,9 +192,9 @@ The governance role itself has no interface — the controller never calls into 
 
 ---
 
-## IX. Access, deployment & entry — adopted in the abcUSDC iteration, pending build
+## IX. Access, deployment & entry
 
-*The decisions in this section are settled at the design level and not yet implemented; together they form one pre-deployment PR (plus the per-market token metadata from Q2). Nothing in them touches the waterfall.*
+*Implemented alongside Q1–Q16 (one pre-deployment change set, plus the per-market token metadata from Q2). Nothing in this section touches the waterfall.*
 
 ### Q17. How is entry to the tranche tokens gated?
 - **(a)** Hardcoded per-class policy in the controller (junior whitelist mapping; senior open to any non-sanctioned address).
@@ -245,20 +245,20 @@ The governance role itself has no interface — the controller never calls into 
 A credit-tranche vault over the audited market 4626 wrapper: oracle-free, event-driven, thick first-loss, async-exit, immutable-logic. Deployed by the borrower inside code bounds, ratified by first-loss capital, gated at entry only, and governed by a role that can tune but never trap.
 
 **Contracts**
-- `TrancheController`: immutable orchestrator (`ReentrancyGuard`, `SafeTransferLib`). Holds the wrapper shares; under Q18 (pending build) also the market lender of record for USDC entry; runs the yield waterfall, the distress-gated loss/cash waterfall, subordination gating, and the async redemption queue; re-enforces the Wildcat sentinel per user, routing sanctioned redemptions to escrow; recovery balance-derived with permissionless `sync()`.
-- `senior` / `junior` tranche tokens: Solady ERC20 + EIP-2612 permit with an ERC-4626 value-view surface; per-market name/symbol (pending build). Junior gated by the whitelist provider; senior policy per facility (Q17, pending build).
-- `TrancheFactory`: ownerless, borrower-gated, bounds-in-code (Q19, pending build; the implemented factory is owner-gated with two-step transfer). One live set per registered market with supersession (Q20, pending build). Composes wrapper deployment.
-- Reused: `Wildcat4626Wrapper`, `WildcatSanctionsSentinel` + escrow, the Wildcat market withdrawal queue; Solady `ERC20` / `ReentrancyGuard` / `SafeTransferLib`; Morpho Midnight `IEnterGate` + the `WildcatRoleProviderGate` bridge (Q17, pending build).
+- `TrancheController`: immutable orchestrator (`ReentrancyGuard`, `SafeTransferLib`). Holds the wrapper shares; under Q18 also the market lender of record for USDC entry; runs the yield waterfall, the distress-gated loss/cash waterfall, subordination gating, and the async redemption queue; re-enforces the Wildcat sentinel per user, routing sanctioned redemptions to escrow; recovery balance-derived with permissionless `sync()`.
+- `senior` / `junior` tranche tokens: Solady ERC20 + EIP-2612 permit with an ERC-4626 value-view surface; per-market name/symbol derived from the market. Junior gated by the whitelist provider (mandatory); senior policy per facility (Q17).
+- `TrancheFactory`: ownerless, borrower-gated, bounds-in-code (Q19). One live set per registered market with supersession (Q20). Composes wrapper deployment.
+- Reused: `Wildcat4626Wrapper`, `WildcatSanctionsSentinel` + escrow, the Wildcat market withdrawal queue; Solady `ERC20` / `ReentrancyGuard` / `SafeTransferLib`; Morpho Midnight `IEnterGate` + the `WildcatRoleProviderGate` bridge (Q17).
 
 **Parameters**
 - Subordination: junior ≥ 20% of TVL (senior ≤ 4×), enforced by gating senior deposits and junior withdrawals; exactly binding at the floor (place junior above it).
 - Senior: target rate derived live as `annualInterestBips × seniorShareBips / BIPS`, capped at the base APR; `seniorShareBips` (≤ 100%) governance-set behind a 48h timelock, proposals cancellable. Priority on realised yield; no guarantee once junior is exhausted.
 - Losses: recognised only on realised shortfall; junior → senior; no reserve; no oracle; no discretion.
-- Default trigger: `timeDelinquent ≥ delinquencyGracePeriod + 90 days` (ToU §6.2 mirror), per-market configurable, plus a Loan-Agreement `declareDefault` override (declarer retirable to zero, pending build).
+- Default trigger: `timeDelinquent ≥ delinquencyGracePeriod + 90 days` (ToU §6.2 mirror), per-market configurable, plus a Loan-Agreement `declareDefault` override (declarer retirable to zero via clearDefaultDeclarer).
 - Redemptions: async, mirroring the market's batch/expiry queue; senior-priority allocation with the full-obligation distress reserve; exits sized at the live price during delinquency; no instant buffer.
 - Accounting: realised-only, valuation frozen at a high-watermark while delinquent; accrual booked before any default freeze.
-- Compliance: sentinel re-checked per user incl. escrow; entry gates per facility (pending build); junior whitelisted via the default provider.
-- Lifecycle: immutable logic; pause halts deposits only, never senior exits; automatic waterfall wind-down on default/close; borrower-deployed, one live set per market, supersession on empty/wound-down (pending build); governance recovery per-facility bit (pending build).
+- Compliance: sentinel re-checked per user incl. escrow; entry gates per facility (junior gate mandatory); junior whitelisted via the default provider.
+- Lifecycle: immutable logic; pause halts deposits only, never senior exits; automatic waterfall wind-down on default/close; borrower-deployed, one live set per market, supersession on empty/wound-down; governance recovery per-facility bit (30d window, incumbent veto).
 
 **Behaviour across the four states**
 - *Healthy:* interest accrues via `scaleFactor`; senior takes its target, junior takes the (leveraged) rest. Deposits and redemptions flow through the async queue, with subordination respected; allocation reserves queued senior face.

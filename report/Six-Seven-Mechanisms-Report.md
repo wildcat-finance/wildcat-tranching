@@ -17,7 +17,7 @@ The analysis below is complete; these are the calls still open, in the order the
 | **Loan Agreement & `defaultDeclarer`** | Zero declarer = pure ToU day-118 mirror; a bilateral agreement names a lender-side declarer and changes the default definition | §2, §12.4 | Legal + desk |
 | **Human audit engagement** | Two agentic audit cycles are not an audit engagement; required before real capital | §10 | Protocol |
 
-Settled design, pending build (one pre-deployment PR): tranche token metadata derived from the market symbol (§11), the entry-gate pointers (§12), `claimMany` (§7), and the deployment/entry changes in the companion notes.
+Built and tested since first writing: tranche token metadata derived from the market symbol (§11, closing that blocker), the entry-gate pointers (§12), `claimMany` (§7), and the deployment/entry changes in the companion notes. The senior-gate *provider set* for this facility remains the open policy call above.
 
 ---
 
@@ -39,7 +39,7 @@ These two are the most consequential terms in the sheet and they are not neutral
 
 Everything below assumes the full 10,000,000 of current supply arrives through the tranche set — i.e. the facility is fully tranched, and the tranche controller is the market's lender of record. A partially-tranched facility works identically; the stack just sits on the tranched sleeve rather than on the whole book.
 
-Naming follows the existing convention: the audited ERC-4626 wrapper is `v-abcUSDC`, and the tranche tokens are `sr-abcUSDC` / `jr-abcUSDC`. See §11 — the code does not currently emit those symbols.
+Naming follows the existing convention: the audited ERC-4626 wrapper is `v-abcUSDC`, and the tranche tokens are `sr-abcUSDC` / `jr-abcUSDC` — derived on-chain from the market symbol (§11).
 
 One scoping note for §8. The tranche layer does not compute delinquency; it reads `isDelinquent` and `timeDelinquent` off `MarketState` and inherits whatever the market decides. So the timing analysis below rests on Wildcat market semantics external to this repo (the mocks in `build/test/Mocks.sol` stub both flags directly, so the test suite cannot confirm it). The mechanics are standard — required liquidity counts pending withdrawals at full face, applies the reserve ratio to non-withdrawing supply, and requires accrued protocol fees to be liquid — but the timing conclusions should be confirmed against the deployed market before they go in front of a buyer.
 

@@ -16,7 +16,7 @@ booked as profit.
 
 ## Documentation
 - [Tranching-Explained.md](Tranching-Explained.md): plain-language explainer of the whole facility (also rendered to PDF under `report/`).
-- [Design-Risk-Specification.md](Design-Risk-Specification.md): the design and risk decisions behind the model — Q1–Q16 as built, plus the adopted-pending-build access/deployment/entry decisions (Q17–Q21) and the open-decision register.
+- [Design-Risk-Specification.md](Design-Risk-Specification.md): the design and risk decisions behind the model — Q1–Q16 plus the access/deployment/entry decisions (Q17–Q21), all as built, and the open-decision register.
 - [report/Six-Seven-Mechanisms-Report.md](report/Six-Seven-Mechanisms-Report.md): every mechanism instantiated on a concrete facility (abcUSDC / Six Seven Ltd), with worked waterfalls, the distress clock, and the entry-gate design; companion infographic in `report/six-seven-mechanisms.html`.
 - [report/Deployment-Access-Governance-Notes.md](report/Deployment-Access-Governance-Notes.md): who deploys, how capital enters, what the governance role is, and the decisions still open.
 - [Red-Team-Technical-Framework.md](Red-Team-Technical-Framework.md): adversarial-review brief: trust model, invariants, and the candidate-weakness list.
@@ -31,7 +31,7 @@ build/src/
   libraries/WaterfallMath.sol   # accrual, value/loss split, subordination, ToU default trigger
   TrancheController.sol         # brain: deposits, async redemption, default/wind-down, gating, gov
   TrancheToken.sol              # Solady ERC20 + permit + ERC-4626 views (sr-/jr-, derived per market)
-  TrancheFactory.sol            # protocol-level, ArchController-gated, one set per market
+  TrancheFactory.sol            # ownerless, borrower-gated; composes the 4626 wrapper; supersession
   interfaces/IExternal.sol      # lean interfaces matching the Wildcat ABIs
 build/test/
   Tranche.t.sol                 # unit/behaviour tests
@@ -44,7 +44,7 @@ build/test/
 ```bash
 export FOUNDRY_DISABLE_NIGHTLY_WARNING=true
 
-# everything (local + mainnet fork): 55 tests
+# everything (local + mainnet fork): 69 tests
 cd build && forge test
 
 # local only (unit + fuzz + invariants)

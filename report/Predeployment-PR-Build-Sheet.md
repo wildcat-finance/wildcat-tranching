@@ -1,5 +1,7 @@
 # Pre-Deployment PR — Build Sheet
 
+**Status: built.** Tiers A–G landed as five commits, 69 tests passing (65 local + 4 mainnet-fork, including a live USDC round trip). X2 (Foundation posture) gates the merge; X3 (legal) gates shipping the USDC door; X4 confirmed. One empirical note from the fork suite: the reference market's hooks do **not** gate deposits, so the USDC door needed no credentialing there — on a deposit-gating market the door fails loudly at `market.depositUpTo`, the intended D10 behaviour.
+
 *Every question the pre-deployment PR has to answer, written out. The what-and-why is settled in `Design-Risk-Specification.md` §IX and `Deployment-Access-Governance-Notes.md`; this sheet is the implementation-level list — the decisions an engineer hits while building. These are now locked as decisions rather than recommendations, bar the ones flagged as needing answers from outside the PR. Nothing here touches the waterfall.*
 
 ---
