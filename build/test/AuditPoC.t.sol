@@ -57,11 +57,11 @@ contract AuditPoCTest is Test {
         // deposits at price 1.0 -> markPps frozen at 1.0
         vm.startPrank(jrLP);
         wrapper.approve(address(c), 100e18);
-        c.depositJunior(100e18, jrLP);
+        c.depositJunior(TrancheController.AssetKind.WrapperShares, 100e18, jrLP);
         vm.stopPrank();
         vm.startPrank(srLP);
         wrapper.approve(address(c), 300e18);
-        c.depositSenior(300e18, srLP);
+        c.depositSenior(TrancheController.AssetKind.WrapperShares, 300e18, srLP);
         vm.stopPrank();
     }
 

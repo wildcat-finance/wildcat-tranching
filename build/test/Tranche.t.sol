@@ -65,7 +65,7 @@ contract TrancheTest is Test {
     function _depositSenior(address who, uint256 shares) internal returns (uint256) {
         vm.startPrank(who);
         wrapper.approve(address(c), shares);
-        uint256 s = c.depositSenior(shares, who);
+        uint256 s = c.depositSenior(TrancheController.AssetKind.WrapperShares, shares, who);
         vm.stopPrank();
         return s;
     }
@@ -73,7 +73,7 @@ contract TrancheTest is Test {
     function _depositJunior(address who, uint256 shares) internal returns (uint256) {
         vm.startPrank(who);
         wrapper.approve(address(c), shares);
-        uint256 s = c.depositJunior(shares, who);
+        uint256 s = c.depositJunior(TrancheController.AssetKind.WrapperShares, shares, who);
         vm.stopPrank();
         return s;
     }
@@ -97,7 +97,7 @@ contract TrancheTest is Test {
         vm.startPrank(srLP);
         wrapper.approve(address(c), 1e18);
         vm.expectRevert(bytes("SUBORDINATION"));
-        c.depositSenior(1e18, srLP);
+        c.depositSenior(TrancheController.AssetKind.WrapperShares, 1e18, srLP);
         vm.stopPrank();
     }
 
@@ -229,6 +229,56 @@ contract TrancheTest is Test {
         c.setDefaultDeclarer(address(0));
     }
 
+    function test_FrontDoor_marketToken() public {
+        address lp = address(0xF00D);
+        jrGate.setAllowed(lp, true);
+        market.mintTokens(lp, 500e18);
+        vm.startPrank(lp);
+        market.approve(address(c), type(uint256).max);
+        uint256 shares = c.depositJunior(TrancheController.AssetKind.MarketToken, 200e18, lp);
+        vm.stopPrank();
+        assertGt(shares, 0, "minted");
+        // valuation parity: 200 market tokens at price 1e18 == 200 of value, same as wrapper door
+        assertApproxEqAbs(c.juniorValue(), 100e18 + 200e18, 2, "junior value grew by the deposit");
+    }
+
+    function test_FrontDoor_usdcLenderOfRecord() public {
+        address lp = address(0xCA5E);
+        jrGate.setAllowed(lp, true);
+        usdc.mint(lp, 500e18);
+        uint256 marketBalBefore = market.balanceOf(address(c));
+        vm.startPrank(lp);
+        usdc.approve(address(c), type(uint256).max);
+        uint256 shares = c.depositJunior(TrancheController.AssetKind.USDC, 150e18, lp);
+        vm.stopPrank();
+        assertGt(shares, 0, "minted");
+        assertEq(market.balanceOf(address(c)), marketBalBefore, "market tokens all wrapped, none idle");
+        assertApproxEqAbs(c.juniorValue(), 100e18 + 150e18, 2, "USDC door values identically");
+        // sanctions + gates still guard this door
+        address bad = address(0xBAD1);
+        usdc.mint(bad, 10e18);
+        vm.startPrank(bad);
+        usdc.approve(address(c), type(uint256).max);
+        vm.expectRevert(bytes("JUNIOR_GATED"));
+        c.depositJunior(TrancheController.AssetKind.USDC, 10e18, bad);
+        vm.stopPrank();
+    }
+
+    function test_FrontDoor_usdcCapacityReverts() public {
+        address lp = address(0xCA5E);
+        jrGate.setAllowed(lp, true);
+        usdc.mint(lp, 500e18);
+        market.setMaxTotalSupply(market.totalSupply() + 50e18); // only 50 of room
+        vm.startPrank(lp);
+        usdc.approve(address(c), type(uint256).max);
+        vm.expectRevert(bytes("MARKET_AT_CAPACITY"));
+        c.depositJunior(TrancheController.AssetKind.USDC, 100e18, lp);
+        // exactly-at-capacity fills
+        uint256 shares = c.depositJunior(TrancheController.AssetKind.USDC, 50e18, lp);
+        assertGt(shares, 0);
+        vm.stopPrank();
+    }
+
     function test_JuniorGateMandatory() public {
         vm.expectRevert(bytes("NO_JUNIOR_GATE"));
         new TrancheController(
@@ -271,7 +321,7 @@ contract TrancheTest is Test {
         vm.prank(jrLP);
         wrapper.approve(address(c2), type(uint256).max);
         vm.prank(jrLP);
-        c2.depositJunior(100e18, jrLP);
+        c2.depositJunior(TrancheController.AssetKind.WrapperShares, 100e18, jrLP);
 
         // ungated senior deposit blocked
         address stranger = address(0x51124);
@@ -279,13 +329,13 @@ contract TrancheTest is Test {
         vm.startPrank(stranger);
         wrapper.approve(address(c2), type(uint256).max);
         vm.expectRevert(bytes("SENIOR_GATED"));
-        c2.depositSenior(10e18, stranger);
+        c2.depositSenior(TrancheController.AssetKind.WrapperShares, 10e18, stranger);
         vm.stopPrank();
 
         // gated senior deposits fine; transfer-in to ungated recipient blocked
         vm.startPrank(srLP);
         wrapper.approve(address(c2), type(uint256).max);
-        c2.depositSenior(100e18, srLP);
+        c2.depositSenior(TrancheController.AssetKind.WrapperShares, 100e18, srLP);
         TrancheToken sr2 = c2.senior();
         vm.expectRevert(bytes("SENIOR_GATED"));
         sr2.transfer(stranger, 1e18);
@@ -450,7 +500,7 @@ contract TrancheTest is Test {
         vm.startPrank(srLP);
         wrapper.approve(address(c), 1e18);
         vm.expectRevert(bytes("SANCTIONED"));
-        c.depositSenior(1e18, srLP);
+        c.depositSenior(TrancheController.AssetKind.WrapperShares, 1e18, srLP);
         vm.stopPrank();
         sentinel.setSanctioned(srLP, false);
 
@@ -459,7 +509,7 @@ contract TrancheTest is Test {
         vm.startPrank(rando);
         wrapper.approve(address(c), 10e18);
         vm.expectRevert(bytes("JUNIOR_GATED"));
-        c.depositJunior(10e18, rando);
+        c.depositJunior(TrancheController.AssetKind.WrapperShares, 10e18, rando);
         vm.stopPrank();
     }
 
@@ -553,7 +603,7 @@ contract TrancheFactoryTest is Test {
         wrapper.mintShares(jrLP, 100e18);
         vm.startPrank(jrLP);
         wrapper.approve(first, type(uint256).max);
-        TrancheController(first).depositJunior(100e18, jrLP);
+        TrancheController(first).depositJunior(TrancheController.AssetKind.WrapperShares, 100e18, jrLP);
         vm.stopPrank();
         vm.prank(BORROWER);
         vm.expectRevert(bytes("INCUMBENT_LIVE"));

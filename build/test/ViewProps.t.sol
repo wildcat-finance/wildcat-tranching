@@ -56,14 +56,14 @@ contract ViewPropsTest is Test {
     function _depJ(uint256 a) internal {
         vm.startPrank(jrLP);
         wrapper.approve(address(c), a);
-        c.depositJunior(a, jrLP);
+        c.depositJunior(TrancheController.AssetKind.WrapperShares, a, jrLP);
         vm.stopPrank();
     }
 
     function _depS(uint256 a) internal {
         vm.startPrank(srLP);
         wrapper.approve(address(c), a);
-        c.depositSenior(a, srLP);
+        c.depositSenior(TrancheController.AssetKind.WrapperShares, a, srLP);
         vm.stopPrank();
     }
 

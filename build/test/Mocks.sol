@@ -126,6 +126,21 @@ contract MockMarket {
         s.scaleFactor = uint112(1e27);
     }
 
+    uint256 public maxTotalSupply = type(uint256).max;
+
+    function setMaxTotalSupply(uint256 m) external {
+        maxTotalSupply = m;
+    }
+
+    function depositUpTo(uint256 amount) external returns (uint256 actual) {
+        uint256 room = maxTotalSupply > totalSupply ? maxTotalSupply - totalSupply : 0;
+        actual = amount < room ? amount : room;
+        if (actual == 0) return 0;
+        MockERC20(asset).transferFrom(msg.sender, address(this), actual);
+        totalSupply += actual;
+        balanceOf[msg.sender] += actual;
+    }
+
     function queueWithdrawal(uint256 amount) external returns (uint32 expiry) {
         balanceOf[msg.sender] -= amount; // burn into the batch
         totalSupply -= amount;

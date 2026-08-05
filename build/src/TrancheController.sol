@@ -284,25 +284,42 @@ contract TrancheController is ReentrancyGuard {
     }
 
     // ============================================================ deposits
-    function depositSenior(uint256 underlyingShares, address receiver) external nonReentrant returns (uint256) {
-        return _deposit(true, underlyingShares, receiver);
+    /// @notice One front door, three accepted assets, one valuation path. WrapperShares are taken
+    ///         as-is; MarketToken is routed through the wrapper on the way in; USDC makes the
+    ///         controller the market's lender of record (deposit into the market, then wrap).
+    ///         `amount` is denominated in the asset being brought.
+    enum AssetKind {
+        WrapperShares,
+        MarketToken,
+        USDC
     }
 
-    function depositJunior(uint256 underlyingShares, address receiver) external nonReentrant returns (uint256) {
-        return _deposit(false, underlyingShares, receiver);
+    function depositSenior(AssetKind kind, uint256 amount, address receiver) external nonReentrant returns (uint256) {
+        return _deposit(true, kind, amount, receiver);
     }
 
-    function _deposit(bool isSenior, uint256 underlyingShares, address receiver) internal returns (uint256 shares) {
+    function depositJunior(AssetKind kind, uint256 amount, address receiver) external nonReentrant returns (uint256) {
+        return _deposit(false, kind, amount, receiver);
+    }
+
+    function _deposit(bool isSenior, AssetKind kind, uint256 amount, address receiver)
+        internal
+        returns (uint256 shares)
+    {
         accrue();
         require(status == Status.Active, "NOT_ACTIVE");
         require(!depositsPaused, "DEPOSITS_PAUSED");
         require(!_isSanctioned(receiver) && !_isSanctioned(msg.sender), "SANCTIONED");
         require(_gateAllows(isSenior, receiver), isSenior ? "SENIOR_GATED" : "JUNIOR_GATED");
 
+        // Snapshot the split BEFORE assets arrive: realisedValue is balance-derived, so pricing
+        // must not see the deposit itself.
+        (uint256 sv, uint256 jv) = trancheValues();
+
+        uint256 underlyingShares = _acquire(kind, amount);
         uint256 dV = _assetsOf(underlyingShares);
         require(dV > 0, "ZERO_VALUE");
 
-        (uint256 sv, uint256 jv) = trancheValues();
         TrancheToken token = isSenior ? senior : junior;
         uint256 supply = token.totalSupply();
         uint256 valueBefore = isSenior ? sv : jv;
@@ -316,14 +333,37 @@ contract TrancheController is ReentrancyGuard {
         }
         require(shares > 0, "ZERO_SHARES");
 
-        address(underlyingVault).safeTransferFrom(msg.sender, address(this), underlyingShares);
-
         if (isSenior) {
             seniorOwed += dV;
             require(WaterfallMath.meetsSubordination(sv + dV, jv, minJuniorBips), "SUBORDINATION");
         }
         token.mint(receiver, shares);
         emit Deposit(isSenior, receiver, shares, dV);
+    }
+
+    /// @dev Pull the depositor's asset and end holding wrapper shares, whichever door was used.
+    ///      USDC path: depositUpTo returns the amount the market actually took; anything short of
+    ///      the full amount means the market is at capacity, and the deposit reverts rather than
+    ///      partially filling (the pull is undone by the revert).
+    function _acquire(AssetKind kind, uint256 amount) internal returns (uint256 underlyingShares) {
+        if (kind == AssetKind.WrapperShares) {
+            address(underlyingVault).safeTransferFrom(msg.sender, address(this), amount);
+            return amount;
+        }
+        if (kind == AssetKind.MarketToken) {
+            address(market).safeTransferFrom(msg.sender, address(this), amount);
+            address(market).safeApprove(address(underlyingVault), amount);
+            return underlyingVault.deposit(amount, address(this));
+        }
+        // AssetKind.USDC: the controller is the market's lender of record. Requires the borrower
+        // to have credentialed the controller under the market's hooks policy; if that deployment
+        // step was missed, the market deposit reverts loudly here.
+        address(baseAsset).safeTransferFrom(msg.sender, address(this), amount);
+        address(baseAsset).safeApprove(address(market), amount);
+        uint256 actual = market.depositUpTo(amount);
+        require(actual == amount, "MARKET_AT_CAPACITY");
+        address(market).safeApprove(address(underlyingVault), actual);
+        return underlyingVault.deposit(actual, address(this));
     }
 
     // ============================================================ async redemption

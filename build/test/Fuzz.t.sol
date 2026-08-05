@@ -73,14 +73,14 @@ contract InvariantHandler is Test {
         a = bound(a, 1e6, 1e12);
         w.mintShares(address(this), a);
         w.approve(address(c), a);
-        try c.depositSenior(a, address(this)) {} catch {}
+        try c.depositSenior(TrancheController.AssetKind.WrapperShares, a, address(this)) {} catch {}
     }
 
     function depositJunior(uint256 a) public {
         a = bound(a, 1e6, 1e12);
         w.mintShares(address(this), a);
         w.approve(address(c), a);
-        try c.depositJunior(a, address(this)) {} catch {}
+        try c.depositJunior(TrancheController.AssetKind.WrapperShares, a, address(this)) {} catch {}
     }
 
     function redeemSenior(uint256 a) public {
@@ -170,8 +170,8 @@ contract TrancheInvariantTest is Test {
         w.mintShares(address(this), 1000e18);
         w.approve(address(c), 1000e18);
         jrGate.setAllowed(address(this), true);
-        c.depositJunior(200e18, address(this));
-        c.depositSenior(500e18, address(this));
+        c.depositJunior(TrancheController.AssetKind.WrapperShares, 200e18, address(this));
+        c.depositSenior(TrancheController.AssetKind.WrapperShares, 500e18, address(this));
 
         targetContract(address(handler));
     }

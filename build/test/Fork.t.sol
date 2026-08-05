@@ -11,6 +11,10 @@ import {IUnderlying4626, IWildcatMarket, MarketState} from "../src/interfaces/IE
 ///         MarketState struct), that valuation reads the live wrapper, that the ToU default
 ///         mirror reads live delinquency state, and that redemption queues against the real
 ///         batched withdrawal queue.
+interface IERC20Min {
+    function approve(address, uint256) external returns (bool);
+}
+
 contract ForkTest is Test {
     WhitelistGate internal jrGate; // constructed post-fork-selection: pre-fork deployments vanish
     string RPC = "https://eth-main.hinterlight.net";
@@ -53,6 +57,24 @@ contract ForkTest is Test {
                 borrowerRecovery: false
             })
         );
+    }
+
+    /// @dev USDC front door, live round trip: USDC -> market.depositUpTo (the controller as
+    ///      lender of record) -> wrap -> tranche mint, all against the real facility. Empirical
+    ///      note for D10: this market's hooks policy does NOT gate deposits, so the door works
+    ///      with no explicit credentialing; on a market whose hooks do gate deposits, this same
+    ///      path reverts loudly at market.depositUpTo, which is the intended failure mode.
+    function test_fork_usdcDoorRoundTrip() public onlyForked {
+        jrGate.setAllowed(jrLP, true);
+        deal(USDC, jrLP, 1_000e6);
+        uint256 jvBefore = c.juniorValue();
+        vm.startPrank(jrLP);
+        IERC20Min(USDC).approve(address(c), type(uint256).max);
+        uint256 shares = c.depositJunior(TrancheController.AssetKind.USDC, 1_000e6, jrLP);
+        vm.stopPrank();
+        assertGt(shares, 0, "tranche shares minted from raw USDC");
+        assertEq(market.balanceOf(address(c)), 0, "market tokens all wrapped, none idle");
+        assertApproxEqAbs(c.juniorValue(), jvBefore + 1_000e6, 2, "USDC door values at par");
     }
 
     modifier onlyForked() {
@@ -102,12 +124,12 @@ contract ForkTest is Test {
 
         vm.startPrank(jrLP);
         IUnderlying4626(WRAPPER).approve(address(c), 1000e6);
-        c.depositJunior(1000e6, jrLP);
+        c.depositJunior(TrancheController.AssetKind.WrapperShares, 1000e6, jrLP);
         vm.stopPrank();
 
         vm.startPrank(srLP);
         IUnderlying4626(WRAPPER).approve(address(c), amt);
-        c.depositSenior(amt, srLP);
+        c.depositSenior(TrancheController.AssetKind.WrapperShares, amt, srLP);
         vm.stopPrank();
 
         (uint256 sv, uint256 jv) = c.trancheValues();
@@ -131,12 +153,12 @@ contract ForkTest is Test {
         jrGate.setAllowed(jrLP, true);
         vm.startPrank(jrLP);
         IUnderlying4626(WRAPPER).approve(address(c), 1000e6);
-        c.depositJunior(1000e6, jrLP);
+        c.depositJunior(TrancheController.AssetKind.WrapperShares, 1000e6, jrLP);
         vm.stopPrank();
 
         vm.startPrank(srLP);
         IUnderlying4626(WRAPPER).approve(address(c), amt);
-        c.depositSenior(amt, srLP);
+        c.depositSenior(TrancheController.AssetKind.WrapperShares, amt, srLP);
         uint256 sShares = c.senior().balanceOf(srLP);
 
         // requestRedeem calls the REAL wrapper.redeem + REAL market.queueWithdrawal

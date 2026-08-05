@@ -103,7 +103,7 @@ contract AttackTest is Test {
     function _depositSenior(address who, uint256 shares) internal returns (uint256) {
         vm.startPrank(who);
         wrapper.approve(address(c), shares);
-        uint256 s = c.depositSenior(shares, who);
+        uint256 s = c.depositSenior(TrancheController.AssetKind.WrapperShares, shares, who);
         vm.stopPrank();
         return s;
     }
@@ -111,7 +111,7 @@ contract AttackTest is Test {
     function _depositJunior(address who, uint256 shares) internal returns (uint256) {
         vm.startPrank(who);
         wrapper.approve(address(c), shares);
-        uint256 s = c.depositJunior(shares, who);
+        uint256 s = c.depositJunior(TrancheController.AssetKind.WrapperShares, shares, who);
         vm.stopPrank();
         return s;
     }
@@ -159,7 +159,7 @@ contract AttackTest is Test {
         vm.startPrank(victim);
         wrapper.approve(address(c), 1e4);
         vm.expectRevert(bytes("ZERO_SHARES"));
-        c.depositJunior(1e4, victim);
+        c.depositJunior(TrancheController.AssetKind.WrapperShares, 1e4, victim);
         vm.stopPrank();
 
         // the donation is fully attributed to the attacker's own shares (never burned, not seized
@@ -380,11 +380,11 @@ contract AttackTest is Test {
 
         vm.startPrank(jrLP);
         wrapper.approve(address(cc), 100e18);
-        cc.depositJunior(100e18, jrLP);
+        cc.depositJunior(TrancheController.AssetKind.WrapperShares, 100e18, jrLP);
         vm.stopPrank();
         vm.startPrank(srLP);
         wrapper.approve(address(cc), 300e18);
-        cc.depositSenior(300e18, srLP);
+        cc.depositSenior(TrancheController.AssetKind.WrapperShares, 300e18, srLP);
         uint256 sShares = sr.balanceOf(srLP);
         uint256 id = cc.requestRedeem(true, sShares);
         vm.stopPrank();
@@ -423,11 +423,11 @@ contract AttackTest is Test {
         jrGate.setAllowed(jrLP, true);
         vm.startPrank(jrLP);
         wrapper.approve(address(c6), 100e18);
-        uint256 jsh = c6.depositJunior(100e18, jrLP);
+        uint256 jsh = c6.depositJunior(TrancheController.AssetKind.WrapperShares, 100e18, jrLP);
         vm.stopPrank();
         vm.startPrank(srLP);
         wrapper.approve(address(c6), 300e18);
-        uint256 ssh = c6.depositSenior(300e18, srLP);
+        uint256 ssh = c6.depositSenior(TrancheController.AssetKind.WrapperShares, 300e18, srLP);
         vm.stopPrank();
 
         // share counts equal the asset value (same integers as an 18-decimal deploy)
@@ -458,7 +458,7 @@ contract AttackTest is Test {
 
         vm.startPrank(a);
         wrapper.approve(address(cc), 100e18);
-        cc.depositJunior(100e18, a);
+        cc.depositJunior(TrancheController.AssetKind.WrapperShares, 100e18, a);
         uint256 aid = cc.requestRedeem(false, jr.balanceOf(a));
         vm.stopPrank();
         (,,,, uint32 e1) = cc.requests(aid);
@@ -472,7 +472,7 @@ contract AttackTest is Test {
         // B queues after A claimed; no new recovery has arrived
         vm.startPrank(b);
         wrapper.approve(address(cc), 100e18);
-        cc.depositJunior(100e18, b);
+        cc.depositJunior(TrancheController.AssetKind.WrapperShares, 100e18, b);
         uint256 bid = cc.requestRedeem(false, jr.balanceOf(b));
         vm.stopPrank();
 
