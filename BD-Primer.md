@@ -44,4 +44,4 @@ Take a single private-credit facility, say Wintermute borrowing USDC on Wildcat,
 - **Recovery is part on-chain, part legal**: the contract distributes recoveries senior-first, but ultimate recovery depends on off-chain enforcement.
 - **Smart-contract & asset risk**: standard DeFi caveats; the system is audited before mainnet use.
 
-*Implemented and tested (validated end-to-end against the live facility on a mainnet fork); not yet audited. Final per-facility terms (coupon, attachment, liquidity schedule) are set at deployment.*
+*Implemented and tested: 55 tests, including mainnet-fork validation against a live facility and 128k-call stateful invariants (conservation, junior-first-loss, no over-distribution). Two independent three-pass agentic review cycles have been run, with every actionable finding fixed and pinned by a regression test; no human audit engagement has been performed yet — one precedes any real capital. Final per-facility terms (coupon, attachment, liquidity schedule) are set at deployment.*

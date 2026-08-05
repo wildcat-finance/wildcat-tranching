@@ -97,7 +97,7 @@
   <li><strong>Junior</strong> is the leveraged first-loss residual: it earns the excess spread and absorbs losses to zero before senior is touched.</li>
   <li><strong>Subordination</strong> is a fixed floor (junior ≥ 20% of TVL, senior ≤ 4×), enforced by gating senior deposits and junior withdrawals.</li>
   <li><strong>Valuation</strong> is realised-only and oracle-free: NAV is held at a high-watermark while the market is delinquent, so unrealised penalty accrual is never booked.</li>
-  <li><strong>Redemption</strong> is asynchronous, mirroring the market's batched withdrawal queue (request → execute → claim); partial proceeds are allocated senior-first.</li>
+  <li><strong>Redemption</strong> is asynchronous, mirroring the market's batched withdrawal queue (request → execute → claim); partial proceeds are allocated senior-first, and while the market is delinquent or winding down junior may only draw settled cash beyond the <em>entire</em> senior obligation, so first-loss capital cannot exit ahead of senior during a slow-motion default. Exits during delinquency are sized at the live price, so frozen-mark appreciation stays in the pool. Recovery crediting is balance-derived with a permissionless <span class="mono">sync()</span>, so cash arriving outside the poke path is never stranded.</li>
   <li><strong>Default</strong> mirrors Wildcat ToU §6.2 on-chain (<span class="mono">timeDelinquent ≥ delinquencyGracePeriod + 90 days</span>), per-market configurable, with a Loan-Agreement override. On trigger the vault freezes deposits, halts senior accrual, and winds down senior-first.</li>
   <li><strong>Governance</strong> is immutable logic + a bounded, timelocked parameter set; pause halts deposits only and never blocks senior exits.</li>
   <li><strong>Compliance</strong> re-enforces the Wildcat sentinel per user (sanctioned redemptions route to escrow); junior is restricted to qualified providers.</li>
@@ -112,9 +112,9 @@
 </div>
 <ul class="clean">
   <li>Built on Solady's audited <span class="mono">ERC20</span>, <span class="mono">ReentrancyGuard</span>, and <span class="mono">SafeTransferLib</span>; share conversions round in favour of the pool.</li>
-  <li>Covered by a Foundry suite: unit/behaviour tests, property fuzzing, stateful invariants, and mainnet-fork tests that exercise deposit, valuation, and a redemption round-trip against the live <span class="mono">v-wmtUSDC</span> facility and its withdrawal queue.</li>
+  <li>Covered by a Foundry suite of 55 tests: unit/behaviour, property fuzzing, 128k-call stateful invariants (conservation, junior-first-loss, no over-distribution), and mainnet-fork tests that exercise deposit, valuation, and a redemption round-trip against the live <span class="mono">v-wmtUSDC</span> facility and its withdrawal queue. Review regressions are pinned in <span class="mono">AuditPoC.t.sol</span>, each stating the finding it covers.</li>
 </ul>
-<p class="note">Not yet audited. Independent review focuses on the credit-loss / redemption edge cases, the gas/DoS profile of the redemption-request array at scale, and ERC-4626 conformance of the view surface.</p>
+<p class="note">Two independent three-pass agentic review cycles have been run against the code, with every actionable finding fixed and regression-pinned; no human audit engagement has been performed yet &mdash; one precedes any real capital. Independent review focuses on the credit-loss / redemption edge cases, the gas/DoS profile of the redemption-request array at scale, and ERC-4626 conformance of the view surface. A revised deployment and entry model (borrower-initiated ownerless factory, per-facility entry gates, USDC subscription with the controller as lender of record) is adopted and pending build; see the Design &amp; Risk Specification, &sect;IX.</p>
 </section>
 
 </body>
