@@ -46,7 +46,8 @@ contract TrancheTest is Test {
                 seniorShareBips: SENIOR_SHARE_BIPS,
                 minJuniorBips: MIN_JUNIOR_BIPS,
                 defaultPenaltyWindow: WINDOW,
-                shareDecimals: 18
+                shareDecimals: 18,
+                borrowerRecovery: false
             })
         );
         senior = c.senior();
@@ -151,6 +152,84 @@ contract TrancheTest is Test {
         assertEq(c.seniorOwed(), owedBefore, "accrual halted at default");
     }
 
+    function _deployRecoverable() internal returns (TrancheController c2) {
+        market.setBorrower(borrower);
+        c2 = new TrancheController(
+            TrancheController.Params({
+                underlyingVault: address(wrapper),
+                sentinel: address(sentinel),
+                borrower: borrower,
+                governance: gov,
+                defaultDeclarer: declarer,
+                seniorGate: address(0),
+                juniorGate: address(jrGate),
+                seniorShareBips: SENIOR_SHARE_BIPS,
+                minJuniorBips: MIN_JUNIOR_BIPS,
+                defaultPenaltyWindow: WINDOW,
+                shareDecimals: 18,
+                borrowerRecovery: true
+            })
+        );
+    }
+
+    function test_Reclaim_lifecycle() public {
+        TrancheController c2 = _deployRecoverable();
+        address newGov = address(0xDEC0DE);
+        vm.prank(borrower);
+        c2.reclaimGovernance(newGov);
+        assertEq(c2.reclaimEta(), block.timestamp + c2.RECLAIM_WINDOW());
+        // too early
+        vm.prank(borrower);
+        vm.expectRevert(bytes("TIMELOCK"));
+        c2.finalizeReclaim();
+        vm.warp(block.timestamp + c2.RECLAIM_WINDOW());
+        vm.prank(borrower);
+        c2.finalizeReclaim();
+        assertEq(c2.pendingGovernance(), newGov);
+        // completion still runs the two-step
+        vm.prank(newGov);
+        c2.acceptGovernance();
+        assertEq(c2.governance(), newGov);
+        assertEq(c2.reclaimEta(), 0);
+    }
+
+    function test_Reclaim_vetoedByLiveGovernance() public {
+        TrancheController c2 = _deployRecoverable();
+        vm.prank(borrower);
+        c2.reclaimGovernance(address(0xBAD));
+        vm.prank(gov);
+        c2.cancelReclaim();
+        vm.warp(block.timestamp + 31 days);
+        vm.prank(borrower);
+        vm.expectRevert(bytes("TIMELOCK"));
+        c2.finalizeReclaim();
+    }
+
+    function test_Reclaim_gatedOnBitAndBorrower() public {
+        // default controller: bit off
+        market.setBorrower(borrower);
+        vm.prank(borrower);
+        vm.expectRevert(bytes("NO_RECOVERY"));
+        c.reclaimGovernance(address(1));
+        // recoverable controller: only the market borrower
+        TrancheController c2 = _deployRecoverable();
+        vm.expectRevert(bytes("ONLY_MARKET_BORROWER"));
+        c2.reclaimGovernance(address(1));
+    }
+
+    function test_ClearDefaultDeclarer() public {
+        vm.prank(gov);
+        c.clearDefaultDeclarer();
+        assertEq(c.defaultDeclarer(), address(0));
+        vm.prank(declarer);
+        vm.expectRevert(bytes("NOT_AUTH"));
+        c.declareDefault();
+        // the zero-guard on the setter is intact
+        vm.prank(gov);
+        vm.expectRevert(bytes("ZERO_DECLARER"));
+        c.setDefaultDeclarer(address(0));
+    }
+
     function test_JuniorGateMandatory() public {
         vm.expectRevert(bytes("NO_JUNIOR_GATE"));
         new TrancheController(
@@ -165,7 +244,8 @@ contract TrancheTest is Test {
                 seniorShareBips: SENIOR_SHARE_BIPS,
                 minJuniorBips: MIN_JUNIOR_BIPS,
                 defaultPenaltyWindow: WINDOW,
-                shareDecimals: 18
+                shareDecimals: 18,
+                borrowerRecovery: false
             })
         );
     }
@@ -185,7 +265,8 @@ contract TrancheTest is Test {
                 seniorShareBips: SENIOR_SHARE_BIPS,
                 minJuniorBips: MIN_JUNIOR_BIPS,
                 defaultPenaltyWindow: WINDOW,
-                shareDecimals: 18
+                shareDecimals: 18,
+                borrowerRecovery: false
             })
         );
         jrGate.setAllowed(jrLP, true);
@@ -242,7 +323,8 @@ contract TrancheTest is Test {
                 seniorShareBips: SENIOR_SHARE_BIPS,
                 minJuniorBips: MIN_JUNIOR_BIPS,
                 defaultPenaltyWindow: WINDOW,
-                shareDecimals: 18
+                shareDecimals: 18,
+                borrowerRecovery: false
             })
         );
     }
@@ -430,7 +512,8 @@ contract TrancheFactoryTest is Test {
             juniorGate: address(jrGate),
             seniorShareBips: 8000,
             minJuniorBips: 2000,
-            defaultPenaltyWindow: 90 days
+            defaultPenaltyWindow: 90 days,
+            borrowerRecovery: false
         });
 
         vm.expectRevert(bytes("MARKET_NOT_REGISTERED"));

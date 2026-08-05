@@ -49,7 +49,8 @@ contract ForkTest is Test {
                 seniorShareBips: 10000, // senior takes 100% of the live base APR
                 minJuniorBips: 2000,
                 defaultPenaltyWindow: 90 days,
-                shareDecimals: 6
+                shareDecimals: 6,
+                borrowerRecovery: false
             })
         );
     }

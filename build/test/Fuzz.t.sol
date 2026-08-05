@@ -159,7 +159,8 @@ contract TrancheInvariantTest is Test {
                 seniorShareBips: 10000,
                 minJuniorBips: 2000,
                 defaultPenaltyWindow: 90 days,
-                shareDecimals: 18
+                shareDecimals: 18,
+                borrowerRecovery: false
             })
         );
         handler = new InvariantHandler(c, w, m, usdc);

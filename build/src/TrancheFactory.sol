@@ -62,6 +62,7 @@ contract TrancheFactory {
         uint256 seniorShareBips;
         uint256 minJuniorBips;
         uint256 defaultPenaltyWindow;
+        bool borrowerRecovery;
     }
 
     function deployTranches(DeployParams calldata p) external returns (address controllerAddr) {
@@ -85,7 +86,8 @@ contract TrancheFactory {
                 seniorShareBips: p.seniorShareBips,
                 minJuniorBips: p.minJuniorBips,
                 defaultPenaltyWindow: p.defaultPenaltyWindow,
-                shareDecimals: 18
+                shareDecimals: 18,
+                borrowerRecovery: p.borrowerRecovery
             })
         );
 

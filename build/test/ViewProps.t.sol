@@ -42,7 +42,8 @@ contract ViewPropsTest is Test {
                 seniorShareBips: 8000,
                 minJuniorBips: 2000,
                 defaultPenaltyWindow: 90 days,
-                shareDecimals: 18
+                shareDecimals: 18,
+                borrowerRecovery: false
             })
         );
         senior = c.senior();

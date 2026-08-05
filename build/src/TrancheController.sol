@@ -32,6 +32,10 @@ contract TrancheController is ReentrancyGuard {
     // ----- governance (bounded; senior share behind a timelock) -----
     address public governance;
     address public pendingGovernance;
+    /// @notice Whether the borrower may recover a dead governance (per-deployment bit, immutable).
+    bool public immutable borrowerRecovery;
+    address public reclaimNext;
+    uint256 public reclaimEta;
     address public defaultDeclarer;
     /// @notice Senior's share of the market's base APR, in bips of BIPS (<= BIPS). The effective
     ///         senior target rate is derived live from the market; see currentSeniorRateBips().
@@ -91,6 +95,10 @@ contract TrancheController is ReentrancyGuard {
     uint256 internal constant MIN_INITIAL = 1e6;
     uint256 internal constant PPS_UNIT = 1e18;
     uint256 public constant RATE_TIMELOCK = 2 days;
+    /// @notice Window between a borrower's reclaimGovernance and its finalisation. The incumbent
+    ///         governance can cancel with one call at any point inside it: the veto is the
+    ///         liveness oracle, so recovery completes only against a dead holder.
+    uint256 public constant RECLAIM_WINDOW = 30 days;
 
     event Deposit(bool indexed isSenior, address indexed receiver, uint256 shares, uint256 assetValue);
     event RedeemRequested(uint256 indexed id, bool isSenior, address indexed owner, uint256 shares, uint256 wmtQueued, uint32 expiry);
@@ -102,6 +110,10 @@ contract TrancheController is ReentrancyGuard {
     event SeniorShareProposalCancelled();
     event DepositsPaused(bool paused);
     event DefaultDeclarerSet(address indexed declarer);
+    event ReclaimProposed(address indexed next, uint256 eta);
+    event ReclaimCancelled();
+    event ReclaimFinalized(address indexed next);
+    event DefaultDeclarerCleared();
     event GovernanceProposed(address indexed pending);
     event GovernanceTransferred(address indexed from, address indexed to);
 
@@ -117,6 +129,7 @@ contract TrancheController is ReentrancyGuard {
         uint256 minJuniorBips;
         uint256 defaultPenaltyWindow;
         uint8 shareDecimals;
+        bool borrowerRecovery;
     }
 
     constructor(Params memory p) {
@@ -140,6 +153,7 @@ contract TrancheController is ReentrancyGuard {
         defaultPenaltyWindow = p.defaultPenaltyWindow;
         seniorGate = IEnterGate(p.seniorGate);
         juniorGate = IEnterGate(p.juniorGate);
+        borrowerRecovery = p.borrowerRecovery;
 
         // Token metadata is derived from the market's own symbol so every facility's tranche
         // set carries its own ticker with nothing caller-supplied.
@@ -518,6 +532,47 @@ contract TrancheController is ReentrancyGuard {
         require(d != address(0), "ZERO_DECLARER");
         defaultDeclarer = d;
         emit DefaultDeclarerSet(d);
+    }
+
+    /// @notice Retire the discretionary default trigger entirely, back to the pure ToU mirror.
+    ///         Separate from setDefaultDeclarer so the zero-guard there stays intact; one-way
+    ///         doors should point toward less discretion.
+    function clearDefaultDeclarer() external onlyGovernance {
+        defaultDeclarer = address(0);
+        emit DefaultDeclarerCleared();
+    }
+
+    // ============================================================ governance recovery
+    /// @notice Borrower-initiated recovery of a dead governance. Gated on the per-deployment
+    ///         borrowerRecovery bit; the borrower is read live off the market, never stored from
+    ///         a caller. Completion still runs through the standard two-step, so recovery cannot
+    ///         land on a call-incapable address.
+    function reclaimGovernance(address next) external {
+        require(borrowerRecovery, "NO_RECOVERY");
+        require(msg.sender == market.borrower(), "ONLY_MARKET_BORROWER");
+        require(next != address(0), "ZERO_GOV");
+        reclaimNext = next;
+        reclaimEta = block.timestamp + RECLAIM_WINDOW;
+        emit ReclaimProposed(next, reclaimEta);
+    }
+
+    /// @notice One call from the incumbent kills a pending reclaim. A live governance can always
+    ///         defend itself; a dead one cannot, which is the entire point.
+    function cancelReclaim() external onlyGovernance {
+        require(reclaimEta != 0, "NO_RECLAIM");
+        reclaimNext = address(0);
+        reclaimEta = 0;
+        emit ReclaimCancelled();
+    }
+
+    function finalizeReclaim() external {
+        require(msg.sender == market.borrower(), "ONLY_MARKET_BORROWER");
+        require(reclaimEta != 0 && block.timestamp >= reclaimEta, "TIMELOCK");
+        pendingGovernance = reclaimNext;
+        emit ReclaimFinalized(reclaimNext);
+        emit GovernanceProposed(reclaimNext);
+        reclaimNext = address(0);
+        reclaimEta = 0;
     }
 
     /// @notice Two-step governance transfer so a lost or rotated key is recoverable. The current

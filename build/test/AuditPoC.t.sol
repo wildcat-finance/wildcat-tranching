@@ -45,7 +45,8 @@ contract AuditPoCTest is Test {
                 seniorShareBips: 10000,
                 minJuniorBips: 2000,
                 defaultPenaltyWindow: 90 days,
-                shareDecimals: 18
+                shareDecimals: 18,
+                borrowerRecovery: false
             })
         );
         senior = c.senior();
@@ -124,7 +125,8 @@ contract AuditPoCTest is Test {
             juniorGate: address(jrGate),
             seniorShareBips: 8000,
             minJuniorBips: 2000,
-            defaultPenaltyWindow: 90 days
+            defaultPenaltyWindow: 90 days,
+            borrowerRecovery: false
         });
     }
 
@@ -243,7 +245,8 @@ contract AuditPoCTest is Test {
                 seniorShareBips: 10000,
                 minJuniorBips: 2000,
                 defaultPenaltyWindow: 90 days,
-                shareDecimals: 18
+                shareDecimals: 18,
+                borrowerRecovery: false
             })
         );
     }

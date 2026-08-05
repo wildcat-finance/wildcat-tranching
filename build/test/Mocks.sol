@@ -62,6 +62,7 @@ contract MockMarket {
     mapping(address => mapping(uint32 => uint256)) public paid; // account => expiry => USDC paid
 
     string internal _symbol = "abcUSDC";
+    address public borrower;
 
     constructor(address _usdc) {
         asset = _usdc;
@@ -69,6 +70,10 @@ contract MockMarket {
 
     function symbol() external view returns (string memory) {
         return _symbol;
+    }
+
+    function setBorrower(address b_) external {
+        borrower = b_;
     }
 
     function setSymbol(string calldata s_) external {

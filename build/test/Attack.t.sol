@@ -94,7 +94,8 @@ contract AttackTest is Test {
                 seniorShareBips: SENIOR_SHARE_BIPS,
                 minJuniorBips: MIN_JUNIOR_BIPS,
                 defaultPenaltyWindow: WINDOW,
-                shareDecimals: dec
+                shareDecimals: dec,
+                borrowerRecovery: false
             })
         );
     }
