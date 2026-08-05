@@ -7,7 +7,7 @@ import {TrancheToken} from "../src/TrancheToken.sol";
 import {TrancheFactory} from "../src/TrancheFactory.sol";
 import {MockERC20, MockMarket, MockWrapper, MockSentinel, MockArch} from "./Mocks.sol";
 
-/// @notice PoC for the pashov-auditor headline finding (SR-D): during delinquency, requestRedeem
+/// @notice PoC for the headline external-review finding (SR-D): during delinquency, requestRedeem
 ///         sizes the wrapper-share redemption at the FROZEN mark (_effPps) but underlyingVault.redeem
 ///         converts those shares at the LIVE price, so the exiter pulls out more market tokens (and
 ///         hence more recoverable USDC) than its frozen-mark entitlement, booking the unrealised

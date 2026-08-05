@@ -12,7 +12,7 @@ The target is the Solidity code under `build/src/`. Treat everything below as th
 
 **In scope:** `TrancheController.sol`, `WaterfallMath.sol`, `TrancheToken.sol`, `TrancheFactory.sol`, `interfaces/IExternal.sol`, and the economic model they implement.
 
-**Assume as given (out of scope to re-audit, in scope to challenge the *assumptions* about):** the Wildcat market, the ERC-4626 wrapper (`v-wmtUSDC`), USDC, the sanctions sentinel, and the arch controller. You should not audit their internals, but you *should* test what happens to the tranche layer if any of them behaves at the edges of its documented interface.
+**Assume as given (out of scope to re-audit, in scope to challenge the *assumptions* about):** the Wildcat market, the ERC-4626 wrapper (`v-abcUSDC`), USDC, the sanctions sentinel, and the arch controller. You should not audit their internals, but you *should* test what happens to the tranche layer if any of them behaves at the edges of its documented interface.
 
 **Deliverable:** for each finding, state the attacker, the precondition, the exact call sequence, the invariant or party harmed, and the magnitude. Use the severity rubric in section 16.
 
@@ -30,7 +30,7 @@ FOUNDRY_DISABLE_NIGHTLY_WARNING=true ~/.foundry/bin/forge test --match-contract 
 
 - `forge-std` and `solady` are vendored under `build/lib` (remapping `solady/=`).
 - Fork RPC: `https://eth-main.hinterlight.net`.
-- Live contracts: wrapper `v-wmtUSDC` = `0xF65460B84c13eeb911303336Ab0f9D63CC79839f`; its market is read via `wrapper.market()`; USDC = `0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48`.
+- Live contracts (fork-suite anchor; the production facility predates the abcUSDC naming): wrapper = `0xF65460B84c13eeb911303336Ab0f9D63CC79839f`; its market is read via `wrapper.market()`; USDC = `0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48`.
 - The reference Wintermute market behind the wrapper is the ~$69.65M, 8.5% APR facility. A second, smaller market exists at `0x50ebdf73a0df61b782cea489e8102b3bfde0bda6` and is a different facility.
 
 Reach for fork tests when an attack depends on real market mechanics (withdrawal-queue semantics, `convertToAssets` behaviour, packed `MarketState` decoding). Reach for the mock suite when you need to drive prices, delinquency, and time directly.
@@ -39,10 +39,10 @@ Reach for fork tests when an attack depends on real market mechanics (withdrawal
 
 ## 3. System overview
 
-The tranching layer is a lender-side vault layered on top of an unchanged Wildcat market. The market is undercollateralized private credit: a named borrower owes USDC, lenders hold a rebasing claim, and exits run through a batched withdrawal queue. Wildcat already wraps the rebasing claim into a non-rebasing ERC-4626 token, `v-wmtUSDC`. The tranche controller holds `v-wmtUSDC` and issues two claims against it.
+The tranching layer is a lender-side vault layered on top of an unchanged Wildcat market. The market is undercollateralized private credit: a named borrower owes USDC, lenders hold a rebasing claim, and exits run through a batched withdrawal queue. Wildcat already wraps the rebasing claim into a non-rebasing ERC-4626 token, `v-abcUSDC`. The tranche controller holds `v-abcUSDC` and issues two claims against it.
 
 ```
-USDC  ->  Wildcat market (wmtUSDC)  ->  ERC-4626 wrapper (v-wmtUSDC)  ->  TrancheController  ->  sr-/jr-wmtUSDC
+USDC  ->  Wildcat market (abcUSDC)  ->  ERC-4626 wrapper (v-abcUSDC)  ->  TrancheController  ->  sr-/jr-abcUSDC
         rebasing credit token        non-rebasing share              holds + waterfall      two tranche tokens
 ```
 
@@ -257,7 +257,7 @@ The candidate-weakness list was worked through in-house before handing off. One 
 - `ViewProps.t.sol`: ERC-4626 view-surface properties (identity at empty supply, round-trip creates no shares, monotonicity, pps and totalAssets consistency). The synchronous a16z suite does not apply because redemption is async.
 - `Fork.t.sol`: live `MarketState` decode, senior rate equals live base APR, deposit valuation matches live `convertToAssets`, redemption round-trip against the real withdrawal queue.
 
-Full suite: 55 tests, all passing (52 local + 3 mainnet-fork). (`AuditPoC.t.sol` carries the external-audit regressions: SR-D, SR-A, SR-B, governance rotation, and the re-audit items R1-R4 plus the governance-hygiene and allocation guards; see `report/Pashov-Audit-Report.md` and `report/Pashov-Audit-Report-Reaudit.md`.)
+Full suite: 55 tests, all passing (52 local + 3 mainnet-fork). (`AuditPoC.t.sol` carries the review regressions: SR-D, SR-A, SR-B, governance rotation, and the second-cycle items R1-R4 plus the governance-hygiene and allocation guards; each test's NatSpec states the finding it pins.)
 
 ### Remaining gaps
 

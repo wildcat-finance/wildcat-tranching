@@ -70,8 +70,8 @@
 
 <section>
 <h2><span class="num">1</span> Start with the loan</h2>
-<p>On Wildcat, a borrower (think a trading firm like Wintermute) asks to borrow stablecoins, usually USDC. Lenders put USDC in, the borrower pays interest. This is private credit: a real loan to a real, named counterparty, with terms everyone can see.</p>
-<p>When you lend, you get a token representing your share of the loan plus the interest piling up on it. Wildcat wraps that into a tidy, standard receipt called <span class="mono">v-wmtUSDC</span>. Think of it as a claim ticket: "I am owed this slice of the loan, and it is growing." So far every lender is in the same boat, sharing upside and risk the same way. That is fine, but it is one-size-fits-all. Tranching gives the safety-seekers and the yield-seekers each what they want, out of the same loan.</p>
+<p>On Wildcat, a borrower (think a trading firm — say Six Seven Ltd) asks to borrow stablecoins, usually USDC. Lenders put USDC in, the borrower pays interest. This is private credit: a real loan to a real, named counterparty, with terms everyone can see.</p>
+<p>When you lend, you get a token representing your share of the loan plus the interest piling up on it. Wildcat wraps that into a tidy, standard receipt called <span class="mono">v-abcUSDC</span>. Think of it as a claim ticket: "I am owed this slice of the loan, and it is growing." The tranche layer takes either form — raw <span class="mono">abcUSDC</span> or wrapped <span class="mono">v-abcUSDC</span> — and wraps the raw one for you on the way in. So far every lender is in the same boat, sharing upside and risk the same way. That is fine, but it is one-size-fits-all. Tranching gives the safety-seekers and the yield-seekers each what they want, out of the same loan.</p>
 </section>
 
 <section>
@@ -79,12 +79,12 @@
 <p>Tranching divides the lender claims into two slices. "Tranche" is just French for "slice." Each is its own token you can hold, transfer, or sell.</p>
 <div class="cards">
   <div class="card sr">
-    <div class="h">Senior <span class="c">sr-wmtUSDC</span></div>
+    <div class="h">Senior <span class="c">sr-abcUSDC</span></div>
     <div class="tag">The safe seat</div>
     <ul><li>First in line for interest</li><li>First in line to be paid back</li><li>Last to take a loss</li></ul>
   </div>
   <div class="card jr">
-    <div class="h">Junior <span class="c">jr-wmtUSDC</span></div>
+    <div class="h">Junior <span class="c">jr-abcUSDC</span></div>
     <div class="tag">The spicy seat</div>
     <ul><li>Earns whatever is left after senior</li><li>Usually more, and amplified</li><li>Absorbs losses first</li></ul>
   </div>

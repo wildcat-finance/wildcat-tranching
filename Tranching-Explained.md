@@ -14,9 +14,9 @@ That is the entire idea. Everything below is just the careful version.
 
 ## Step 1: Start with the loan
 
-On Wildcat, a borrower (think a trading firm like Wintermute) asks to borrow stablecoins, usually USDC. Lenders put USDC in. The borrower pays interest. This is a private credit market: a real loan to a real, named counterparty, with terms everyone can see.
+On Wildcat, a borrower (think a trading firm — say Six Seven Ltd) asks to borrow stablecoins, usually USDC. Lenders put USDC in. The borrower pays interest. This is a private credit market: a real loan to a real, named counterparty, with terms everyone can see.
 
-When you lend into one of these markets, you get a token that represents your share of the loan plus the interest piling up on it. Wildcat wraps that into a tidy, standard-shaped receipt called **v-wmtUSDC**. Think of v-wmtUSDC as a claim ticket: "I am owed this slice of the loan, and it is growing."
+When you lend into one of these markets, you get a token that represents your share of the loan plus the interest piling up on it. Wildcat wraps that into a tidy, standard-shaped receipt called **v-abcUSDC**. Think of v-abcUSDC as a claim ticket: "I am owed this slice of the loan, and it is growing." When you come to the tranche layer you can hand over either form — the raw abcUSDC or the wrapped v-abcUSDC — and if you bring the raw one, it gets wrapped for you on the way in.
 
 So far, every lender is in the same boat. Everyone shares the upside the same way, and everyone shares the risk the same way. That is fine, but it is one-size-fits-all. Some people want safety. Some people want yield. Tranching gives both groups what they want out of the same loan.
 
@@ -26,8 +26,8 @@ So far, every lender is in the same boat. Everyone shares the upside the same wa
 
 Tranching takes the pool of lender claims and divides it into two tranches. "Tranche" is just French for "slice." Each slice is its own token you can hold, transfer, or sell:
 
-- **Senior, `sr-wmtUSDC`.** The safe seat. First in line for interest, first in line to get paid back, last to take a loss.
-- **Junior, `jr-wmtUSDC`.** The spicy seat. It earns whatever is left after senior is paid, which is usually more, and it absorbs losses first.
+- **Senior, `sr-abcUSDC`.** The safe seat. First in line for interest, first in line to get paid back, last to take a loss.
+- **Junior, `jr-abcUSDC`.** The spicy seat. It earns whatever is left after senior is paid, which is usually more, and it absorbs losses first.
 
 Picture two people funding a lemonade stand. The senior partner says "pay me my fixed cut first, every time." The junior partner says "I will take whatever is left over: more on a great day, nothing on a bad day, and I will eat the loss if a customer skips the bill." Same stand, same lemonade, two very different deals. That is senior and junior.
 

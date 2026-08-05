@@ -45,12 +45,12 @@
 <div class="kick">Wildcat · Risk Tranching</div>
 <h1>Senior &amp; junior, on-chain</h1>
 <div class="deck">A plain-English primer for credit-desk and business-development operators: what Wildcat's risk-tranching is in familiar structured-credit terms, who buys each piece and why, and where it sits relative to a traditional securitisation and to other on-chain tranching.</div>
-<div class="meta">Prepared 27 June 2026 · Ethereum mainnet · concerns the Wintermute USDC facility as the worked example</div>
+<div class="meta">Prepared 27 June 2026 · Ethereum mainnet · concerns the Six Seven Ltd USDC facility as the worked example</div>
 
 <section>
 <div class="callout">
   <div class="ct">The one-liner</div>
-  <p class="big">Take a single private-credit facility (say, Wintermute borrowing USDC) and split the <em>lender</em> side into two pieces: a senior tranche that earns a priority, target coupon protected by a first-loss buffer, and a junior tranche that takes the first loss in exchange for leveraged excess spread. Same borrower, same loan; two risk/return profiles, settled and enforced by smart contract.</p>
+  <p class="big">Take a single private-credit facility (say, Six Seven Ltd borrowing USDC) and split the <em>lender</em> side into two pieces: a senior tranche that earns a priority, target coupon protected by a first-loss buffer, and a junior tranche that takes the first loss in exchange for leveraged excess spread. Same borrower, same loan; two risk/return profiles, settled and enforced by smart contract.</p>
 </div>
 <p class="lead">From the borrower's seat nothing changes; it is still a single line of credit ("unitranche to the borrower"). The structuring happens on the lender side, so a desk can place the safe piece with conservative capital and the levered piece with risk-seeking capital, deepening the facility without renegotiating the loan.</p>
 </section>
@@ -60,7 +60,7 @@
 <table>
   <thead><tr><th style="width:26%">Structured-credit concept</th><th>How it shows up here</th></tr></thead>
   <tbody>
-    <tr><td><strong>Senior / junior tranches</strong></td><td>Two transferable tokens, <span class="mono">sr-wmtUSDC</span> (senior) and <span class="mono">jr-wmtUSDC</span> (junior), each a claim on the same underlying facility.</td></tr>
+    <tr><td><strong>Senior / junior tranches</strong></td><td>Two transferable tokens, <span class="mono">sr-abcUSDC</span> (senior) and <span class="mono">jr-abcUSDC</span> (junior), each a claim on the same underlying facility.</td></tr>
     <tr><td><strong>Attachment / subordination</strong></td><td>Junior is sized at ≥ 20% of capital, so the senior sits behind a 20% first-loss cushion (a 20% attachment point). Senior leverage is capped at ~4×.</td></tr>
     <tr><td><strong>Interest waterfall</strong></td><td>Facility interest pays the senior's target coupon first; the residual ("excess spread") flows to junior. Programmatic, continuous, no servicer.</td></tr>
     <tr><td><strong>Loss waterfall</strong></td><td>Losses hit junior to zero before senior is touched. Strict first-loss subordination, enforced in code.</td></tr>
@@ -74,7 +74,7 @@
 <section>
 <h2><span class="n">2</span> How the lifecycle runs</h2>
 <ul class="clean">
-  <li><strong>Subscribe.</strong> A KYC'd lender deposits into the senior or the junior tranche and receives the corresponding token. Junior is restricted to qualified, sophisticated first-loss providers.</li>
+  <li><strong>Subscribe.</strong> A KYC'd lender deposits into the senior or the junior tranche and receives the corresponding token. Deposits are taken in the market token or its wrapped <span class="mono">v-</span> form; a raw market-token deposit is wrapped on the way in. Junior is restricted to qualified, sophisticated first-loss providers.</li>
   <li><strong>Accrue.</strong> As the borrower pays interest, the senior token accretes toward its target coupon; the junior token captures everything above that. Its return is <em>levered</em> because it earns the spread on the whole facility against a thin slice of capital.</li>
   <li><strong>Redeem.</strong> Exits are processed through the facility's existing redemption schedule: a request/claim queue, not instant daily liquidity. When proceeds are partial, senior is paid out first.</li>
   <li><strong>Default &amp; recovery.</strong> If the borrower is in default per the facility terms, the structure freezes the senior's accrued claim and winds down: recoveries (including anything the off-chain legal/enforcement process returns) are distributed senior-first, with junior absorbing the shortfall.</li>
@@ -85,7 +85,7 @@
 <h2><span class="n">3</span> The two products at a glance</h2>
 <div class="cards">
   <div class="card sr">
-    <h4>Senior · sr-wmtUSDC</h4>
+    <h4>Senior · sr-abcUSDC</h4>
     <div class="kv"><b>Profile</b> Capital preservation</div>
     <div class="kv"><b>Return</b> Priority coupon, a share of the facility APR</div>
     <div class="kv"><b>Protection</b> 20% junior first-loss beneath it</div>
@@ -94,7 +94,7 @@
     <div class="kv"><b>Buyer</b> Treasuries, conservative credit, cash-plus</div>
   </div>
   <div class="card jr">
-    <h4>Junior · jr-wmtUSDC</h4>
+    <h4>Junior · jr-abcUSDC</h4>
     <div class="kv"><b>Profile</b> Levered first-loss / "equity"</div>
     <div class="kv"><b>Return</b> Excess spread, amplified (~4× the slice)</div>
     <div class="kv"><b>Protection</b> None; absorbs losses first</div>
@@ -142,7 +142,7 @@
   <li><strong>Recovery is part on-chain, part legal.</strong> The contract distributes whatever comes back senior-first, but ultimate recovery on a default still depends on the off-chain enforcement / loan-agreement process.</li>
   <li><strong>Smart-contract &amp; asset risk.</strong> Standard DeFi caveats apply; the system is being taken through external audit before mainnet use.</li>
 </ul>
-<div class="note"><span class="tag">STATUS</span> &nbsp; The tranching engine is implemented and tested, validated end-to-end against the live facility on a mainnet fork, and not yet audited. This primer describes the commercial behaviour; final terms per facility (coupon, attachment, liquidity schedule) are set at deployment.</div>
+<div class="note"><span class="tag">STATUS</span> &nbsp; The tranching engine is implemented and tested: 55 tests, including mainnet-fork validation against a live facility and 128k-call stateful invariants. Two independent three-pass agentic review cycles have been run, with every actionable finding fixed and pinned by a regression test; no human audit engagement has been performed yet &mdash; one precedes any real capital. This primer describes the commercial behaviour; final terms per facility (coupon, attachment, liquidity schedule) are set at deployment.</div>
 </section>
 
 </body>
