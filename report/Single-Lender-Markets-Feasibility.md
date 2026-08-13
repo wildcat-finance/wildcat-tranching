@@ -1,6 +1,6 @@
 # Single-Lender Markets for Tranche Facilities — Feasibility & Roadmap
 
-*A tranche set deployed against an ordinary Wildcat market does not make senior senior. It makes senior senior **over the controller's own slice** of a pari-passu lender pool. This document establishes how large that gap is, whether the hooks system can close it, and what the implementation actually costs. The short answer: the mechanism is feasible, the hooks system is the correct home for it, and Wildcat v2.5 already ships most of the primitives — but two of the three moves in the originating proposal should be changed, and the strongest form of the guarantee is structurally incompatible with the 4626 wrapper the tranche layer currently depends on. Protocol facts are cited against `wildcat-finance/v2-protocol` at `release/v2.5` (`dec36d2`); tranche-layer facts against this repo at `800c0eb`. Companions: `Design-Risk-Specification.md` Q1/Q18/Q20, `Deployment-Access-Governance-Notes.md` §2/§4.*
+*A tranche set deployed against an ordinary Wildcat market does not make senior senior. It makes senior senior **over the controller's own slice** of a pari-passu lender pool. This document establishes how large that gap is, whether the hooks system can close it, and what the implementation actually costs. The short answer: the mechanism is feasible, the hooks system is the correct home for it, and Wildcat v2.5 already ships most of the primitives. Replacing the borrower-approval template with a whitelist that locks at one lender is the right instinct — the V1 architecture this echoes had exactly the enumerable lender list that makes the rule expressible, and V2 traded it away for pluggable credentials. Two things follow: the replacement must carry that list as its own state rather than interrogate V2's credential machinery, and the swap cannot carry the guarantee alone, because disabling a template does not stop existing hooks instances from minting new markets under the old rules. Separately, the strongest form of the guarantee is structurally incompatible with the 4626 wrapper the tranche layer currently depends on. Protocol facts are cited against `wildcat-finance/v2-protocol` at `release/v2.5` (`dec36d2`); tranche-layer facts against this repo at `800c0eb`. Companions: `Design-Risk-Specification.md` Q1/Q18/Q20, `Deployment-Access-Governance-Notes.md` §2/§4.*
 
 ---
 
@@ -10,11 +10,11 @@
 |---|---|---|---|
 | S1 | **Is exclusivity a product requirement or a product option?** If senior is sold as senior, it is a requirement and Phase 1 blocks the first facility. If it is a per-facility disclosure, Phase 0 alone ships | Determines whether a protocol change gates the first placement | Desk + Foundation |
 | S2 | **Custody model under exclusivity** (§6.4): allowlisted-transfer exclusivity keeps the 4626 wrapper and the audited valuation core; transfer-disabled exclusivity is airtight but forces Q18(d) direct custody and a rewrite of the valuation core against `scaleFactor` | The single largest engineering fork in this document. Phase 1's scope doubles under the second option | Desk + engineering |
-| S3 | **Foundation appetite for a fourth hooks template.** Registration is a routine owner action (one per factory kind), but the template is protocol surface the Foundation must be willing to carry, and as proposed it exists to serve one product — §4.2 argues for a general primitive partly to improve this answer | Blocks Phase 1 entirely. There is no way to do this from the tranche side | Foundation |
-| S4 | **Whether the protocol may know what a tranche controller is** (§4.2). Recommendation: no — the hook enforces exclusivity as a general primitive, the tranche factory checks for it | Shapes the template's interface. Cheap now, expensive later | Foundation + engineering |
+| S3 | **Foundation appetite for the template, and whether it supersedes the existing ones.** Registration is a routine owner action (one per factory kind). The open question is scope: register alongside, or also disable `OpenTermHooks` — and if the goal is a complete swap, `FixedTermHooks` too, since it has the same unlimited-credentialing property (§4.3) | Blocks Phase 1 entirely. There is no way to do this from the tranche side | Foundation |
+| S4 | **How exclusivity is triggered** (§4.4, §6.1). Recommendation: a borrower-declared flag at market creation, immutable thereafter, rather than the hook detecting controller-ness — detection has an admission-ordering gap and is evadable by interposition | Shapes the template's interface. Cheap now, expensive later | Foundation + engineering |
 | S5 | **Dilution policy for non-exclusive facilities** (§7, Phase 0): the threshold at which the controller halts new senior deposits, and whether the trigger is advisory or hard | Needed for Phase 0, which is the only thing available to existing markets | Desk, per facility |
 
-Settled by this analysis, no decision left: do not deregister `OpenTermHooks` (§4.3 — it is one-way, it does not achieve the goal, and it breaks every future borrower); do not police `grantRole` (§4.1 — four independent bypasses); protocol fees stay senior and are accepted as facility terms (§6.5).
+Settled by this analysis, no decision left: replacing the borrower-approval template is worth doing but is not a chokepoint on market creation, so the tranche factory must assert exclusivity as well (§4.3, §4.4); the replacement carries its own explicit lender list rather than policing V2 credentials, whose four bypasses cannot be closed from outside (§3, §3.1, §6.1); the lock keys on admissions ever granted, never on current membership (§3.1); protocol fees stay senior and are accepted as facility terms (§6.5).
 
 ---
 
@@ -70,7 +70,7 @@ A flag in `requiredFlags` is forced on regardless of what the borrower asked for
 
 **Every transfer funnels through one choke point.** `transfer` and `transferFrom` both reach `_transfer`, whose only gate is `hooks.onTransfer` (`WildcatMarketToken.sol:89`), called before balances move. One hook covers the entire transfer surface.
 
-**And the market already has a "one canonical special address, set once, immutably" pattern.** `registeredWrapper()` is a dedicated storage slot, writable only by the wrapper factory, only once (`WildcatMarketConfig.sol:65-70`). A designated-lender slot is the same shape.
+**And the market already has a "one canonical special address, set once, immutably" pattern.** `registeredWrapper()` is a dedicated storage slot, writable only by the wrapper factory, only once (`WildcatMarketConfig.sol:65-70`). A per-market exclusivity flag set once at creation is the same shape.
 
 ---
 
@@ -85,7 +85,26 @@ No configuration of the shipped templates yields a closed lender set. Four indep
 
 Point 4 is why a naive count of *currently credentialed* addresses is worthless: revoking lender A and credentialing lender B does not reduce the claimant count, because A still holds tokens, still accrues interest, and still has an unrevokable path to receive more. Any correct invariant must be monotonic over the market's whole history, not a snapshot.
 
-And there is nothing to count anyway. There is no lender set, no lender counter, and no enumerable holder list in the protocol — `_accounts` is a bare mapping, `MarketState` tracks only aggregates, and `isKnownLenderOnMarket` has no counter and no removal. **The exclusivity invariant therefore cannot be checked against stored state; it must be enforced prospectively, asserted per-action.** That is a design constraint rather than a blocker, but it decides the mechanism.
+And there is nothing to count anyway. There is no lender set, no lender counter, and no enumerable holder list anywhere in V2 — `_accounts` is a bare mapping, `MarketState` tracks only aggregates, and `isKnownLenderOnMarket` has no counter and no removal.
+
+### 3.1 The rule is V1-shaped, and V2 threw the list away
+
+This is worth stating precisely, because it explains why the proposal feels like it should be a one-liner and isn't. In V1 (`wildcat-finance/wildcat-protocol`) the lender whitelist was a real, enumerable set held on the market controller:
+
+```solidity
+// src/WildcatMarketController.sol:78
+EnumerableSet.AddressSet internal _authorizedLenders;
+```
+
+with `authorizeLenders` / `deauthorizeLenders` (`:221`, `:308`), `isAuthorizedLender` (`:210`), `getAuthorizedLenders()` (`:189`) and — the one that matters here — `getAuthorizedLendersCount()` (`:206`). Authorisation was then *pushed* into each market by the controller via `WildcatMarket(market).updateAccountAuthorizations(lenders, _authorizedLenders.contains(lender))` (`:334-337`).
+
+So in V1, "is there exactly one whitelisted lender?" is literally `getAuthorizedLendersCount() == 1`. The rule as proposed is a natural, near-trivial addition to that architecture.
+
+V2 deliberately replaced that set with the role-provider credential model: pull and push providers, TTLs, per-account credentials refreshed on demand. It bought composable credentialing — Merkle allowlists, soulbound markers, sealed entity credentials — and it **paid for it by losing the list**. There is no set to count, and worse, credentials can now come into existence with no borrower transaction at all (§3, item 3). The proposal asks a V1 question of a V2 system.
+
+That diagnosis points straight at the fix, and it is a better fix than a bespoke single-lender slot: **have the new template carry the V1-style list as its own state.** See §6.1.
+
+**One property carries over from V1 and constrains the rule.** In V1, `deauthorizeLenders` removes an address from the set but does nothing about market tokens it already holds — and V1 kept a `WithdrawOnly` role precisely because a de-authorised lender still has a claim to exit. The same is true in V2. So a lock keyed on the *current* member count is defeatable by deauthorise-then-authorise: the count returns to one, the lock re-arms, and the previous holder is still a pari-passu claimant. **The count must be monotonic — admissions ever granted, not members currently held.** That is a one-word change in the design and an easy thing to get wrong.
 
 ---
 
@@ -97,26 +116,27 @@ The proposal has three moves: (a) a hook that refuses to admit a second lender w
 
 Policing the credential machinery means intercepting `grantRole`, `grantRoles`, `addRoleProvider`, `createRoleProvider`, and the pull-provider loop, and then still handling the sticky known-lender flag from §3, item 4. Every one of those is a separate override with its own bypass analysis, and the pull-provider loop is the awkward one: it grants credentials inside `_tryValidateAccessInner` with no distinct entry point to guard.
 
-Gate at the point of use instead. Store a designated lender per market and have `onDeposit` revert unless the depositor is that address. Credentials then become **irrelevant to the guarantee** — the borrower may add providers, grant roles, and credential the whole world, and none of it produces a second market-token holder, because the deposit hook does not consult credentials for the exclusivity decision. One assertion, in one place, on the action that actually creates a claim. This also aligns with §3's conclusion that the invariant must be prospective: an assertion per action is the only available shape, so the design should lean into it rather than fight it.
+Gate at the point of use instead: keep an explicit lender list as the template's own state and have `onDeposit` revert unless the depositor is on it (§6.1). Credentials then become **irrelevant to the guarantee** — the borrower may add providers, grant roles, and credential the whole world, and none of it produces a second market-token holder, because the deposit hook does not consult credentials for the exclusivity decision. One assertion, in one place, on the action that actually creates a claim. This also aligns with §3's conclusion that the invariant must be prospective: an assertion per action is the only available shape, so the design should lean into it rather than fight it.
 
 The same applies to the "if it happens to be a tranche controller" condition, which should be dropped for a second reason — see below.
 
 ### 4.2 Do not teach the protocol what a tranche controller is
 
-The proposal conditions the restriction on the approved address *being* a tranche controller. Invert the dependency. The hook enforces **exclusivity** — a general, self-contained property: "this market has exactly one designated lender, fixed, forever." The tranche factory then **checks for** exclusivity before deploying a set. Three reasons, in increasing order of importance:
+The proposal conditions the restriction on the approved address *being* a tranche controller. Invert the dependency. The hook enforces **exclusivity** — a general, self-contained property: "this market has admitted exactly one lender and can never admit another." The tranche factory then **checks for** exclusivity before deploying a set. §4.4 gives the decisive reason (detection is both order-dependent and evadable); three softer ones, in increasing order of importance:
 
 - *Layering.* A hooks template that imports a tranche-controller registry couples the protocol's release cycle to a product's. The dependency should point the other way, as it already does for the wrapper factory consuming `IMarketTransferPolicy`.
 - *Reusability.* "This market has one lender and always will" is a sellable primitive on its own — bilateral facilities, single-counterparty SPV structures, a fund lending against one borrower. Registered once, it serves cases beyond tranching, which materially improves the answer to S3.
 - *Neutrality.* Wildcat Labs and the Foundation are bound to neutrality, and `Deployment-Access-Governance-Notes.md` §1 already rejected the owner-gated factory on exactly this ground. A hooks template in the protocol that names one specific product is the same problem in a worse location. An exclusivity primitive that the tranche layer happens to require is neutral; a tranche-controller-aware hook is an endorsement cast in bytecode.
 
-**Verification must check template provenance, not just the interface.** This is the subtle part. If the tranche factory merely calls `exclusiveLenderOf(market)` on the market's hooks instance, any borrower can deploy a contract that answers correctly and enforces nothing. The instance *is* the enforcement, so the factory must confirm the instance came from a known-good template:
+**Verification must check template provenance, not just the interface.** This is the subtle part. If the tranche factory merely asks the market's hooks instance whether it is exclusive, any borrower can deploy a contract that answers correctly and enforces nothing. The instance *is* the enforcement, so the factory must confirm the instance came from a known-good template:
 
 ```
 market.factory()                                       // immutable, WildcatMarketBase.sol:68
 market.hooks()                                         // HooksConfig, top 160 bits = instance
   → factory.getHooksTemplateForInstance(instance)      // public mapping, HooksFactory.sol:92
   → assert template ∈ {allowlisted exclusivity template addresses}
-  → assert IExclusiveLender(instance).exclusiveLenderOf(market) == controller
+  → assert isExclusive(market) && admissionsEverGranted(market) == 1
+  → assert listedLenderAt(market, 0) == controller
 ```
 
 Three details make or break this check.
@@ -125,11 +145,13 @@ Three details make or break this check.
 - **Allowlist template *addresses*, not version strings.** `getHooksTemplateForInstance` returns the init-code-storage contract address, which is an identity, not a type tag. The tempting shortcut is `IHooks.version()`, which returns a literal like `'OpenTermHooks'` — but that string is supplied by the instance itself, so a hostile instance can return anything. `version()` is a labelling aid (the lens uses it for display, `HooksConfigData.sol:71-81`); the template address is the authenticated primitive.
 - **`isRegisteredMarket` is revocable.** The ArchController has `removeMarket` and `removeBorrower`, both owner-callable, so the registration check `TrancheFactory` already performs is a point-in-time assertion rather than a standing guarantee. Worth knowing; not worth defending against.
 
-### 4.3 Do not deregister `OpenTermHooks`
+### 4.3 Replacing the borrower-approval template is reasonable; it is not sufficient
 
-Three independent reasons, any one sufficient.
+The intended shape here is a **swap, not an amputation**: the standard borrower-approved-lender hook is replaced by one that behaves identically except that when a market's whitelist holds exactly one lender and that lender is a tranche controller, no second lender may be admitted. If the replacement is a strict superset of today's behaviour — an ordinary whitelist for ordinary borrowers, plus a lock that only arms in the tranche case — then disabling the old template costs new borrowers nothing, and the objection that it strips capability from the protocol does not apply. §6.1 describes a template of exactly that shape, and it is a better design than a tranche-only variant.
 
-**It does not achieve the goal.** `disableHooksTemplate` gates `deployHooksInstance` only (`HooksFactory.sol:358`). `deployMarket` never reads `templateDetails.enabled` — it checks only that the instance is known:
+Two things nevertheless remain true, and together they mean the swap cannot carry the guarantee on its own.
+
+**Disabling a template is not a chokepoint on market creation.** `disableHooksTemplate` gates `deployHooksInstance` only (`HooksFactory.sol:358`). `deployMarket` never reads `templateDetails.enabled` — it checks only that the instance is known:
 
 ```solidity
 // src/HooksFactory.sol:601-605
@@ -140,15 +162,21 @@ if (hooksTemplate == address(0)) {
 HooksTemplate memory templateDetails = _templateDetails[hooksTemplate];
 ```
 
-So every borrower who already holds an `OpenTermHooks` instance — which is every borrower with a live market — keeps deploying ordinary non-exclusive markets against it indefinitely. Disabling the template closes the door for new entrants only.
+A hooks instance is a durable market factory, not a per-market artifact: one instance can host unlimited markets. So every borrower who already holds an `OpenTermHooks` instance — which is every borrower with a live market — keeps deploying **new** markets under the old rules indefinitely, after the swap. This is not the retrofit problem; it is that "moving forward" is not what template disablement buys. It closes the door for borrowers who do not already have a key.
 
-**It is irreversible.** The code says so in a comment: "The template is only disabled, not removed: `exists` stays true, so it can not be re-added and there is no re-enable path" (`HooksFactory.sol:250-252`). Recovery would require deploying and registering a fresh init-code storage contract.
+**And there are three such templates, not one.** `OpenTermHooks`, `FixedTermHooks` and `PeriodicTermHooks` all inherit `BaseAccessControls` and all permit unlimited credentialing. Mainnet currently has the first two registered. Replacing only the open-term template leaves the fixed-term door open — and fixed-term is arguably the *more* natural fit for a tranche facility, since a senior note with a term wants a market with a term. A complete swap means three replacements, or three locks retrofitted into the shared base, which is option B in §5 and a much larger audit surface.
 
-**The collateral damage is the whole protocol.** `OpenTermHooks` is one of two templates registered on mainnet (`deployments/mainnet/deployments.json`, alongside `FixedTermHooks`). Disabling it removes the standard open-term access-controlled market from every future Wildcat borrower, to make one product's guarantee tidier. That trade is not close.
+Also worth knowing, since it bears on using disable as a cleanup tool: it is irreversible — "The template is only disabled, not removed: `exists` stays true, so it can not be re-added and there is no re-enable path" (`HooksFactory.sol:250-252`) — and it is soft in other ways, since fee updates and protocol-fee pushes keep working on a disabled template and it stays in the enumerable list forever.
 
-The additive alternative costs nothing and gives up nothing: register the exclusivity template alongside the existing two, and enforce the requirement at the consumer — the tranche factory refuses markets that do not assert exclusivity. The capability is added, no capability is removed, and the product gets its guarantee. This is exactly the shape every template rollout has taken; the `PeriodicTermHooks` checklist describes it as deploying "a new `PeriodicTermHooks` init-code storage contract, [registering] it on the target `HooksFactory`, and [deploying] a new `MarketLens`. It does not deploy a new hooks factory or new market bytecode."
+**Conclusion: swap and check, not swap or check.** Register the new template (additively, as every template rollout has been), disable the old ones if the new one is a superset and the Foundation wants the default moved, *and* have the tranche factory assert exclusivity at set creation. The swap makes the good configuration the default and the easy path; the consumer check is what makes it a guarantee. Neither substitutes for the other.
 
-Disabling `OpenTermHooks` is worth keeping in the toolbox for a different job — retiring a template that has been superseded — and it is worth knowing that disable is soft in other ways too: fee updates and protocol-fee pushes both continue to work on a disabled template, and the template stays in the enumerable list forever, so any integration listing templates must filter on `enabled` itself.
+### 4.4 A third reason the check has to live at the tranche layer
+
+The rule as stated — "if there's already one approved and it happens to be a tranche controller, permit no others" — is evaluated at admission time, and that creates an ordering gap. If the borrower authorises five lenders *first* and deploys the tranche set afterwards, there is never a moment at which the whitelist holds exactly one lender, so the lock never arms. The market ends up with a tranche set and five pari-passu co-lenders, with every rule having behaved exactly as written.
+
+Worse, any hook-side attempt to *detect* controller-ness is evadable by interposition, because the borrower chooses what to authorise. Authorise a thin holder contract that is not a registered controller, let the tranche controller hold claims on that instead — the same relationship the 4626 wrapper already has with the market — and the lock never arms again. Detection can be made costly but not sound, because the borrower controls the input to the detector.
+
+Both problems vanish at the tranche layer, where the question is asked in the other direction and at the right moment: *at set creation*, assert the market's admission count is one and that one is this controller. The factory knows which controller it is deploying, so there is nothing to detect and nothing to spoof.
 
 ---
 
@@ -156,7 +184,7 @@ Disabling `OpenTermHooks` is worth keeping in the toolbox for a different job �
 
 | | Option | Guarantee | Cost | Retrofits existing markets |
 |---|---|---|---|---|
-| **A** | **New template, per-market designated lender** (recommended) | Hard. No second market-token holder can ever exist | New protocol template + audit + one owner action | No |
+| **A** | **New template carrying an explicit lender list** (recommended) | Hard. No second market-token holder can ever exist | New protocol template + audit + one owner action | No |
 | **B** | Lender-set seal on `BaseAccessControls` | Hard, if the seal covers pull providers | Touches the base contract all three templates inherit → re-audit of the whole access layer | No |
 | **C** | Tranche layer only: telemetry, empty-market precondition, dilution halt | None. Detection and disclosure, not prevention | Days, in this repo, no ceremony | **Yes** |
 | **D** | A + `transfersDisabled` + Q18(d) direct custody | Airtight: provably one token holder, forever | A, plus rewriting the valuation core against `scaleFactor` | No |
@@ -173,19 +201,31 @@ Recommendation: **C now, A next, D as a deliberate v2 decision (S2).**
 
 ## 6. The recommended mechanism
 
-### 6.1 Shape
+### 6.1 Shape: V1 whitelist semantics as a V2 template
 
-A template — `ExclusiveLenderHooks` — inheriting `MarketConstraintHooks` for the APR-bound behaviour, but **deliberately not inheriting `BaseAccessControls`**. Per §3, the pull-provider loop and the sticky known-lender bypass are each independently sufficient to admit a second claimant, so the credential stack should be absent rather than constrained. This makes the template smaller and its audit narrower than the existing ones, which is a pleasant inversion of the usual trade.
+A template — call it `ListedLenderHooks` — inheriting `MarketConstraintHooks` for the APR-bound behaviour, but **deliberately not inheriting `BaseAccessControls`**. Per §3, the pull-provider loop and the sticky known-lender bypass are each independently sufficient to admit a second claimant, so the credential stack should be absent rather than constrained. This makes the template smaller and its audit narrower than the existing three, which is a pleasant inversion of the usual trade.
 
-State: one slot per market, `mapping(address market => address) internal _exclusiveLender`, written once in `_onCreateMarket`, never afterwards.
+Its state is the V1 list, reintroduced per market:
+
+```solidity
+mapping(address market => EnumerableSet.AddressSet) internal _listedLenders;
+mapping(address market => uint256) internal _admissionsEverGranted;   // monotonic, per §3.1
+mapping(address market => bool) internal _exclusivityArmed;
+```
+
+This is the design's main virtue: it is a **strict superset** of the borrower-approved flow. A borrower who wants five lenders lists five and the template behaves like today's `OpenTermHooks` minus the pluggable providers. A borrower running a tranche facility lists one, exclusivity arms, and no second admission is ever possible. One template, two modes, no product-specific logic — which also gives S3 a much better answer than "a template for tranching" would.
+
+Because the list is real, the count is real, and the proposed rule becomes directly expressible — the thing V2 currently cannot do (§3.1). Arm the lock on `_admissionsEverGranted[market] == 1`, never on current membership.
+
+On the "and it happens to be a tranche controller" condition: per §4.4 the hook cannot soundly detect this, and it does not need to. Let the borrower **declare exclusivity at market creation** — one bool in `hooksData`, immutable thereafter, exactly like `transfersDisabled`. A borrower deploying a market for a tranche facility sets it; the tranche factory verifies it. The hook stays product-agnostic, the guarantee gets stronger (it arms at creation rather than on an admission-ordering accident), and nothing needs a registry.
 
 Hooks, with `Bit_Enabled_Deposit`, `Bit_Enabled_Transfer` and `Bit_Enabled_QueueWithdrawal` in `requiredFlags` so none can be configured off:
 
-- `onDeposit` — revert unless `lender == _exclusiveLender[msg.sender]`.
+- `onDeposit` — revert unless the lender is listed for `msg.sender`.
 - `onTransfer` — revert unless both `from` and `to` are in the market's allowed set (§6.4). Asserting on `from` as well as `to` is belt-and-braces: if a stray balance ever exists, it cannot move.
 - `onQueueWithdrawal` — revert unless the lender is in the allowed set. Note the hazard: `nukeFromOrbit` routes through `_queueWithdrawal`, so this hook is a veto over sanctions quarantine (`WildcatMarket.sol:314-320`, and the comment there documents the behaviour as accepted). If no stray holder can exist, nothing is stranded; this is an argument for making stray holders impossible rather than merely stranded.
 - `isMarketTransferDisabled` — **must** be implemented. The wrapper factory reverts `UnsupportedMarketTransferPolicy` against a hooks instance that does not answer (`Wildcat4626WrapperFactory.sol:102-112`), so omitting it is a compatibility break, not a hardening.
-- `exclusiveLenderOf(address market) → address` — the assertion the tranche factory reads, per §4.2.
+- `admissionsEverGranted(address market) → uint256`, `isExclusive(address market) → bool` and `listedLenderAt(address market, uint256) → address` — the assertions the tranche factory reads, per §4.2.
 
 Everything else no-ops, as in the existing templates. One line must not be forgotten: `_onCreateMarket` needs `if (deployer != borrower) revert CallerNotBorrower();`. The factory does **not** check that a hooks instance belongs to the borrower deploying against it — `deployMarket` validates only that the caller is a registered borrower and that the instance is known. That guarantee lives in each template's `_onCreateMarket` (`OpenTermHooks.sol:140` and the equivalents), so a template omitting it lets any registered borrower attach markets to someone else's hooks instance.
 
@@ -195,7 +235,7 @@ Everything else no-ops, as in the existing templates. One line must not be forgo
 
 ### 6.3 Binding the controller address
 
-The designated lender must be known when the market is created, but the controller does not exist until after the market does — the tranche factory checks `isRegisteredMarket` first. The circle breaks with CREATE2: the controller's address depends only on the factory and a salt, not on the market.
+The controller must be listable as the market's sole lender, but the controller does not exist until after the market does — the tranche factory checks `isRegisteredMarket` first. The circle breaks with CREATE2: the controller's address depends only on the factory and a salt, not on the market.
 
 1. Borrower computes `controller = CREATE2(trancheFactory, salt)` off-chain.
 2. Borrower deploys the market with `exclusiveLender = controller` in `hooksData`.
@@ -252,7 +292,7 @@ Everything here lives in this repo, requires no protocol change and no Foundatio
 
 ### Phase 1 — the template (protocol repo; blocked on S1, S2, S3)
 
-`ExclusiveLenderHooks` per §6.1, plus tests, plus an entry in the audit-delta document. Calibrating against `PeriodicTermHooks`, the closest precedent (a new template added during v2.5 and rolled out additively): ~800 lines of contract, ~1,800 lines of tests, runtime size 17,978 bytes against the 24,576-byte EIP-170 limit. `ExclusiveLenderHooks` should come in materially smaller — it omits `BaseAccessControls` entirely — but size stays a live constraint: the repo's own notes record that the high-run `ir` profile can push template storage over the limit, so build with the `deploy` profile from the outset.
+`ListedLenderHooks` per §6.1, plus tests, plus an entry in the audit-delta document. Calibrating against `PeriodicTermHooks`, the closest precedent (a new template added during v2.5 and rolled out additively): ~800 lines of contract, ~1,800 lines of tests, runtime size 17,978 bytes against the 24,576-byte EIP-170 limit. It should come in materially smaller — it omits `BaseAccessControls` entirely — but size stays a live constraint: the repo's own notes record that the high-run `ir` profile can push template storage over the limit, so build with the `deploy` profile from the outset.
 
 Test surface, in the style of the existing `test/access/` suites: the exclusive lender deposits; every other address is refused; refusal survives the borrower granting roles, adding a permissive pull provider, and creating a provider via factory; transfers outside the allowed set revert in both directions; `requiredFlags` cannot be configured off; wrapper deployment behaves as intended for the chosen S2 option; the `nukeFromOrbit` interaction is asserted explicitly rather than discovered.
 
