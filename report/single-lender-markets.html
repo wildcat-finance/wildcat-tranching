@@ -1,0 +1,480 @@
+<title>Single-Lender Markets</title>
+
+<style>
+  :root{
+    --paper:#fbf8f2; --panel:#ffffff; --sunk:#f5f0e6;
+    --ink:#16130f; --ink-soft:#3a352e; --muted:#6b6359;
+    --hair:#e4ddd1; --rule:#c9bfae;
+    --closed:#008b80; --leak:#b4670d;
+    --closed-wash:#e0efed; --leak-wash:#f7ecdc;
+    --ok:#2f6f4f; --open:#9a3412;
+    --shadow:0 1px 2px rgba(22,19,15,.05);
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#17140f; --panel:#1f1b15; --sunk:#241f18;
+      --ink:#f2ede3; --ink-soft:#d8d0c2; --muted:#9a9184;
+      --hair:#332d24; --rule:#4a4237;
+      --closed:#189c90; --leak:#c9822f;
+      --closed-wash:#12312e; --leak-wash:#33240f;
+      --ok:#63a97f; --open:#d1774a;
+      --shadow:0 1px 2px rgba(0,0,0,.3);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#17140f; --panel:#1f1b15; --sunk:#241f18;
+    --ink:#f2ede3; --ink-soft:#d8d0c2; --muted:#9a9184;
+    --hair:#332d24; --rule:#4a4237;
+    --closed:#189c90; --leak:#c9822f;
+    --closed-wash:#12312e; --leak-wash:#33240f;
+    --ok:#63a97f; --open:#d1774a;
+    --shadow:0 1px 2px rgba(0,0,0,.3);
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:var(--sans); font-size:15px; line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  .sheet{ max-width:1080px; margin:0 auto; padding:40px 24px 72px; display:flex; flex-direction:column; gap:34px; }
+  a{ color:var(--closed); }
+  a:focus-visible, [tabindex]:focus-visible{ outline:2px solid var(--closed); outline-offset:2px; }
+  @media (prefers-reduced-motion:reduce){ *{ transition:none !important; animation:none !important; } }
+
+  /* masthead */
+  .eyebrow{ font-size:10.5px; letter-spacing:.2em; text-transform:uppercase; color:var(--leak); font-weight:700; }
+  h1{ font-size:clamp(28px,4.4vw,42px); font-weight:800; letter-spacing:-.024em; line-height:1.08; margin:10px 0 0; text-wrap:balance; }
+  .standfirst{ font-size:17px; color:var(--ink-soft); margin:12px 0 0; max-width:64ch; }
+  .byline{ font-size:12.5px; color:var(--muted); margin-top:12px; font-family:var(--mono); }
+
+  /* verdict tiles */
+  .tiles{ display:grid; grid-template-columns:repeat(auto-fit,minmax(158px,1fr)); gap:11px; }
+  .tile{ background:var(--panel); border:1px solid var(--hair); border-radius:4px; padding:13px 14px; box-shadow:var(--shadow); }
+  .tile .k{ font-size:9.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--muted); font-weight:700; }
+  .tile .v{ font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:30px; font-weight:700; letter-spacing:-.02em; margin-top:5px; line-height:1; }
+  .tile .v.leak{ color:var(--leak); } .tile .v.closed{ color:var(--closed); } .tile .v.open{ color:var(--open); }
+  .tile .s{ font-size:11.5px; color:var(--muted); margin-top:5px; }
+
+  /* open-decisions bar */
+  .openbar{ display:flex; flex-wrap:wrap; align-items:center; gap:8px 10px; padding:9px 13px; background:var(--leak-wash); border:1px solid var(--leak); border-radius:4px; }
+  .openbar .obl{ font-size:10px; letter-spacing:.11em; text-transform:uppercase; font-weight:800; color:var(--open); margin-right:2px; }
+  .openbar .obi{ font-size:12px; color:var(--ink-soft); background:var(--panel); border:1px solid var(--hair); border-radius:10px; padding:2px 10px; }
+
+  /* sections */
+  section{ display:flex; flex-direction:column; gap:15px; }
+  h2{ font-size:19px; font-weight:800; letter-spacing:-.015em; margin:0; padding-bottom:8px; border-bottom:1.5px solid var(--ink); display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+  h2 .tag{ font-family:var(--mono); font-size:10.5px; letter-spacing:.04em; color:var(--muted); font-weight:400; margin-left:auto; }
+  p{ margin:0; color:var(--ink-soft); max-width:72ch; }
+  code{ font-family:var(--mono); font-size:.88em; background:var(--sunk); padding:1px 4px; border-radius:3px; }
+
+  /* figures */
+  figure{ margin:0; display:flex; flex-direction:column; gap:9px; }
+  .dwrap{ overflow-x:auto; }
+  svg.d{ display:block; width:100%; height:auto; }
+  figcaption{ font-size:12.5px; color:var(--muted); max-width:78ch; }
+
+  .d .box{ fill:var(--panel); stroke:var(--rule); stroke-width:1.2; }
+  .d .box.sunk{ fill:var(--sunk); }
+  .d .box.core{ stroke:var(--closed); stroke-width:1.8; fill:var(--closed-wash); }
+  .d .box.bad{ stroke:var(--leak); stroke-width:1.6; fill:var(--leak-wash); }
+  .d .bar{ fill:var(--sunk); stroke:var(--rule); stroke-width:1; }
+  .d .chip-sr{ fill:var(--closed-wash); stroke:var(--closed); stroke-width:1; }
+  .d .chip-jr{ fill:var(--leak-wash); stroke:var(--leak); stroke-width:1; }
+  .d .t{ font-family:var(--sans); font-size:13px; font-weight:800; fill:var(--ink); }
+  .d .s{ font-family:var(--sans); font-size:10.5px; fill:var(--muted); }
+  .d .c{ font-family:var(--mono); font-size:10.5px; font-weight:700; fill:var(--ink); }
+  .d .lbl{ font-family:var(--sans); font-size:10.5px; font-style:italic; fill:var(--ink-soft); }
+  .d .edge{ fill:none; stroke:var(--ink-soft); stroke-width:1.5; }
+  .d .edge.leak{ stroke:var(--leak); stroke-width:2; }
+  .d .edge.closed{ stroke:var(--closed); stroke-width:2; }
+  .d .cut{ stroke:var(--open); stroke-width:2.4; }
+  .d .panelrule{ stroke:var(--rule); stroke-width:1; stroke-dasharray:5 4; }
+  .d .hdr{ font-family:var(--sans); font-size:11px; font-weight:800; letter-spacing:.09em; text-transform:uppercase; }
+  .d .hdr.leak{ fill:var(--open); } .d .hdr.closed{ fill:var(--closed); }
+
+  /* tables */
+  .tblwrap{ overflow-x:auto; }
+  table{ width:100%; border-collapse:collapse; font-size:13.5px; background:var(--panel); border:1px solid var(--hair); }
+  th,td{ text-align:left; padding:9px 12px; border-bottom:1px solid var(--hair); vertical-align:top; }
+  th{ font-size:9.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--muted); font-weight:700; background:var(--sunk); }
+  tr:last-child td{ border-bottom:0; }
+  tr.punch td{ background:var(--leak-wash); font-weight:700; }
+  td.none{ color:var(--open); font-weight:700; }
+
+  /* step path */
+  .path{ display:flex; flex-direction:column; border:1px solid var(--hair); border-radius:4px; overflow:hidden; background:var(--panel); }
+  .path .step{ display:grid; grid-template-columns:24px 1fr; gap:12px; padding:11px 14px; border-bottom:1px solid var(--hair); }
+  .path .step:last-child{ border-bottom:0; }
+  .path .step .i{ font-family:var(--mono); font-size:11px; color:var(--muted); font-weight:700; padding-top:2px; }
+  .path .step .d2{ font-size:13.5px; color:var(--ink-soft); }
+  .path .step .d2 b{ color:var(--ink); }
+
+  /* verdict rows */
+  .verdicts{ display:flex; flex-direction:column; gap:9px; }
+  .v-row{ display:grid; grid-template-columns:88px 1fr; gap:14px; align-items:start; background:var(--panel); border:1px solid var(--hair); border-left:3px solid var(--rule); border-radius:3px; padding:11px 14px; }
+  .v-row.holds{ border-left-color:var(--ok); }
+  .v-row.change{ border-left-color:var(--open); }
+  .v-row .vk{ font-size:9.5px; letter-spacing:.09em; text-transform:uppercase; font-weight:800; color:var(--muted); padding-top:3px; }
+  .v-row.holds .vk{ color:var(--ok); } .v-row.change .vk{ color:var(--open); }
+  .v-row .vd{ font-size:13.5px; color:var(--ink-soft); }
+  .v-row .vd b{ color:var(--ink); }
+
+  .footnote{ font-size:12px; color:var(--muted); border-top:1px solid var(--hair); padding-top:14px; max-width:82ch; }
+</style>
+
+<div class="sheet">
+
+  <header>
+    <div class="eyebrow">Wildcat tranching · feasibility</div>
+    <h1>Senior over the facility, or senior over a sliver?</h1>
+    <p class="standfirst">A tranche set on an ordinary Wildcat market does not make the senior claim senior over the facility.
+      It makes it senior over the vehicle's own share of a pool it competes in. Whether a hooks template can close that,
+      what the proposal to do so gets right, and the two places it does not reach.</p>
+    <p class="byline">v2-protocol release/v2.5 @ dec36d2 · wildcat-tranching @ 800c0eb · companion to Single-Lender-Markets-Feasibility.md</p>
+  </header>
+
+  <div class="tiles">
+    <div class="tile"><div class="k">Paths admitting a lender</div><div class="v leak">4</div><div class="s">All borrower-controlled. Two need no borrower transaction</div></div>
+    <div class="tile"><div class="k">Writes creating a claim</div><div class="v leak">3</div><div class="s">Credential grant, pull-provider loop, sticky flag</div></div>
+    <div class="tile"><div class="k">Guarded by the proposal</div><div class="v open">1</div><div class="s">The borrower credential grant only</div></div>
+    <div class="tile"><div class="k">Markets retrofittable</div><div class="v open">0</div><div class="s">Hooks config is immutable at creation</div></div>
+  </div>
+
+  <div class="openbar">
+    <span class="obl">Open</span>
+    <span class="obi">S1 requirement or option</span>
+    <span class="obi">S2 custody model</span>
+    <span class="obi">S3 template scope</span>
+    <span class="obi">S4 trigger mechanism</span>
+    <span class="obi">S5 dilution threshold</span>
+  </div>
+
+  <section>
+    <h2>1. What pari passu does to a tranche <span class="tag">§3</span></h2>
+    <p>Wildcat pays lenders strictly in proportion to their share of a withdrawal batch. The only ordering it recognises is
+      temporal, between batches. Subordination is internal to the tranche controller, so the market's pro-rata split happens
+      first and the waterfall allocates only what arrived.</p>
+
+    <figure>
+      <div class="dwrap">
+        <svg class="d" viewBox="0 0 960 322" role="img" aria-label="Comparison of a shared market and an exclusive market. On a shared market, batch liquidity splits pro-rata across four lenders and the senior-junior waterfall applies only inside the controller's 30 percent slice. On an exclusive market, all liquidity reaches the controller and the waterfall applies across the whole facility.">
+          <defs>
+            <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="var(--ink-soft)"/>
+            </marker>
+            <marker id="ahc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="var(--closed)"/>
+            </marker>
+          </defs>
+
+          <line class="panelrule" x1="480" y1="8" x2="480" y2="314"/>
+          <text class="hdr leak" x="20" y="18">Shared market — today</text>
+          <text class="hdr closed" x="512" y="18">Exclusive market</text>
+
+          <!-- LEFT: shared -->
+          <rect class="bar" x="20" y="34" width="420" height="26" rx="4"/>
+          <text class="c" x="30" y="51">batch liquidity</text>
+          <text class="lbl" x="230" y="86" text-anchor="middle">pro-rata, no rank</text>
+          <line class="edge" x1="68" y1="60" x2="68" y2="104" marker-end="url(#ah)"/>
+          <line class="edge" x1="176" y1="60" x2="176" y2="104" marker-end="url(#ah)"/>
+          <line class="edge" x1="284" y1="60" x2="284" y2="104" marker-end="url(#ah)"/>
+          <line class="edge" x1="392" y1="60" x2="392" y2="104" marker-end="url(#ah)"/>
+
+          <rect class="box core" x="20" y="106" width="96" height="46" rx="5"/>
+          <text class="t" x="30" y="127">Controller</text>
+          <text class="s" x="30" y="142">30% of supply</text>
+          <rect class="box" x="128" y="106" width="96" height="46" rx="5"/>
+          <text class="t" x="138" y="127">Lender B</text>
+          <rect class="box" x="236" y="106" width="96" height="46" rx="5"/>
+          <text class="t" x="246" y="127">Lender C</text>
+          <rect class="box" x="344" y="106" width="96" height="46" rx="5"/>
+          <text class="t" x="354" y="127">Lender D</text>
+
+          <line class="edge" x1="68" y1="152" x2="68" y2="196" marker-end="url(#ah)"/>
+          <rect class="chip-sr" x="20" y="198" width="46" height="34" rx="4"/>
+          <text class="c" x="30" y="219">sr</text>
+          <rect class="chip-jr" x="70" y="198" width="46" height="34" rx="4"/>
+          <text class="c" x="80" y="219">jr</text>
+          <text class="lbl" x="128" y="214">waterfall reaches this far</text>
+          <text class="lbl" x="128" y="229">and no further</text>
+          <text class="s" x="20" y="262">Senior is protected on its own slice. Against B, C and D</text>
+          <text class="s" x="20" y="277">it is an ordinary pro-rata lender, and the slice size</text>
+          <text class="s" x="20" y="292">moves whenever the borrower approves someone.</text>
+
+          <!-- RIGHT: exclusive -->
+          <rect class="bar" x="512" y="34" width="420" height="26" rx="4"/>
+          <text class="c" x="522" y="51">batch liquidity</text>
+          <text class="lbl" x="706" y="86" text-anchor="end">sole lender, all of it</text>
+          <line class="edge closed" x1="722" y1="60" x2="722" y2="104" marker-end="url(#ahc)"/>
+
+          <rect class="box core" x="512" y="106" width="420" height="46" rx="5"/>
+          <text class="t" x="522" y="127">Controller</text>
+          <text class="s" x="522" y="142">100% of supply, fixed at market creation</text>
+
+          <line class="edge closed" x1="722" y1="152" x2="722" y2="196" marker-end="url(#ahc)"/>
+          <rect class="chip-sr" x="512" y="198" width="252" height="34" rx="4"/>
+          <text class="c" x="522" y="219">senior</text>
+          <rect class="chip-jr" x="768" y="198" width="164" height="34" rx="4"/>
+          <text class="c" x="778" y="219">junior</text>
+          <text class="s" x="512" y="262">The waterfall now spans the whole facility, so "senior"</text>
+          <text class="s" x="512" y="277">means what a credit reader takes it to mean. Nothing</text>
+          <text class="s" x="512" y="292">about the market changes; only who may enter it.</text>
+        </svg>
+      </div>
+      <figcaption>The difference is the fan-out. Removing it is the entire proposal: with one lender, subordination inside the
+        controller becomes subordination over the facility.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>2. Three write paths, and the one the proposal guards <span class="tag">§5 · §6.2</span></h2>
+    <p>V2 has no lender whitelist. It emulates one: every hooks instance registers the borrower as a credential provider for
+      itself with a non-expiring time-to-live, so "approving a lender" is <code>grantRole</code> from the borrower's own
+      provider slot. That is one of three ways an address acquires a claim.</p>
+
+    <figure>
+      <div class="dwrap">
+        <svg class="d" viewBox="0 0 960 246" role="img" aria-label="Three write paths converge on a market claim. The borrower credential grant is the path the proposal locks. The pull-provider loop writes a credential with no borrower transaction, and the sticky known-lender flag bypasses credentials on transfer. Both pass the lock untouched.">
+          <defs>
+            <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="var(--ink-soft)"/>
+            </marker>
+            <marker id="ahl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="var(--leak)"/>
+            </marker>
+          </defs>
+
+          <rect class="box sunk" x="20" y="20" width="250" height="46" rx="5"/>
+          <text class="t" x="32" y="41">Borrower grants credential</text>
+          <text class="c" x="32" y="58">grantRole / grantRoles</text>
+
+          <rect class="box bad" x="20" y="100" width="250" height="46" rx="5"/>
+          <text class="t" x="32" y="121">Pull-provider loop</text>
+          <text class="s" x="32" y="137">no borrower transaction at all</text>
+
+          <rect class="box bad" x="20" y="180" width="250" height="46" rx="5"/>
+          <text class="t" x="32" y="201">Sticky known-lender flag</text>
+          <text class="s" x="32" y="217">never cleared, bypasses credentials</text>
+
+          <!-- path 1: through the lock, then down into the claim box -->
+          <line class="edge" x1="270" y1="43" x2="326" y2="43"/>
+          <rect x="330" y="26" width="66" height="34" rx="4" fill="var(--panel)" stroke="var(--open)" stroke-width="1.8"/>
+          <text class="c" x="343" y="47" fill="var(--open)">LOCK</text>
+          <line class="edge" x1="396" y1="43" x2="450" y2="104" marker-end="url(#ah2)"/>
+          <text class="lbl" x="392" y="80" text-anchor="end" fill="var(--open)">what the proposal adds</text>
+
+          <!-- paths 2 and 3 arrive unguarded -->
+          <line class="edge leak" x1="270" y1="123" x2="450" y2="123" marker-end="url(#ahl)"/>
+          <line class="edge leak" x1="270" y1="203" x2="450" y2="142" marker-end="url(#ahl)"/>
+          <text class="lbl" x="304" y="115">unguarded</text>
+          <text class="lbl" x="304" y="180">unguarded</text>
+
+          <rect class="box core" x="456" y="88" width="200" height="70" rx="5"/>
+          <text class="t" x="468" y="112">A claim on the market</text>
+          <text class="c" x="468" y="131">_lenderStatus[a]</text>
+          <text class="s" x="468" y="147">or market tokens held outright</text>
+
+          <line class="edge" x1="656" y1="123" x2="716" y2="123" marker-end="url(#ah2)"/>
+          <rect class="box" x="720" y="88" width="220" height="70" rx="5"/>
+          <text class="t" x="732" y="112">Pari-passu co-lender</text>
+          <text class="s" x="732" y="131">dilutes senior priority by its</text>
+          <text class="s" x="732" y="146">share of every future batch</text>
+
+          <text class="s" x="20" y="242">Paths two and three exist only because the template inherits the credential base. A template holding its own list has one write path.</text>
+        </svg>
+      </div>
+      <figcaption>Locking the approval closes the top path. The recommended template drops the credential base entirely, which
+        removes the other two rather than guarding them.</figcaption>
+    </figure>
+
+    <div class="tblwrap">
+      <table>
+        <thead><tr><th style="width:38%">V1 had this</th><th>V2 equivalent</th></tr></thead>
+        <tbody>
+          <tr><td><code>authorizeLenders(lenders)</code></td><td><code>grantRole</code>, borrower acting as its own push provider</td></tr>
+          <tr><td><code>deauthorizeLenders(lenders)</code></td><td><code>revokeRole</code> / <code>blockFromDeposits</code></td></tr>
+          <tr><td><code>isAuthorizedLender(a)</code></td><td>a live credential in <code>_lenderStatus[a]</code></td></tr>
+          <tr class="punch"><td><code>getAuthorizedLendersCount()</code></td><td class="none">Nothing. There is no equivalent</td></tr>
+          <tr><td>An enumerable set, with a size</td><td>Scattered per-address records, with no size</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>That last pair of rows is the whole difference. "Is there exactly one whitelisted lender?" was one call in V1. In V2 there
+      is nothing to count, which is why the fix is to carry the list rather than to interrogate the credential machinery.</p>
+  </section>
+
+  <section>
+    <h2>3. Why deregistering the old template does not close the door <span class="tag">§7.3</span></h2>
+    <p>A hooks instance is a durable market factory, not a per-market artifact. Disabling a template stops new instances
+      being minted from it. Market deployment never reads the <code>enabled</code> flag at all.</p>
+
+    <figure>
+      <div class="dwrap">
+        <svg class="d" viewBox="0 0 960 248" role="img" aria-label="Template to instance to markets. Disabling a hooks template severs only the template-to-instance arrow. The instance-to-market arrow stays live and unlimited, because market deployment never reads the enabled flag, so borrowers holding an instance keep deploying markets under the old rules.">
+          <defs>
+            <marker id="ah3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="var(--ink-soft)"/>
+            </marker>
+            <marker id="ahl3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="var(--leak)"/>
+            </marker>
+          </defs>
+
+          <rect class="box sunk" x="20" y="86" width="180" height="66" rx="5"/>
+          <text class="t" x="32" y="110">Template</text>
+          <text class="s" x="32" y="126">registered by the</text>
+          <text class="s" x="32" y="140">Foundation</text>
+
+          <line class="edge" x1="200" y1="119" x2="356" y2="119" marker-end="url(#ah3)"/>
+          <text class="c" x="278" y="98" text-anchor="middle">deployHooksInstance</text>
+          <line class="cut" x1="266" y1="104" x2="290" y2="138"/>
+          <line class="cut" x1="290" y1="104" x2="266" y2="138"/>
+          <text class="lbl" x="278" y="160" text-anchor="middle" fill="var(--open)">disable severs only this</text>
+
+          <rect class="box core" x="360" y="86" width="180" height="66" rx="5"/>
+          <text class="t" x="372" y="110">Instance</text>
+          <text class="s" x="372" y="126">one per borrower,</text>
+          <text class="s" x="372" y="140">serves unlimited markets</text>
+
+          <line class="edge leak" x1="540" y1="119" x2="716" y2="60" marker-end="url(#ahl3)"/>
+          <line class="edge leak" x1="540" y1="119" x2="716" y2="119" marker-end="url(#ahl3)"/>
+          <line class="edge leak" x1="540" y1="119" x2="716" y2="178" marker-end="url(#ahl3)"/>
+          <text class="c" x="556" y="104" fill="var(--leak)">deployMarket</text>
+          <text class="lbl" x="364" y="176" fill="var(--leak)">unlimited, and never checks the enabled flag</text>
+
+          <rect class="box bad" x="720" y="36" width="220" height="46" rx="5"/>
+          <text class="t" x="732" y="57">New market, old rules</text>
+          <text class="s" x="732" y="73">deployed after the swap</text>
+          <rect class="box bad" x="720" y="96" width="220" height="46" rx="5"/>
+          <text class="t" x="732" y="117">New market, old rules</text>
+          <text class="s" x="732" y="133">and again</text>
+          <rect class="box bad" x="720" y="156" width="220" height="46" rx="5"/>
+          <text class="t" x="732" y="177">New market, old rules</text>
+          <text class="s" x="732" y="193">indefinitely</text>
+
+          <text class="s" x="20" y="232">Every borrower with a live market already holds an instance. Disablement closes the door only to borrowers who do not already hold a key.</text>
+        </svg>
+      </div>
+      <figcaption>The severed arrow is not the one that matters. Three templates share this behaviour, not one: mainnet has
+        <code>OpenTermHooks</code> and <code>FixedTermHooks</code> registered, and fixed-term is the better fit for a senior
+        instrument with a term. Hence swap <em>and</em> check, rather than swap <em>or</em> check.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>4. The bundled deployment <span class="tag">§9.3</span></h2>
+    <p>One market, its controller, and no route for a second lender, as a single borrower transaction. Exclusivity arms at
+      creation, which is what closes the ordering gap: approve five lenders first and a rule that waits for a whitelist of
+      exactly one never fires.</p>
+    <div class="path">
+      <div class="step"><div class="i">01</div><div class="d2"><b>Off-chain.</b> Compute the controller's future address from the tranche factory and a chosen salt. <code>CREATE2</code> breaks the circularity, since the address depends on the factory and salt rather than on the market.</div></div>
+      <div class="step"><div class="i">02</div><div class="d2"><b><code>deployMarketAndHooks</code></b> against the new template, declaring exclusivity and listing the predicted address as sole lender. The market now exists and is inert: the only address that may ever deposit does not exist yet.</div></div>
+      <div class="step"><div class="i">03</div><div class="d2"><b><code>deployTranches(salt, …)</code></b> deploys the controller to exactly that address and asserts provenance before returning, refusing to create a set whose market does not already list it as sole lender.</div></div>
+    </div>
+    <p>Both calls carry static calldata, so a Safe batches them. One constraint shapes the bundle: <code>deployMarketAndHooks</code>
+      takes <code>msg.sender</code> as the instance's permanent borrower and the creation hook asserts the deployer is that
+      borrower, so a third-party helper contract cannot do this on the borrower's behalf. Whoever calls becomes the borrower.</p>
+  </section>
+
+  <section>
+    <h2>5. The trade exclusivity forces on custody <span class="tag">§9.4 · open</span></h2>
+    <p>The tightest rule is to disable transfers outright, which makes the sole depositor provably the only holder for the
+      market's life. That is incompatible with the ERC-4626 wrapper the tranche layer's whole valuation core is written
+      against, and the incompatibility is enforced in shipped code.</p>
+
+    <figure>
+      <div class="dwrap">
+        <svg class="d" viewBox="0 0 960 214" role="img" aria-label="Two custody options. Permitted-pair exclusivity keeps the wrapper by allowing transfers only between controller and wrapper. Transfer-disabled exclusivity removes the wrapper entirely, because the wrapper factory reverts against a transfer-disabled market, so the controller must hold the rebasing market token directly.">
+          <defs>
+            <marker id="ah4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="var(--ink-soft)"/>
+            </marker>
+            <marker id="ah4s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+              <path d="M10,0 L0,5 L10,10 z" fill="var(--ink-soft)"/>
+            </marker>
+          </defs>
+
+          <line class="panelrule" x1="480" y1="8" x2="480" y2="206"/>
+          <text class="hdr closed" x="20" y="18">Option i — permitted pair</text>
+          <text class="hdr leak" x="512" y="18">Option ii — transfers disabled</text>
+
+          <rect class="box core" x="20" y="52" width="126" height="52" rx="5"/>
+          <text class="t" x="31" y="74">Controller</text>
+          <text class="s" x="31" y="90">holds shares</text>
+          <line class="edge" x1="146" y1="78" x2="196" y2="78" marker-end="url(#ah4)" marker-start="url(#ah4s)"/>
+          <rect class="box" x="200" y="52" width="126" height="52" rx="5"/>
+          <text class="t" x="211" y="74">4626 wrapper</text>
+          <text class="s" x="211" y="90">audited, reused</text>
+          <line class="edge" x1="326" y1="78" x2="376" y2="78" marker-end="url(#ah4)" marker-start="url(#ah4s)"/>
+          <rect class="box sunk" x="380" y="52" width="80" height="52" rx="5"/>
+          <text class="t" x="391" y="74">Market</text>
+          <text class="lbl" x="20" y="128">Transfers allowed within this pair only. Exclusivity holds by</text>
+          <text class="lbl" x="20" y="143">derivation: nobody else can obtain the market tokens the</text>
+          <text class="lbl" x="20" y="158">wrapper needs as input, so nobody else can mint its shares.</text>
+          <text class="s" x="20" y="186">Keeps the audited valuation core. Two-step argument,</text>
+          <text class="s" x="20" y="201">worth stating as an explicit tested property.</text>
+
+          <rect class="box core" x="512" y="52" width="150" height="52" rx="5"/>
+          <text class="t" x="523" y="74">Controller</text>
+          <text class="s" x="523" y="90">holds market token</text>
+          <line class="edge" x1="662" y1="78" x2="712" y2="78" marker-end="url(#ah4)" marker-start="url(#ah4s)"/>
+          <rect class="box sunk" x="716" y="52" width="90" height="52" rx="5"/>
+          <text class="t" x="727" y="74">Market</text>
+          <rect class="box bad" x="826" y="52" width="114" height="52" rx="5" stroke-dasharray="5 4"/>
+          <text class="t" x="837" y="74">wrapper</text>
+          <text class="s" x="837" y="90" fill="var(--open)">cannot exist</text>
+          <text class="c" x="512" y="128" fill="var(--open)">Wildcat4626WrapperFactory.sol:149</text>
+          <text class="lbl" x="512" y="146">reverts MarketTransfersDisabled(market)</text>
+          <text class="s" x="512" y="174">One unconditional refusal, nothing derived. Costs a</text>
+          <text class="s" x="512" y="189">rewrite of the valuation core against scaleFactor,</text>
+          <text class="s" x="512" y="204">reopening a decision recorded as Q1 and Q18.</text>
+        </svg>
+      </div>
+      <figcaption>The single edge that differs is the wrapper. Recommendation is to build for the permitted pair, which works
+        with the code that exists, and treat direct custody as the target state if the tranche layer is revised for other
+        reasons. The Q1 and Q18 rationale predates exclusivity and should not be read as having settled it.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>6. What the proposal gets right, and what to change <span class="tag">§7</span></h2>
+    <div class="verdicts">
+      <div class="v-row holds"><div class="vk">Holds</div><div class="vd"><b>Hooks are the right seam.</b> They can veto a market action but not alter one, and exclusivity only ever vetoes. A template's <code>requiredFlags</code> are forced on regardless of what the borrower requests, so the rule cannot be configured away.</div></div>
+      <div class="v-row holds"><div class="vk">Holds</div><div class="vd"><b>Grandfathering is unavoidable.</b> A market's hooks configuration is immutable with no setter, so no change of any kind reaches a deployed market. Accepting that was correct.</div></div>
+      <div class="v-row holds"><div class="vk">Holds</div><div class="vd"><b>Replacement beats a bolt-on.</b> A template carrying an explicit list is a strict superset of borrower-approval: an ordinary whitelist for ordinary borrowers, a lock at one lender when exclusivity is declared.</div></div>
+      <div class="v-row change"><div class="vk">Change</div><div class="vd"><b>Gate the deposit, not the approval.</b> Policing credentials leaves the pull-provider loop and the sticky flag open. Refusing any depositor absent from the template's own list makes credentials irrelevant to the guarantee.</div></div>
+      <div class="v-row change"><div class="vk">Change</div><div class="vd"><b>Count admissions, never members.</b> De-authorising does not remove tokens already held, so a lock keyed on current membership is defeated by de-authorise-then-authorise.</div></div>
+      <div class="v-row change"><div class="vk">Change</div><div class="vd"><b>Do not detect controller-ness.</b> It is order-dependent and evadable by interposing a holder contract. Let the borrower declare exclusivity at creation and have the tranche factory verify it, checking template provenance rather than trusting <code>version()</code>.</div></div>
+      <div class="v-row change"><div class="vk">Change</div><div class="vd"><b>Swap and check.</b> Register additively, disable the old templates if the Foundation wants the default moved, and assert exclusivity at set creation. The swap makes the good configuration the default; the check is what makes it a guarantee.</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>7. Sequencing <span class="tag">§10</span></h2>
+    <div class="tblwrap">
+      <table>
+        <thead><tr><th>Phase</th><th style="width:44%">What</th><th>Guarantee</th><th>Existing markets</th></tr></thead>
+        <tbody>
+          <tr><td><b>0</b> · days, this repo</td><td>Dilution telemetry, empty-market precondition at deployment, dilution halt on senior deposits, honest language</td><td>Detection and disclosure, not prevention</td><td class="none" style="color:var(--ok)">Reached</td></tr>
+          <tr><td><b>1</b> · protocol</td><td><code>ListedLenderHooks</code>: explicit per-market lender list, no credential base, required flags on deposit, transfer and queue-withdrawal</td><td>Hard, for new markets</td><td class="none">Not reached</td></tr>
+          <tr><td><b>2</b> · ceremony</td><td>Additive registration on both factory kinds, mainnet in plan mode via the Foundation Safe, plus lens, subgraph and app support</td><td>Makes it the default</td><td class="none">Not reached</td></tr>
+          <tr><td><b>3</b> · this repo</td><td>Tranche factory asserts provenance and binds the controller address</td><td>Turns default into guarantee</td><td class="none">Not reached</td></tr>
+          <tr><td><b>4</b> · optional</td><td>Direct market-token custody, transfers disabled, valuation core against <code>scaleFactor</code></td><td>Airtight</td><td class="none">Not reached</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Phase 0 is not an alternative to Phase 1. It ships first, it is the only tier that reaches markets that already exist, and
+      it addresses the harm that exists today: senior's protection is thinner than the name implies and it also moves, and
+      nothing in the current stack surfaces either fact.</p>
+  </section>
+
+  <p class="footnote">Not fixed by any of this: protocol fees, which rank ahead of unprocessed lender claims, cannot be hooked,
+    and are accepted as facility terms; a borrower running two exclusive markets against the same credit, which is a covenant
+    question; and borrower conduct generally, since the borrower still sets APR, capacity, reserve ratio and grace, and still
+    decides whether to repay. The tranche layer's answer to that last one is the waterfall and the wind-down trigger, not the
+    access policy.</p>
+
+</div>
