@@ -14,17 +14,21 @@
 
 3. **No configuration of the deployed templates can achieve it.** Four independent paths admit an additional lender, and the borrower controls all four. Two of them require no borrower transaction at all (§5).
 
-4. **The proposal is V1-shaped.** Wildcat V1 held an enumerable list of authorised lenders with a count, so "does this market have exactly one lender?" was a single call. V2 replaced that list with pluggable credential providers and, in doing so, removed the list. The rule as proposed asks a V1 question of a V2 system (§6).
+4. **The proposal is V1-shaped, and V2 emulates V1 rather than implementing it.** V2 still offers borrower-approval, but not as a whitelist: every hooks instance registers the borrower as a credential provider for itself with a non-expiring time-to-live, so "approving a lender" is the borrower granting a credential to an address. The approved set is therefore a mapping of per-address records with no size, where V1's was an enumerable set with `getAuthorizedLendersCount()`. The rule as proposed asks a V1 question of a V2 system (§6, §6.1).
 
-5. **That diagnosis yields the recommended design.** The replacement template should carry the V1-style list as its own state rather than attempt to police V2's credential machinery. Doing so makes it a strict superset of today's borrower-approved behaviour — an ordinary whitelist for ordinary borrowers, a lock at one lender when exclusivity is declared — and makes the proposed rule directly expressible (§9).
+5. **Constraining that whitelist is necessary but not sufficient.** Three write paths can give an address a claim on the market: the borrower granting a credential (the V1 analogue, and the one the proposal targets), the same credential write reached from inside the pull-provider query loop with no borrower transaction, and a sticky never-cleared flag that bypasses credentials entirely on transfer. A rule guarding only the first does not see the other two (§6.2).
 
-6. **Replacing the existing template is worth doing but cannot carry the guarantee alone.** Disabling a hooks template blocks new *instances* of it, not new *markets*: an instance is a durable market factory, so every borrower already holding one keeps deploying markets under the old rules afterwards. Three deployed templates share the permissive behaviour, not one. The guarantee therefore has to be asserted where a tranche set is created, in addition to the swap (§7.3).
+6. **That diagnosis yields the recommended design.** The replacement template should carry the V1-style list as its own state rather than attempt to police V2's credential machinery. Doing so makes it a strict superset of today's borrower-approved behaviour — an ordinary whitelist for ordinary borrowers, a lock at one lender when exclusivity is declared — and makes the proposed rule directly expressible (§9).
 
-7. **Detecting "is this a tranche vehicle?" inside the hook is unsound.** The rule as proposed arms only when a whitelist momentarily holds exactly one lender, so authorising several lenders first defeats it; and detection is evadable by interposing a holder contract. Both problems disappear if the borrower simply declares exclusivity at market creation and the tranche factory verifies it (§7.4).
+7. **Replacing the existing template is worth doing but cannot carry the guarantee alone.** Disabling a hooks template blocks new *instances* of it, not new *markets*: an instance is a durable market factory, so every borrower already holding one keeps deploying markets under the old rules afterwards. Three deployed templates share the permissive behaviour, not one. The guarantee therefore has to be asserted where a tranche set is created, in addition to the swap (§7.3).
 
-8. **The strongest form of the guarantee is incompatible with the ERC-4626 wrapper the tranche layer depends on.** Wildcat's wrapper factory refuses to deploy a wrapper against a transfer-disabled market. Choosing airtight exclusivity therefore reopens a previously settled architectural decision about how the tranche vehicle holds its position. This is the largest open question in the report (§9.4).
+8. **Detecting "is this a tranche vehicle?" inside the hook is unsound.** The rule as proposed arms only when a whitelist momentarily holds exactly one lender, so authorising several lenders first defeats it; and detection is evadable by interposing a holder contract. Both problems disappear if the borrower simply declares exclusivity at market creation and the tranche factory verifies it (§7.4).
 
-9. **Nothing can be retrofitted to a deployed market.** A market's hooks configuration is immutable. Existing markets can only be served by tranche-layer measures — dilution telemetry, a deployment precondition, a deposit halt, and accurate language — which require no protocol change and can ship independently (§10, Phase 0).
+9. **The strongest form of the guarantee is incompatible with the ERC-4626 wrapper the tranche layer depends on.** Wildcat's wrapper factory refuses to deploy a wrapper against a transfer-disabled market. Choosing airtight exclusivity therefore reopens a previously settled architectural decision about how the tranche vehicle holds its position. This is the largest open question in the report (§9.4).
+
+10. **The bundled deployment works as one borrower transaction.** `deployMarketAndHooks` creates instance and market together, and the tranche factory call can follow in the same batch provided the controller's address is precomputed. Exclusivity is then armed at creation, before any lender can be admitted — which is what closes the ordering gap in finding 8. One caller-identity constraint applies: whoever calls becomes the borrower, so a third-party helper contract cannot perform the bundle on the borrower's behalf (§9.3).
+
+11. **Nothing can be retrofitted to a deployed market.** A market's hooks configuration is immutable. Existing markets can only be served by tranche-layer measures — dilution telemetry, a deployment precondition, a deposit halt, and accurate language — which require no protocol change and can ship independently (§10, Phase 0).
 
 ---
 
@@ -179,6 +183,64 @@ In that architecture, "does this market have exactly one whitelisted lender?" is
 
 V2 replaced the set with the role-provider credential model described in §1.2. The trade bought composable credentialing and **paid for it by removing the list**. There is no set to count, and credentials can now come into existence without the borrower acting at all (§5, item 3).
 
+### 6.1 How V2 reproduces V1's whitelist today
+
+V2 does still offer V1's borrower-approval behaviour, and it is worth tracing exactly how, because that is the behaviour being replaced. It is not a distinct feature: **the borrower is registered as a credential provider for itself.**
+
+The shared access-control base does this in its constructor, unconditionally, for every hooks instance ever deployed:
+
+```solidity
+// src/access/BaseAccessControls.sol:94-105
+constructor(address _borrower) {
+    borrower = _borrower;
+    // Allow deployer to grant roles with no expiry
+    RoleProvider borrowerProvider = encodeRoleProvider(
+      type(uint32).max,     // time-to-live
+      _borrower,
+      NullProviderIndex,    // not a pull provider
+      0                     // push provider slot 0
+    );
+    _roleProviders[borrower] = borrowerProvider;
+    _pushProviders.push(borrowerProvider);
+}
+```
+
+The borrower is therefore push provider zero with a maximum time-to-live. When the borrower calls `grantRole(account, timestamp)`, the lookup `_roleProviders[msg.sender]` succeeds (`:399-405`), and the credential is written to a per-address record:
+
+```solidity
+// src/types/LenderStatus.sol
+struct LenderStatus {
+  bool isBlockedFromDeposits;
+  address lastProvider;
+  bool canRefresh;
+  uint32 lastApprovalTimestamp;
+}
+```
+
+Because expiry is `satAdd(timestamp, timeToLive, type(uint32).max)` (`RoleProvider.sol:37-42`) and the borrower's time-to-live is `type(uint32).max`, the expiry saturates at the maximum — the credential never lapses. The deposit hook then admits the address whenever the market was created with deposit access required (`OpenTermHooks.sol:273-275`).
+
+So the V1 correspondence is exact in behaviour and inexact in structure:
+
+| V1 | V2 equivalent |
+|---|---|
+| `authorizeLenders(lenders)` | `grantRole` / `grantRoles`, called by the borrower as its own push provider |
+| `deauthorizeLenders(lenders)` | `revokeRole` / `blockFromDeposits` |
+| `isAuthorizedLender(a)` | a live credential in `_lenderStatus[a]` |
+| `getAuthorizedLendersCount()` | **nothing — there is no equivalent** |
+| The whitelist is a set | The whitelist is a mapping of per-address records, not enumerable |
+
+That last pair of rows is the whole difference. V1's whitelist was an object with a size; V2's is an emergent property of scattered per-address records, and it has no size.
+
+### 6.2 What this means for the thing to be constrained
+
+Stated in V2's own terms, the property to enforce is: **no address other than the tranche controller ever acquires a claim on the market.** There are exactly three write paths that can create one, and constraining only the first — the V1-equivalent whitelist the proposal names — is necessary but not sufficient:
+
+1. **`grantRole` / `grantRoles` from the borrower provider.** The V1 whitelist analogue, described above. This is the path the proposal targets.
+2. **The same credential write, reached from inside the pull-provider loop.** When a lender acts without a live credential, the hooks contract queries registered pull providers and writes a credential for the first acceptable answer (§5, item 3). No borrower transaction is involved, so a rule that only guards `grantRole` does not see it.
+3. **The sticky known-lender flag, which bypasses credentials entirely on transfer** (§5, item 4). Once set it is never cleared, and in the transfer hook it short-circuits the whole access-control block.
+
+This is why §7.1 recommends enforcing at the deposit rather than at the approval, and why §9.1 recommends a template that does not inherit the credential base at all: paths 2 and 3 exist only because that base exists. A template holding an explicit list has one write path — the borrower adding to the list — and it is the only one that needs a lock.
+
 That diagnosis points directly at the fix, and it is a better fix than a bespoke single-lender slot: **have the replacement template carry the V1-style list as its own state** (§9.1).
 
 **One V1 property carries over and constrains the rule.** In V1, de-authorising a lender removed it from the set but did nothing about market tokens it already held — V1 retained a withdraw-only role precisely because a de-authorised lender still has a claim to exit. The same holds in V2. A lock keyed on *current* membership is therefore defeated by de-authorise-then-authorise: the count returns to one, the lock re-arms, and the earlier holder remains an equal-ranking claimant. **The count must be of admissions ever granted, never of members currently held.**
@@ -317,6 +379,33 @@ The controller must be listable as the market's sole lender, but it does not exi
 Step 3's assertion is what makes the arrangement trustworthy: the factory refuses to create a set whose market does not already list it as sole lender. This preserves the property recorded as Q19 — that one borrower transaction brings up the whole stack — and it fails loudly, reverting at deployment rather than producing a set that is quietly non-exclusive.
 
 The alternative, a one-shot post-creation setter, avoids `CREATE2` but moves the binding after deployment, where the factory can no longer enforce it.
+
+**The bundled deployment, concretely.** The intended shape is a market launched together with its tranche controller, after which no other lender can ever be admitted, so that all participation is necessarily through the controller. That is achievable as a single borrower transaction, and the protocol already has the composite entry point:
+
+```solidity
+// src/HooksFactory.sol:619-627
+function deployMarketAndHooks(
+    address hooksTemplate,
+    bytes calldata hooksTemplateArgs,
+    DeployMarketInputs memory parameters,
+    bytes calldata hooksData,
+    bytes32 salt,
+    address originationFeeAsset,
+    uint256 originationFeeAmount
+  ) external override nonReentrant returns (address market, address hooksInstance)
+```
+
+One caller-identity constraint shapes the bundle. `deployMarketAndHooks` requires `msg.sender` to be a registered borrower, the resulting hooks instance takes `msg.sender` as its permanent `borrower`, and the creation hook additionally asserts the deployer *is* that borrower. **A third-party helper contract therefore cannot perform the bundle on the borrower's behalf** — whoever calls becomes the borrower. In practice this is not a limitation, because borrowers are typically Safes, and a Safe executes a batch of calls as a single transaction from a single address.
+
+The sequence is then:
+
+1. **Off-chain:** the borrower computes the controller's future address from the tranche factory and a chosen salt.
+2. **Call one:** `deployMarketAndHooks(...)` against the new template, with deployment data declaring exclusivity and listing the predicted controller address as sole lender. The market exists, exclusivity is armed, and the only address that can ever deposit is one that does not exist yet — so the market is inert rather than open.
+3. **Call two:** `deployTranches(salt, …)` on the tranche factory, which deploys the controller to exactly the predicted address and asserts the provenance chain from §7.2 before returning.
+
+Both calls carry static calldata, which is what makes them batchable — call two does not need call one's return value, because the controller address was precomputed and the market address is derivable from the salt. Atomicity matters here for more than tidiness: between steps 2 and 3 the market is a live, registered, exclusive market whose sole lender does not exist. In one transaction that window never opens. Split across two transactions it is harmless anyway — nothing can deposit — but the borrower could abandon the sequence and leave a permanently unusable market registered, which is untidy rather than dangerous.
+
+Note what this ordering buys beyond convenience: exclusivity is armed at creation, before any lender can be admitted, which is what closes the ordering gap in §7.4. There is no moment at which the market has an approvable lender set and no lock.
 
 ### 9.4 The wrapper conflict — the central architectural trade
 
