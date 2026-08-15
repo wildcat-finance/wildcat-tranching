@@ -37,3 +37,11 @@ Leads not pursued: none.
 | S1-R3-02 | low | `docs/bd/README.md` | The short authority table grouped protocol-fee rate and recipient without preserving their differing mutability. | fixed in `0b96446` |
 
 Leads not pursued: none.
+
+## Step 1, round 4 -- 15 August 2026
+
+| id | severity | file | finding | status |
+| --- | --- | --- | --- | --- |
+| none | none | none | No finding. | clean |
+
+Leads not pursued: none.
