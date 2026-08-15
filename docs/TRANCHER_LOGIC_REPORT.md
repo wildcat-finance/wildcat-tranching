@@ -24,6 +24,7 @@ after funding.
 6. Entry policy may restrict who acquires exposure, but it cannot block burns, withdrawal execution
    or claims.
 7. Every economic term is fixed when the manager is initialised.
+8. Both tranches rank behind protocol fees accrued by the Wildcat market.
 
 That gives the facility one fairly useful property: its risk cannot drift because somebody still has
 a key.
@@ -124,6 +125,33 @@ mutable market APR would let a borrower-side market change reprice senior after 
 Every state-changing accounting path checkpoints before using `seniorOwed`: deposits, redemption
 requests, withdrawal execution, recovery synchronisation and the terminal-state check. The final
 active interval is accrued before wind-down freezes the claim.
+
+## Protocol fee
+
+The Wildcat protocol fee is charged in addition to lender interest. It does not reduce the market
+APR credited through the market-token scale factor. If lender APR is 10% and
+`protocolFeeBips == 1,000`, lenders accrue 10% and the borrower owes another 1% to the protocol. The
+fee applies to base interest rather than the delinquency penalty.
+
+The market records that fee as a separate liability. Accrued protocol fees count towards required
+liquidity and total debt, and are reserved before an unprocessed withdrawal batch. Assets already
+processed into unclaimed withdrawals rank ahead of the fee. The practical result is that both
+tranches are subordinate to the protocol claim until the manager's market withdrawal has been
+processed.
+
+This does not need another layer of fee accounting in `TrancheManager`. The manager values the
+market tokens and wrapper shares it owns, then allocates base assets actually recovered. If the
+protocol fee contributes to a shortfall, junior absorbs that shortfall before senior under the same
+waterfall as any other market loss.
+
+`protocolFeeBips` may be changed through the market's hooks factory. That is an accepted protocol
+term: Wildcat is providing the market, hook, withdrawal and sanctions machinery on which the
+facility depends. “Fixed economics” therefore means the terms stored by the manager are fixed. It
+does not mean the surrounding protocol can never change its fee.
+
+The fee at deployment, its permitted bound and the fact that it can change should be disclosed to
+both classes. Junior sizing and borrower affordability analysis should use the all-in borrower cost,
+not lender APR alone.
 
 ## Capital formation
 
@@ -252,10 +280,11 @@ The implementation and tests should state these directly:
 6. Senior entry and active junior exit cannot breach the minimum junior ratio.
 7. Allocated recovery never exceeds observed base assets.
 8. A request never receives more than its face or FIFO entitlement.
-9. During distress, junior receives no cash while the senior obligation is uncovered.
-10. Entry policy and sanctions cannot prevent burns, withdrawal execution or claims.
-11. Wind-down cannot be reversed and senior accrual cannot restart.
-12. The manager cannot be rebound, replaced or initialised twice.
+9. Protocol-fee accrual does not change the manager's fixed terms or create a second fee claim.
+10. During distress, junior receives no cash while the senior obligation is uncovered.
+11. Entry policy and sanctions cannot prevent burns, withdrawal execution or claims.
+12. Wind-down cannot be reversed and senior accrual cannot restart.
+13. The manager cannot be rebound, replaced or initialised twice.
 
 ## Work still open
 
@@ -265,6 +294,7 @@ The economic shape is fixed. The remaining questions are narrower:
 - the final allocation of wrapper, market-token and base-asset dust;
 - unique senior and junior token metadata;
 - whether either tranche needs an external entry gate for the first facility;
+- protocol-fee recovery tests at zero, deployment and maximum permitted rates;
 - whether `claimMany` is worth adding;
 - whether the request surface should advertise an ERC-7540 interface.
 

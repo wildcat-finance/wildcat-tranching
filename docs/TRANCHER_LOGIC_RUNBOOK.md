@@ -18,6 +18,7 @@ wrapper custody cycle, queued exit and claim with the waterfall intact throughou
 6. No entry or policy call may block burns, batch execution or claims.
 7. No arbitrary call, rescue destination, upgrade hook or privileged custody path is added.
 8. Every accounting change lands with the property or scenario test which justifies it.
+9. The protocol fee remains a market-level claim; the manager does not recreate or net it.
 
 ## Stage 1: remove the control plane
 
@@ -115,6 +116,9 @@ The CREATE2 deployment shape is already close to the target. Keep it small.
 - the provider has one lender and it is the predicted manager.
 
 Initialisation happens in the deployment transaction. There is no proxy or implementation pointer.
+The deployment verifier should also record the market's current `protocolFeeBips`, fee recipient and
+maximum fee permitted by the pinned hooks factory. These are disclosed protocol terms, not manager
+initialisation parameters.
 
 ### EOA ceremony
 
@@ -279,6 +283,24 @@ Exercise many requests and recoveries rather than one friendly batch.
 - prove each balance increase is recognised once;
 - simulate a forced base-asset balance reduction and prove claims already allocated remain callable.
 
+### Protocol fee
+
+Run the recovery scenarios with zero fee, the deployment fee and the maximum fee permitted by the
+pinned hooks factory.
+
+- prove lender base interest still enters the market-token scale factor in full;
+- prove the protocol fee accrues as a separate market liability on base interest only;
+- prove accrued fees count towards required liquidity and are reserved before an unprocessed manager
+  withdrawal;
+- prove assets already processed into unclaimed withdrawals are not taken for later fee collection;
+- change `protocolFeeBips` through the authorised hooks-factory path and prove no manager term or
+  tranche balance changes directly;
+- create a fee-driven recovery shortfall and prove junior absorbs it before senior;
+- prove the manager never charges, collects or allocates a second protocol fee.
+
+The manager waterfall should only see base assets actually recovered. Do not subtract the fee from
+`seniorOwed`, wrapper value or tranche share issuance.
+
 ### Stateful properties
 
 The handler should vary healthy entry, wrapper price, delinquency, cure, closure, time, requests,
@@ -363,6 +385,7 @@ Release evidence should name:
 - exact `v2-protocol` and singleton-hook revisions;
 - deployment addresses and CREATE2 inputs;
 - fixed senior rate, junior floor and default window;
+- protocol fee at deployment, its permitted bound, fee recipient and update authority;
 - immutable entry gates and sanctions sentinel;
 - test commands and results;
 - any remaining conservative marking or terminal-dust limitation.
