@@ -1,64 +1,74 @@
-# One loan. Two risk books.
+# One borrower. Two places in the capital stack.
 
-The borrower raises one facility. Junior takes the first loss and keeps the residual return. Senior sits
-above it, accrues an annual simple accounting target and has first claim on realised value. Senior exit
-requests clear before junior requests. Same borrower. Same pool of cash. Different attachment points.
+The borrower raises one line. Junior funds the first-loss piece and keeps whatever value remains after
+senior. Senior sits above it with a fixed annual accounting target.
 
-That is the pitch. Do not open a meeting by explaining the platform.
+That is the trade. Start with the credit, price and attachment point. Explain the software if somebody
+asks.
 
-This is a prototype, not a live offer, rating, guarantee, legal opinion or promise of liquidity.
+This is a prototype. It is not a live offer, rating, guarantee, legal opinion or promise of liquidity.
 
 ## Take into the room
 
-- [Meeting brief](MEETING_BRIEF.md): the opening, the questions and the close.
-- [Desk primer](PRIMER.md): the trade, the downside and the cash mechanics.
-- [Parameter worksheet](PARAMETER_DISCOVERY.md): the numbers and controls that need an answer.
-- [Desk FAQ](FAQ_AND_CLAIMS.md): short answers when the room starts kicking the tyres.
-- [Infographics](INFOGRAPHICS.md): six diagrams for a screen or follow-up note.
+- [Meeting brief](MEETING_BRIEF.md): the opening and the five useful questions.
+- [Desk primer](PRIMER.md): return, loss and cash timing.
+- [Parameter worksheet](PARAMETER_DISCOVERY.md): the decisions needed to price a facility.
+- [Desk FAQ](FAQ_AND_CLAIMS.md): short answers for the obvious objections.
+- [Infographics](INFOGRAPHICS.md): the structure on a screen.
 
-The [research report](RESEARCH_REPORT.md) is internal source material. Use it to check a claim, not to
-sell the trade.
+The [research report](RESEARCH_REPORT.md) is internal source material. Use it to check an edge case, not
+to pitch the trade.
 
-## The trade in numbers
+## Put this on the first page of every deal
 
-Assume 300 senior, 100 junior and 315 owed to senior:
+Borrower and use of proceeds. Facility size and expected draw. Lender rate and total borrower cost.
+Senior and junior cheques. Senior target and attachment point. Withdrawal cycle and expected time to cash.
+One delayed-payment case and one loss case.
 
-| Facility value | Senior | Junior | What happened |
+## Read the structure in thirty seconds
+
+Assume 300 senior, 100 junior and 315 due to senior:
+
+| Facility value | Senior | Junior | Result |
 | ---: | ---: | ---: | --- |
-| 420 | 315 | 105 | Both classes are whole; junior keeps the excess |
-| 340 | 315 | 25 | Junior has absorbed the loss |
+| 420 | 315 | 105 | Senior target covered; junior keeps the excess |
+| 340 | 315 | 25 | Junior has absorbed the reduction in value |
 | 280 | 280 | 0 | Junior is gone; senior is impaired |
 
-Seniority changes the order of payment and loss. It does not make weak credit good.
+Seniority changes who takes the first loss. It does not turn a poor borrower into a good one.
 
-## Who sets the deal
+## What the borrower sets
 
-The borrower proposes the senior target, junior percentage, extra workout window, each class's eligibility
-setting and final surplus recipient when the facility is formed. Entry can be open or use a fixed provider.
-The manager terms do not have later setters; a selected provider's policy may still change.
+At formation, the borrower proposes:
 
-The underlying loan still has its own rate, size, liquidity, delinquency and amendment terms. Wildcat
-protocol fees and operating rails are set separately. The code fixes the waterfall, FIFO inside each class,
-sanctions routing and wind-down mechanics.
+- the senior annual target;
+- the junior percentage;
+- the extra arrears window before permanent wind-down;
+- whether each class is open or uses a named eligibility provider; and
+- who receives genuine surplus after every holder has been paid.
 
-In plain English: the borrower can price and shape the capital stack at inception. The borrower cannot
-rewrite the waterfall after the money lands.
+Those manager terms do not have later setters. A named provider can still run a policy that changes over
+time.
+
+The loan has its own size, lender rate, withdrawal cycle, grace period, arrears charge and amendment
+rights. The platform fee is set separately. Put all of them on the term sheet because they affect cost,
+cash timing or both.
 
 ## What matters to a desk
 
-- **Credit:** one named borrower exposure; no diversification trick.
-- **Attachment:** junior absorbs loss first; senior takes loss after junior is exhausted.
-- **Return:** senior has an annual simple target; junior owns the residual. Neither is guaranteed.
-- **Liquidity:** exit waits for cash from the underlying loan and may be partial.
-- **Transfer:** interests can move only to eligible, sanctions-cleared recipients. A bid is not promised.
-- **Workout:** arrears stop new money; an observed threshold or loan close puts the facility into one-way
-  wind-down.
-- **Control:** facility economics are fixed at formation; loan-level operating rights remain separate.
+- **Credit:** one named borrower, not a diversified pool.
+- **Attachment:** junior loses first; senior loses after junior reaches zero.
+- **Return:** senior has a fixed annual accounting target; junior owns the residual. Neither is promised.
+- **Cash:** exit waits for cash from the borrower and may settle in pieces.
+- **Transfer:** for an open class, yes: any wallet can receive it unless the Chainalysis sanctions oracle
+  flags the wallet. That does not create a buyer or a price.
+- **Workout:** arrears stop new money. A recorded threshold or loan close starts permanent wind-down.
+- **Control:** manager economics are fixed at formation; loan-level amendment rights remain separate.
 
 ## Never say
 
-Guaranteed yield. Principal protected. Maintained cushion. Instant redemption. Freely transferable.
-Liquid. Rated. Automatic legal default. Audited. Production-ready.
+Guaranteed yield. Principal protected. Maintained cushion. Instant redemption. Liquid. Rated. Automatic
+legal default. Audited. Production-ready.
 
-Say what the trade actually is: senior priority, junior first loss, asynchronous cash exit and one
-borrower credit underneath both.
+Say what it is: one borrower credit, split into a senior claim and a junior first-loss claim, with cash
+exit tied to the borrower's ability to pay.

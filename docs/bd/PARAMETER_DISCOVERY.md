@@ -1,93 +1,96 @@
-# Price the trade: desk worksheet
+# Facility worksheet
 
-Fill this in for a real borrower. Blank boxes are useful: they show exactly where the deal is still
-hand-waving.
+Fill this in before pricing the two classes. Blank cells mean the deal is not ready.
 
-## Counterparty and exposure
+## 1. Credit
 
 | Question | Answer |
 | --- | --- |
 | Borrower and legal entity |  |
-| Purpose and source of repayment |  |
-| Base asset and proposed capacity |  |
-| Expected term and amortisation or repayment path |  |
-| Covenants, collateral and recourse, if any |  |
-| Base, downside and recovery assumptions |  |
-| Required reporting and escalation contacts |  |
+| Use of proceeds |  |
+| Primary source of repayment |  |
+| Facility asset and maximum size |  |
+| Expected draw, term and repayment path |  |
+| Covenants, collateral and recourse |  |
+| Reporting package and frequency |  |
+| Base, delayed-payment and recovery assumptions |  |
 
-## Capital stack: who gets what, who loses first
+## 2. Capital stack
 
-| Term | System range | Borrower range | Senior range | Junior range | Discussion range |
-| --- | --- | --- | --- | --- | --- |
-| Senior target | 0 to 10,000 annual bips; simple accrual |  |  |  |  |
-| Junior share at entry | 500 to 9,000 bips |  |  |  |  |
-| Senior amount or proportion | Constrained by junior share |  |  |  |  |
-| Junior amount or proportion | Funds first |  |  |  |  |
-| Minimum opening credited value | At least `1e6` smallest units after conversion: 1.00 for a six-decimal asset; confirm the human amount and rounding for the chosen asset |  |  |  |  |
-| Additional workout window | More than 0; no more than 90 days |  |  |  |  |
-| Senior eligibility | Open or controlled |  |  |  |  |
-| Junior eligibility | Open or controlled |  |  |  |  |
+| Term | System limit | Proposed | Senior view | Junior view |
+| --- | --- | --- | --- | --- |
+| Senior amount | Must preserve junior percentage at entry |  |  |  |
+| Senior target | 0% to 100% p.a.; simple accrual |  |  |  |
+| Junior amount | Normally funds first |  |  |  |
+| Junior percentage at entry | 5% to 90% |  |  |  |
+| Extra arrears window after loan grace | More than 0; no more than 90 days |  |  |  |
+| Senior access | Open or named provider |  |  |  |
+| Junior access | Open or named provider |  |  |  |
 
-Make both sides defend their number. The senior target prices the senior ticket; it is not the borrower
-coupon. The junior share is checked when senior enters and when junior exits before permanent wind-down
-is recorded, then left to take the loss. The extra window should match a workout someone will actually
-run.
+The senior target prices the senior ticket; it is not the borrower coupon. The junior percentage is an
+entry and active-exit test, not a cushion that is restored after loss.
 
-## Loan economics: what the borrower pays, when cash comes back
+The implementation also has a dust floor for the first credited value in an empty class: `1e6` raw asset
+units. That is one token for a six-decimal asset and a tiny fraction of an 18-decimal token. It is not the
+commercial minimum ticket. Conversion rounding may require a slightly larger tender.
 
-| Item | Discussion range or requirement | Change or consent expectation |
-| --- | --- | --- |
-| Lender rate |  |  |
-| Capacity |  |  |
-| Reserve or liquidity requirement |  |  |
-| Withdrawal period |  |  |
-| Delinquency charge and grace |  |  |
-| Loan minimum deposit |  |  |
-| Wildcat protocol-fee rate |  |  |
-| Origination fee |  |  |
-| Expected normal time to cash |  |  |
-| Expected stressed time to cash |  |  |
+## 3. Borrower economics and cash timing
 
-Borrower running cost is lender interest plus the Wildcat protocol fee, before origination or arrears
-costs. The current facility adds no second fee. For every term, write down who can change it, who gets
-notice and who can say no.
+| Item | Proposed | Who can change it? | Notice or consent |
+| --- | --- | --- | --- |
+| Lender rate |  |  |  |
+| Platform fee on lender interest |  |  |  |
+| One-off fee |  |  |  |
+| Maximum facility size |  |  |  |
+| Reserve requirement |  |  |  |
+| Withdrawal cycle |  |  |  |
+| Grace period |  |  |  |
+| Arrears charge |  |  |  |
+| Expected normal time to cash |  |  |  |
+| Expected stressed time to cash |  |  |  |
 
-## Operations: who can hold it, who has to move when it goes wrong
+Borrower running cost is lender interest plus the platform fee, before arrears and one-off costs. The
+current facility does not add another manager fee.
+
+## 4. Operations
 
 | Question | Answer |
 | --- | --- |
-| Who may acquire senior? |  |
-| Who may acquire junior? |  |
-| Who runs each eligibility policy? |  |
-| Can that policy change after formation? |  |
-| What custody arrangements are acceptable? |  |
-| What sanctions and escrow process applies? |  |
-| Who monitors arrears and records the wind-down trigger? |  |
-| Who retries settlement if the facility account is sanctioned? |  |
-| Who receives genuine surplus after final settlement? |  |
+| Is each class open or restricted? |  |
+| If restricted, who runs the eligibility provider? |  |
+| Can that external policy change? |  |
+| Which custodians can support the asset and participation? |  |
+| Who monitors arrears each day? |  |
+| Who records the permanent wind-down trigger before cure? |  |
+| Who runs collections and workout? |  |
+| Who receives surplus after every holder is paid? |  |
 
-Eligibility constrains acquisition, not an existing holder's right to request exit. Exit can still be
-slow or partial. A sanctioned holder's proceeds use escrow; a sanctioned facility account can defer new
-withdrawal-batch execution and recovery for everyone until cleared.
+For an open class, any wallet can acquire or receive the participation unless the Chainalysis sanctions
+oracle flags it. A flagged holder can still request exit; the detailed settlement route belongs in the
+operating procedure.
 
-## Scenario record
+## 5. Cash cases
 
-For each case, record facility value, senior owed, junior value, cash available, time to cash and the
-assumed borrower action.
-
-| Case | Facility value | Senior value | Junior value | Cash timing | Notes |
+| Case | Facility value | Senior value | Junior value | Cash timing | Borrower action |
 | --- | ---: | ---: | ---: | --- | --- |
-| Base |  |  |  |  |  |
-| Junior impairment |  |  |  |  |  |
-| Senior impairment |  |  |  |  |  |
-| Arrears and cure |  |  |  |  |  |
+| Paid as agreed |  |  |  |  |  |
+| Paid late and cured |  |  |  |  |  |
+| Junior impaired |  |  |  |  |  |
+| Senior impaired |  |  |  |  |  |
 | Wind-down and recovery |  |  |  |  |  |
 
-## Internal implementation record
+Record both value and cash. A seven-day withdrawal cycle can still lead to a longer wait when the borrower
+has not returned the money.
 
-BD does not need this for the pitch, but implementation owners must record the exact loan address,
-asset, borrower identity, eligibility contracts, current protocol fee, withdrawal period, delinquency
-terms, fixed residual recipient and the accounts responsible for monitoring and settlement.
+## 6. Decision record
 
-This worksheet does not amend a live facility. It tells the deal team whether there is a trade worth
-forming.
+| Owner | Name |
+| --- | --- |
+| Credit |  |
+| Legal |  |
+| Operations |  |
+| Arrears monitoring |  |
+| Workout |  |
+
+This worksheet does not amend a facility. It tells the deal team whether there is enough substance to
+form one.

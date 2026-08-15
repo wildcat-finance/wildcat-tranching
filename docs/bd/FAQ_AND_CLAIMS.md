@@ -2,49 +2,54 @@
 
 ## What am I buying?
 
-A senior or junior participation in one named borrower facility. Not a pool. Not a different loan.
+A senior or junior participation in one named borrower facility. Both classes own the same credit.
 
 ## Where do I attach?
 
-Junior takes loss first. Senior takes loss after junior reaches zero.
+Junior loses first. Senior loses after junior reaches zero.
 
-## Who gets paid first?
+## Who gets the cash first?
 
-Senior has first claim on facility value. Senior exit requests clear before junior exit requests, and
-requests stay FIFO inside each class. During distress, cash is also reserved for the remaining live
-senior obligation.
+Senior exit requests clear before junior exit requests, FIFO inside each class. During distress, cash is
+also held for senior claims that have not requested exit.
 
 ## Is senior guaranteed?
 
-No. Priority is not protection from a loss large enough to wipe out junior.
+No. Priority cannot protect senior from a loss large enough to consume junior.
 
 ## Is the junior cushion maintained?
 
-No. It is checked when senior enters and when junior exits before permanent wind-down is recorded. It can
-shrink or disappear after a loss.
+No. It is tested when senior enters and while an active junior investor exits. A loss can reduce it to
+zero.
 
 ## Is the senior target the loan coupon?
 
-No. The loan coupon is what the borrower pays. The senior target is an annual simple accounting hurdle
-used to divide value between senior and junior.
+No. The loan coupon is what the borrower pays. The senior target is an annual simple hurdle used to split
+facility value.
 
 ## How do I get cash out?
 
-Request an exit and wait for the underlying loan to produce cash. Settlement can be delayed or partial.
+Submit an exit request and wait for borrower cash. Payment can be late or partial.
 
 ## Can I sell it?
 
-Only to an eligible, sanctions-cleared recipient. The system does not promise a market, buyer or price.
+For an open class, yes: anyone can receive it unless their wallet is flagged by the Chainalysis sanctions
+oracle. The system does not promise a market, buyer or price.
+
+## Why mention sanctions at all?
+
+Because the transfer check exists. That is the whole front-room answer. In operations, a borrower-specific
+override can clear an oracle flag for that facility, and a flagged holder's claim is routed through escrow.
 
 ## What happens in arrears?
 
-New money stops. The position cannot be marked up using arrears charges, though losses still count. Cure
-can restore normal operation before wind-down is recorded.
+New money stops. The facility cannot use accruing arrears charges to mark itself up while arrears continue,
+although losses still count. Cure can restore operation if permanent wind-down has not been recorded.
 
 ## What starts wind-down?
 
-Loan close, or an operating checkpoint that sees the current arrears period reach loan grace plus the
-agreed extra window. Once recorded, wind-down is permanent and senior stops accruing at the cutoff.
+Loan close, or an operating checkpoint that observes current arrears at the grace period plus the agreed
+extra window. Once recorded, wind-down is permanent and senior accrual freezes at the cutoff.
 
 ## Is that legal default?
 
@@ -52,42 +57,43 @@ Not by itself. Legal default, enforcement and remedies belong in the deal docume
 
 ## What does the borrower pay?
 
-The loan rate plus the Wildcat protocol fee, before origination and arrears charges. The current facility
-adds no second manager fee. The protocol fee is a platform charge calculated on lender interest, not
-principal.
+The lender rate plus a platform fee calculated as a percentage of lender interest, before arrears and
+one-off charges. At a 10% lender rate, a 5% platform fee adds 0.5 percentage points. Running cost is 10.5%.
+The current facility does not levy another manager fee.
 
 ## Who chooses the terms?
 
-The borrower proposes the senior target, junior percentage, extra workout window, each class's eligibility
-setting and final surplus recipient inside fixed ranges. Entry can be open or use a fixed provider. Manager
-economics and that open-or-provider choice are set once; a selected provider's policy may change.
+The borrower proposes the senior target, junior percentage, extra arrears window, class access setting and
+final surplus recipient within fixed limits. Those manager terms are set once.
 
-## Can the deal be repriced later?
+The loan's rate, size, reserve, withdrawal cycle and amendment rights sit outside those fixed manager
+terms. The platform controls its own fee schedule.
 
-Not through the facility. There is no manager governance, repricing, pause or discretionary default role.
-Any consent rights need to be written into the offchain deal.
+## Can the capital stack be repriced later?
 
-## What happens under sanctions?
+Not through the manager. There is no manager owner with a repricing, pause or discretionary default button.
+Any consent rights need to be written into the deal documents.
 
-A sanctioned holder can exit, with proceeds routed to escrow. If the facility account is sanctioned,
-new withdrawal-batch execution and recovery are deferred for everyone until clearance and retry. Cash
-already allocated can still be claimed, subject to the holder's own sanctions routing.
+## What if the facility account itself is sanctioned?
+
+New withdrawal-batch execution and recovery wait until the account is cleared and the operation is retried.
+Cash already allocated remains claimable, subject to the holder's own escrow check.
 
 ## What belongs in credit committee?
 
-The borrower memo, capital stack, pricing, base and downside cash cases, time to cash, amendment rights,
-reporting, eligibility, sanctions operations, legal analysis and named workout owners.
+Borrower memo, use of proceeds, capital stack, price, base and downside cash cases, time to cash, amendment
+rights, reporting, legal analysis and named workout owners.
 
 ## Is it ready to buy?
 
-No. It is a tested prototype. It is not rated, audited or in production.
+No. It is a tested prototype. It is not rated, audited or live.
 
 ## Say this
 
-One borrower exposure. Senior priority. Junior first loss. Annual simple senior target. Asynchronous cash
-exit. Controlled transferability. Manager economics and eligibility settings fixed at formation.
+One borrower. Senior priority. Junior first loss. Fixed annual senior target. Cash exit tied to borrower
+payment. Open transfer subject to the sanctions oracle.
 
-## Never say this
+## Do not say this
 
-Guaranteed yield. Principal protected. Maintained cushion. Instant redemption. Freely transferable.
-Liquid. Rated. Automatic legal default. Audited. Production-ready.
+Guaranteed yield. Principal protected. Maintained cushion. Instant redemption. Liquid. Rated. Automatic
+legal default. Audited. Production-ready.
