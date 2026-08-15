@@ -17,3 +17,14 @@ public Wildcat documentation is mutable and is used only for general market beha
 rejected an automated request but remained available through ordinary browser/search access; the
 untracked `build/foundry.lock` is outside the documentation diff; no Solidity security finding was
 pursued because this step changes prose only.
+
+## Step 1, round 2 -- 15 August 2026
+
+| id | severity | file | finding | status |
+| --- | --- | --- | --- | --- |
+| S1-R2-01 | high | `docs/bd/RESEARCH_REPORT.md` | Relative links below the V2.5 submodule gitlink resolved locally but returned 404 on GitHub. | fixed in `260e14f` |
+| S1-R2-02 | medium | `docs/bd/RESEARCH_REPORT.md` | The first-deposit minimum was attached to the tendered amount rather than its post-conversion credited value. | fixed in `260e14f` |
+| S1-R2-03 | medium | `docs/bd/README.md`, `docs/bd/RESEARCH_REPORT.md` | The 11% fee example was described as borrower cost without excluding separate origination and delinquency charges. | fixed in `260e14f` |
+| S1-R2-04 | low | `docs/bd/RESEARCH_REPORT.md` | One claims-boundary sentence said "fixed class gate" rather than distinguishing the fixed address from potentially mutable gate policy. | fixed in `260e14f` |
+
+Leads not pursued: none.
