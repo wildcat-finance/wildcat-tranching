@@ -6,8 +6,9 @@ This document defines the prototype boundary implemented under `build/src`. The 
 the protocol types and implementations pinned by the `build/lib/v2-protocol` submodule at
 `e88e799`, the head of PR #129 stacked on PR #124. Unit tests still use local doubles;
 `build/test/Fork.t.sol`
-deploys the pinned contracts on mainnet block `25,758,381` and verifies the complete market,
-canonical wrapper and predicted manager deployment path. This remains an engineering prototype.
+deploys the pinned contracts on mainnet block `25,758,381`, verifies the complete market,
+canonical wrapper and predicted manager deployment path, then deposits junior and senior capital
+through the manager. This remains an engineering prototype.
 
 The prototype targets Wildcat V2.5 and the sealed singleton role-provider hooks proposed in
 [`v2-protocol#124`](https://github.com/wildcat-finance/v2-protocol/pull/124), with narrow close and
@@ -16,9 +17,9 @@ withdrawal-execution hook extensions in
 Supporting an earlier
 V2 market without an equivalent immutable admission primitive is a separate design.
 
-The next implementation step is deliberately narrower than production hardening: exercise one
-base-asset deposit and one async exit against the same real contract stack. That lifecycle work is
-not part of the deployment proof recorded here.
+The next implementation step is deliberately narrower than production hardening: exercise one async
+exit against the same real contract stack. That settlement work is not part of the deposit proof
+recorded here.
 
 ## Terms
 

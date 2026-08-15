@@ -32,8 +32,8 @@ The singleton workstream must first make the small change described in
 requirement while preserving transfer-hook access checks and exempting only the nonzero canonical
 registered wrapper from the normal recipient-credential check.
 
-The next bounded step is a lifecycle test against this stack: one base-asset deposit through the
-manager followed by one queued and executed exit.
+The real-stack test covers junior then senior base-asset deposits through the manager and proves the
+post-deposit custody identities. The next bounded step is one queued and executed exit.
 
 ## Gate 2: Prototype accounting semantics
 
@@ -384,6 +384,6 @@ senior accrual, exact market-close checkpointing, complete distress reserve, cla
 reconstructible custody and recovery events. A small factory-owned deployer holds manager creation
 code so `TrancheFactory` remains below the EIP-170 runtime limit.
 
-The pinned V2.5 deployment path is covered in `build/test/Fork.t.sol`. The next work is a full
-real-stack deposit and exit lifecycle, followed by terminal dust allocation and replacement of the
-remaining manager string reverts with typed errors.
+The pinned V2.5 deployment and deposit path is covered in `build/test/Fork.t.sol`. The next work is
+a real-stack exit lifecycle, followed by terminal dust allocation and replacement of the remaining
+manager string reverts with typed errors.

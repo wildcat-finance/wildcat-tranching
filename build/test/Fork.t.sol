@@ -37,6 +37,11 @@ contract ForkAsset {
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
 
+    function mint(address to, uint256 amount) external {
+        totalSupply += amount;
+        balanceOf[to] += amount;
+    }
+
     function transfer(address to, uint256 amount) external returns (bool) {
         balanceOf[msg.sender] -= amount;
         balanceOf[to] += amount;
@@ -149,6 +154,35 @@ contract ForkTest is Test {
         assertTrue(manager.senior().isSenior(), "senior class");
         assertEq(manager.junior().manager(), managerAddress, "junior manager");
         assertFalse(manager.junior().isSenior(), "junior class");
+
+        asset.mint(address(this), 400e18);
+        asset.approve(managerAddress, 400e18);
+        uint256 juniorShares = manager.depositJunior(100e18, address(this));
+        uint256 seniorShares = manager.depositSenior(300e18, address(this));
+
+        assertEq(juniorShares, 100e18, "junior shares minted");
+        assertEq(seniorShares, 300e18, "senior shares minted");
+        assertEq(manager.junior().balanceOf(address(this)), 100e18, "junior receiver balance");
+        assertEq(manager.senior().balanceOf(address(this)), 300e18, "senior receiver balance");
+        assertEq(manager.junior().totalSupply(), 100e18, "junior supply");
+        assertEq(manager.senior().totalSupply(), 300e18, "senior supply");
+        assertEq(manager.seniorPrincipal(), 300e18, "senior principal");
+        assertEq(manager.seniorOwed(), 300e18, "senior owed");
+        assertEq(manager.markedAssets(), 400e18, "marked assets");
+        assertEq(manager.realisedValue(), 400e18, "realised value");
+        assertEq(manager.juniorValue(), 100e18, "junior value");
+        assertEq(manager.seniorValue(), 300e18, "senior value");
+        assertEq(asset.balanceOf(managerAddress), 0, "no idle base asset");
+        assertEq(market.balanceOf(managerAddress), 0, "no idle market tokens");
+        assertEq(market.balanceOf(wrapperAddress), 400e18, "wrapper market balance");
+        assertEq(
+            Wildcat4626Wrapper(wrapperAddress).balanceOf(managerAddress),
+            Wildcat4626Wrapper(wrapperAddress).totalSupply(),
+            "manager owns wrapper supply"
+        );
+        assertEq(asset.allowance(managerAddress, marketAddress), 0, "market approval cleared");
+        assertEq(market.allowance(managerAddress, wrapperAddress), 0, "wrapper approval cleared");
+        assertEq(manager.seniorValue() + manager.juniorValue(), manager.realisedValue(), "waterfall conserves value");
     }
 
     function _deployProtocolStack() internal {

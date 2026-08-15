@@ -323,7 +323,7 @@ The implementation and tests should state these directly:
 
 The economic shape is fixed. The remaining questions are narrower:
 
-- the full real-market deposit, exit, recovery and claim lifecycle;
+- the full real-market exit, recovery and claim lifecycle;
 - whether exact delinquency marking deserves a protocol callback;
 - the final allocation of wrapper, market-token and base-asset dust;
 - unique senior and junior token metadata;

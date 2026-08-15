@@ -99,9 +99,9 @@ side of an ordinary transfer. It cannot block a burn, withdrawal request, recove
 claim. Recovery from the permissionless market executor is recorded by withdrawal expiry, so an
 older batch cannot make a later request claimable.
 
-The local suite covers deposit, exit and recovery accounting. The pinned fork suite proves the
-deployment and hook-wiring path; a complete real-stack deposit and settlement lifecycle remains a
-separate stage. Terminal dust handling and a production settlement policy are deliberately not
+The local suite covers deposit, exit and recovery accounting. The pinned fork suite now proves the
+deployment, hook-wiring and base-asset deposit path. A real-stack queued exit and settlement remain
+the next stage. Terminal dust handling and a production settlement policy are deliberately not
 included.
 
 ## Read before implementing

@@ -264,8 +264,9 @@ Test:
 - no residual market tokens or approvals after success;
 - full transaction rollback when a post-investment check fails.
 
-Exit condition: one junior and one senior base-asset deposit pass against the real stack, and every
-unit of rounding has a named recipient.
+Stage status: complete. The pinned stack accepts junior then senior base-asset deposits through the
+manager, keeps custody entirely in the canonical wrapper, clears transient approvals and conserves
+the waterfall value.
 
 ## Stage 5: prove the real exit path
 
