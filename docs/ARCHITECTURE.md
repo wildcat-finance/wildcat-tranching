@@ -4,12 +4,16 @@
 
 This document defines the prototype boundary implemented under `build/src`. The contracts import
 the protocol types and implementations pinned by the `build/lib/v2-protocol` submodule at
-`49be5432dbc8f268aec84beaada31de406fad875`. Unit tests still use local doubles; `build/test/Fork.t.sol`
+`e88e799`, the head of PR #129 stacked on PR #124. Unit tests still use local doubles;
+`build/test/Fork.t.sol`
 deploys the pinned contracts on mainnet block `25,758,381` and verifies the complete market,
 canonical wrapper and predicted manager deployment path. This remains an engineering prototype.
 
 The prototype targets Wildcat V2.5 and the sealed singleton role-provider hooks proposed in
-[`v2-protocol#124`](https://github.com/wildcat-finance/v2-protocol/pull/124). Supporting an earlier
+[`v2-protocol#124`](https://github.com/wildcat-finance/v2-protocol/pull/124), with narrow close and
+withdrawal-execution hook extensions in
+[`v2-protocol#129`](https://github.com/wildcat-finance/v2-protocol/pull/129).
+Supporting an earlier
 V2 market without an equivalent immutable admission primitive is a separate design.
 
 The next implementation step is deliberately narrower than production hardening: exercise one
@@ -140,8 +144,12 @@ Target behavior:
 - maintains senior obligation, junior residual and subordination accounting;
 - burns tranche shares into immutable async withdrawal requests;
 - redeems wrapper shares, queues market withdrawals and accounts for partial recovery;
-- allocates recovery senior-first, with the full senior obligation reserved during distress;
+- allocates recovery senior-first; the pinned execution hook records each withdrawal expiry and
+  reserves only that batch's excess against live senior debt during distress, independently of the
+  transaction caller;
 - routes sanctioned claims to the canonical escrow path;
+- defers a market withdrawal while the manager itself is sanctioned, so the market cannot consume
+  an expiry-bearing batch into an escrow release with no batch provenance;
 - contains no arbitrary-call, arbitrary-transfer or upgrade function.
 
 The strict singleton prototype should expose only a base-asset deposit front door. Accepting market
@@ -191,34 +199,49 @@ The implementation and tests should state these directly:
 4. `provider.lender() == manager`.
 5. Active market-token supply is held only by manager, wrapper or pending withdrawals.
 6. All wrapper shares are held by the manager.
-7. Senior value plus junior value equals manager-attributable value, subject only to explicit
-   rounding dust.
+7. Senior value plus junior value equals the manager's marked value; live delinquency appreciation
+   above that mark remains excluded until cure.
 8. Junior absorbs loss before senior.
 9. No senior deposit or active-state junior exit can violate minimum subordination.
 10. Allocated recovery never exceeds recovered base assets.
-11. A request can never claim more than its class FIFO entitlement.
-12. During distress, junior cannot receive assets while the senior obligation is uncovered.
-13. No entry gate or sanctions path can prevent a holder from burning shares and creating an exit
+11. Allocatable recovery plus the tagged senior-debt reserve and terminal recovery surplus equals
+    cumulative observed recovery.
+12. A request synchronises recovery before adding face, can never claim more than its class FIFO
+    entitlement and cannot consume recovery which arrived before its face existed. Recovery admitted
+    solely against live distressed senior debt can migrate only into senior replacement face and is
+    retired on cure or when an impaired exit extinguishes more debt than it queues. A generic late
+    balance sync cannot create that reserve. A market execution admits recovery only against face
+    recorded for its exact expiry, so an older batch cannot fund a later request. Unattributed base
+    asset is terminal surplus and does not fund any queue face.
+13. During distress, junior cannot receive assets while the senior obligation is uncovered.
+14. No entry gate or sanctions path can prevent a holder from burning shares and creating an exit
     request.
-14. A sanctioned claim changes the destination to escrow, not the amount or queue position.
-15. A manager cannot be initialized twice or rebound to another market.
+15. A sanctioned claim changes the destination to escrow, not the amount or queue position.
+16. A manager cannot be initialized twice or rebound to another market.
 
 ## Prototype accounting choice
 
 Senior accrues at the fixed annual rate stored during initialisation. The manager never reads the
 market's mutable APR for tranche accounting, so a market-rate change cannot reprice the senior
-claim. Deposits, exits and recovery execution checkpoint first. The fixed rate has no setter.
+claim. Interest is simple interest on outstanding senior principal, with fractional carry between
+checkpoints. Deposits, exits and recovery execution checkpoint first. The fixed rate has no setter.
 
-While the market reports delinquency, valuation is capped at the last healthy wrapper price seen by
-the manager. If no account called the manager immediately before delinquency, healthy appreciation
-since the previous checkpoint is excluded until cure. This is conservative for both classes, but a
-protocol-integrated callback would be needed to capture the exact transition. Full-exit rounding
-dust also needs an explicit terminal allocation rule before production use.
+While the market is healthy, the manager checkpoints aggregate wrapper value. During delinquency,
+valuation is the lower of live value and that aggregate mark. Each exit converts its class
+entitlement down to whole wrapper shares, records their floor-normalised value as request face and
+reduces the mark by that backed face. Wrapper redemption and market queueing move those same scaled
+units, so an earlier FIFO request cannot claim backing supplied by a later one. Live appreciation
+above the mark stays wrapped until cure; live loss is recognised immediately. If nobody called the
+manager immediately before
+delinquency, healthy appreciation since the previous checkpoint is excluded until cure. Capturing
+the exact transition would need a protocol callback. Market closure is exact: the pinned
+`TrancheOpenTermHooks` checkpoints the manager during `closeMarket`.
 
 ## Explicit non-goals for the first prototype
 
 - retrofitting facility-wide seniority onto a market that still has direct lenders;
 - more than two tranches;
+- markets whose asset uses fewer than six decimals;
 - multiple active managers for one market;
 - manager upgrades or migration of live positions;
 - secondary-market liquidity guarantees;

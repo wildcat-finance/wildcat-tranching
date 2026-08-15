@@ -5,24 +5,17 @@ import "forge-std/Test.sol";
 
 import {TrancheFactory} from "../src/TrancheFactory.sol";
 import {TrancheManager} from "../src/TrancheManager.sol";
+import {TrancheOpenTermHooks} from "../src/TrancheOpenTermHooks.sol";
 import {HooksFactory} from "v2-protocol/src/HooksFactory.sol";
 import {WildcatArchController} from "v2-protocol/src/WildcatArchController.sol";
 import {WildcatBorrowerIdentityRegistry} from "v2-protocol/src/WildcatBorrowerIdentityRegistry.sol";
 import {WildcatSanctionsSentinel} from "v2-protocol/src/WildcatSanctionsSentinel.sol";
-import {
-    SingletonOpenTermHooks,
-    SingletonOpenTermHooksInputs
-} from "v2-protocol/src/access/SingletonOpenTermHooks.sol";
-import {
-    CreateProviderInputs,
-    NameAndProviderInputs
-} from "v2-protocol/src/access/ProviderStructs.sol";
+import {SingletonOpenTermHooks, SingletonOpenTermHooksInputs} from "v2-protocol/src/access/SingletonOpenTermHooks.sol";
+import {CreateProviderInputs, NameAndProviderInputs} from "v2-protocol/src/access/ProviderStructs.sol";
 import {DeployMarketInputs} from "v2-protocol/src/interfaces/WildcatStructsAndEnums.sol";
 import {LibStoredInitCode} from "v2-protocol/src/libraries/LibStoredInitCode.sol";
 import {WildcatMarket} from "v2-protocol/src/market/WildcatMarket.sol";
-import {
-    SingletonRoleProviderFactoryInputs
-} from "v2-protocol/src/providers/ISingletonRoleProviderFactory.sol";
+import {SingletonRoleProviderFactoryInputs} from "v2-protocol/src/providers/ISingletonRoleProviderFactory.sol";
 import {ISingletonRoleProvider} from "v2-protocol/src/providers/ISingletonRoleProvider.sol";
 import {SingletonRoleProviderFactory} from "v2-protocol/src/providers/SingletonRoleProviderFactory.sol";
 import {RoleProvider} from "v2-protocol/src/types/RoleProvider.sol";
@@ -178,35 +171,23 @@ contract ForkTest is Test {
         hooksFactory.registerWithArchController();
 
         providerFactory = new SingletonRoleProviderFactory();
-        singletonHooksTemplate = LibStoredInitCode.deployInitCode(type(SingletonOpenTermHooks).creationCode);
-        hooksFactory.addHooksTemplate(
-            singletonHooksTemplate, "SingletonOpenTermHooks", address(0), address(0), 0, 0
-        );
+        singletonHooksTemplate = LibStoredInitCode.deployInitCode(type(TrancheOpenTermHooks).creationCode);
+        hooksFactory.addHooksTemplate(singletonHooksTemplate, "TrancheOpenTermHooks", address(0), address(0), 0, 0);
         archController.registerBorrower(address(this));
-        trancheFactory = new TrancheFactory(
-            address(archController), address(wrapperFactory), singletonHooksTemplate
-        );
+        trancheFactory = new TrancheFactory(address(archController), address(wrapperFactory), singletonHooksTemplate);
     }
 
     function _singletonConstructorArgs(address predictedManager) internal view returns (bytes memory) {
         SingletonRoleProviderFactoryInputs memory providerInputs = SingletonRoleProviderFactoryInputs({
-            lender: predictedManager,
-            salt: keccak256("tranche-singleton-provider")
+            lender: predictedManager, salt: keccak256("tranche-singleton-provider")
         });
         NameAndProviderInputs memory accessInputs;
         accessInputs.name = "TrancheManager singleton";
         accessInputs.roleProviderFactory = address(providerFactory);
         accessInputs.newProviderInputs = new CreateProviderInputs[](1);
-        accessInputs.newProviderInputs[0] = CreateProviderInputs({
-            timeToLive: 0,
-            providerFactoryCalldata: abi.encode(providerInputs)
-        });
-        return abi.encode(
-            SingletonOpenTermHooksInputs({
-                accessControlInputs: accessInputs,
-                lender: predictedManager
-            })
-        );
+        accessInputs.newProviderInputs[0] =
+            CreateProviderInputs({timeToLive: 0, providerFactoryCalldata: abi.encode(providerInputs)});
+        return abi.encode(SingletonOpenTermHooksInputs({accessControlInputs: accessInputs, lender: predictedManager}));
     }
 
     function _marketInputs() internal view returns (DeployMarketInputs memory inputs) {
@@ -228,7 +209,7 @@ contract ForkTest is Test {
                 useOnTransfer: true,
                 useOnBorrow: false,
                 useOnRepay: false,
-                useOnCloseMarket: false,
+                useOnCloseMarket: true,
                 useOnNukeFromOrbit: false,
                 useOnSetMaxTotalSupply: false,
                 useOnSetAnnualInterestAndReserveRatioBips: false,

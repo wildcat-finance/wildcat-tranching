@@ -25,6 +25,7 @@ after funding.
    or claims.
 7. Every economic term is fixed when the manager is initialised.
 8. Both tranches rank behind protocol fees accrued by the Wildcat market.
+9. The prototype accepts market assets with at least six decimals.
 
 That gives the facility one fairly useful property: its risk cannot drift because somebody still has
 a key.
@@ -115,16 +116,21 @@ J = V - S
 S + J = V
 ```
 
-`seniorOwed` begins with senior principal and accrues at the manager's fixed annual rate while the
-facility is active. Junior receives whatever value remains after that claim. If value falls, junior
-reaches zero before senior is impaired.
+`seniorOwed` begins with senior principal and accrues simple interest at the manager's fixed annual
+rate while the facility is active. Fractional interest carries between checkpoints. Junior receives
+whatever value remains after that claim. If value falls, junior reaches zero before senior is
+impaired.
 
 The rate is fixed because the senior liability needs one meaning between checkpoints. Tying it to a
 mutable market APR would let a borrower-side market change reprice senior after funding.
 
 Every state-changing accounting path checkpoints before using `seniorOwed`: deposits, redemption
-requests, withdrawal execution, recovery synchronisation and the terminal-state check. The final
-active interval is accrued before wind-down freezes the claim.
+requests, withdrawal execution, recovery synchronisation and the terminal-state check. The pinned
+tranching hook checkpoints market closure synchronously. A delinquency threshold is reconstructed
+from the market's current counter. Because that counter decays during cure, this is the facility's
+present-state rule rather than proof of a past continuous delinquency period. Historical crossing
+reconstruction after cure is outside the prototype. Once the manager enters wind-down, the senior
+claim freezes.
 
 ## Protocol fee
 
@@ -173,18 +179,24 @@ size. All share issuance rounds against the entrant and in favour of the existin
 
 ## Value during delinquency
 
-The manager uses the canonical wrapper price rather than an external oracle. While the market is
-healthy, it advances a price-per-share mark. During delinquency:
+The manager uses the canonical wrapper rather than an external oracle. While the market is healthy,
+it checkpoints aggregate wrapper value. During delinquency:
 
 ```text
-effectivePps = min(livePps, lastHealthyPps)
+realisedValue = min(liveWrapperValue, markedAssets)
 ```
 
 Penalty interest is not booked as profit before it is realised. A downward move still counts, so
 the mark cannot hide a loss. Cure reopens recognition of the live value.
 
-The mark is only as fresh as the last manager checkpoint. Capturing the exact healthy-to-delinquent
-transition would require a market callback or another protocol-level checkpoint.
+An exit converts its class entitlement down to whole wrapper shares. The request face is the
+floor-normalised value of those shares, and `markedAssets` falls by that backed face. Redemption and
+market queueing move the same scaled units. Any appreciation excluded by the mark stays wrapped,
+and no FIFO request can record more face than its backing can support.
+
+The aggregate mark is only as fresh as the last manager checkpoint. Capturing the exact
+healthy-to-delinquent transition would require a market callback or another protocol-level
+checkpoint.
 
 Ordinary deposits should close while delinquent. The existing position is valued at the frozen
 mark, whereas newly invested base assets are converted at the live wrapper price. Allowing entry
@@ -220,15 +232,18 @@ An exit follows the market queue:
 1. checkpoint value and lifecycle state;
 2. calculate the holder's share of its class value;
 3. burn tranche shares;
-4. redeem enough wrapper shares at the live wrapper price to receive that value in market tokens;
-5. queue the market tokens in a Wildcat withdrawal batch;
+4. convert that value down to whole wrapper shares and redeem them;
+5. queue the redemption label, record the scaled backing's floor-normalised request face and reduce
+   the aggregate mark by that face;
 6. record owner, class, face, expiry and FIFO position;
 7. execute the expired batch;
 8. allocate observed base assets;
 9. pay the recorded owner or sanctions escrow.
 
-The wrapper redemption uses the live price even when tranche valuation is frozen. Sizing it at the
-frozen mark would pull the delinquency appreciation which the accounting has excluded.
+The wrapper-share conversion uses the live price even when tranche valuation is frozen. The manager
+records only the floor-normalised value backed by those scaled shares. Excluded delinquency
+appreciation stays wrapped until cure rather than entering the request, while conversion dust stays
+in class book value for terminal accounting.
 
 Settlement is FIFO within each class and senior-first between classes:
 
@@ -250,10 +265,26 @@ Recovery is balance-derived:
 
 ```text
 recoveredBaseAsset = baseAsset.balanceOf(manager) + totalClaimedOut
+recoveredBaseAsset = allocatableRecovery + seniorDebtReserve + recoverySurplus
 ```
 
-Anyone may call `sync()` after a market withdrawal, direct transfer or other cash arrival. Allocation
-never depends on one privileged keeper observing the transfer.
+New cash becomes allocatable only against request face which already exists. The pinned execution
+hook books every market withdrawal before transfer, at the market state and expiry of that
+execution; it admits the receipt only against face recorded for that same expiry. Public execution
+therefore has the same result whether `pokeRecovery()` or another account called it, and an old
+batch's scaled excess cannot become backing for a request queued in a later batch. Excess may enter
+a separate reserve against live senior obligations during distress. A generic
+later `sync()` cannot prove the arrival state or batch of direct transfers, so all such cash enters
+`recoverySurplus` and no request can claim it. The tagged reserve can migrate only into senior face queued before cure; a
+junior request cannot relabel it. Terminal accounting will assign any unused amount.
+
+If the manager itself is sanctioned, its execution hook reverts before the market marks a batch
+executed and sends proceeds to sanctions escrow. That escrow release does not carry a batch expiry,
+so allowing it would turn authenticated recovery into unattributed cash. The batch remains pending
+and can execute after the sanction is cleared.
+
+Anyone may call `sync()` after a market withdrawal, direct transfer or other cash arrival.
+Allocation never depends on one privileged keeper observing the transfer.
 
 ## Entry and sanctions
 
@@ -275,14 +306,16 @@ The implementation and tests should state these directly:
 1. The manager, market and canonical wrapper all resolve to the same registered facility.
 2. The sealed singleton provider names the manager as its only lender.
 3. The manager owns every wrapper share and holds no idle market tokens outside a custody call.
-4. Senior value plus junior value equals realised manager value, apart from explicit rounding dust.
+4. Senior value plus junior value equals marked manager value; live delinquency appreciation above
+   that mark remains excluded until cure.
 5. Junior reaches zero before senior takes loss.
 6. Senior entry and active junior exit cannot breach the minimum junior ratio.
 7. Allocated recovery never exceeds observed base assets.
 8. A request never receives more than its face or FIFO entitlement.
 9. Protocol-fee accrual does not change the manager's fixed terms or create a second fee claim.
 10. During distress, junior receives no cash while the senior obligation is uncovered.
-11. Entry policy and sanctions cannot prevent burns, withdrawal execution or claims.
+11. Entry policy cannot prevent burns, withdrawal execution or claims. A manager-level sanction
+    deliberately defers its own market execution until clearance, preserving batch provenance.
 12. Wind-down cannot be reversed and senior accrual cannot restart.
 13. The manager cannot be rebound, replaced or initialised twice.
 
@@ -290,9 +323,7 @@ The implementation and tests should state these directly:
 
 The economic shape is fixed. The remaining questions are narrower:
 
-- time-deterministic senior accrual, including fractional carry and the exact terminal timestamp;
-- one cumulative distress reserve across queued and live senior claims;
-- request face measured in the same units the market can recover;
+- the full real-market deposit, exit, recovery and claim lifecycle;
 - whether exact delinquency marking deserves a protocol callback;
 - the final allocation of wrapper, market-token and base-asset dust;
 - unique senior and junior token metadata;

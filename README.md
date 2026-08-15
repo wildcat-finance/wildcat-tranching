@@ -22,11 +22,12 @@ check. Tranche holders never hold the Wildcat market token or the wrapper share.
 
 The contracts under [`build/`](build/) are a runnable prototype, not a deployment candidate. They
 cover deterministic manager deployment, singleton and wrapper binding checks, base-asset custody,
-the waterfall, async redemption and sanctions handling. They compile against
-[`v2-protocol@49be543`](https://github.com/wildcat-finance/v2-protocol/commit/49be5432dbc8f268aec84beaada31de406fad875),
-the current head of PR #124. `Fork.t.sol` deploys that pinned protocol stack on mainnet block
-`25,758,381`, then creates the singleton market, registers its canonical wrapper and deploys the
-predicted manager.
+the waterfall, async redemption and sanctions handling. They compile against the V2.5 singleton
+branch plus the narrow hook-specialisation change in
+[`v2-protocol@e88e799`](https://github.com/wildcat-finance/v2-protocol/commit/e88e799),
+which is proposed in V2 PR #129 on top of PR #124. `Fork.t.sol` deploys that pinned protocol stack
+on mainnet block `25,758,381`, then creates the singleton market and tranching hook, registers the
+canonical wrapper, deploys the predicted manager and checks the exact close callback.
 
 ## Design rules
 
@@ -51,6 +52,7 @@ predicted manager.
 build/src/
   TrancheFactory.sol          deterministic deployment and binding verifier
   TrancheManager.sol          per-market custody, accounting and settlement
+  TrancheOpenTermHooks.sol    singleton admission with an exact close checkpoint
   TrancheToken.sol            senior/junior share token
   interfaces/IEnterGate.sol   class-specific acquisition policy
   libraries/WaterfallMath.sol pure waterfall helpers
@@ -90,13 +92,17 @@ V2.5 deployment.
 
 ## Current edge
 
-The manager has fixed economics, objective wind-down and one immutable entry-gate address per
-class. A zero gate leaves that class open. A nonzero gate is consulted only when an account acquires
-exposure: on deposit and on the receiving side of an ordinary transfer. It cannot block a burn,
-withdrawal request, recovery execution or claim.
+The manager has fixed economics, call-independent senior accrual, objective wind-down, a complete
+distress reserve and one immutable entry-gate address per class. A zero gate leaves that class open.
+A nonzero gate is consulted only when an account acquires exposure: on deposit and on the receiving
+side of an ordinary transfer. It cannot block a burn, withdrawal request, recovery execution or
+claim. Recovery from the permissionless market executor is recorded by withdrawal expiry, so an
+older batch cannot make a later request claimable.
 
-The next bounded change is a real-stack lifecycle test: deposit the base asset through the manager,
-prove that every market token is wrapped, then request and execute an async exit.
+The local suite covers deposit, exit and recovery accounting. The pinned fork suite proves the
+deployment and hook-wiring path; a complete real-stack deposit and settlement lifecycle remains a
+separate stage. Terminal dust handling and a production settlement policy are deliberately not
+included.
 
 ## Read before implementing
 

@@ -11,9 +11,8 @@ production-readiness claim.
 
 ## Gate 1: Pinned integration surface
 
-The prototype pins `v2-protocol` at
-`49be5432dbc8f268aec84beaada31de406fad875`, the current head of PR #124, and imports its contracts,
-structs and value types directly. The implementation relies on:
+The prototype pins `v2-protocol` at `e88e799`, the head of PR #129 stacked on PR #124, and imports
+its contracts, structs and value types directly. The implementation relies on:
 
 - the market factory accepting a predicted manager as the singleton lender;
 - `market.asset()`, `deposit`, `queueWithdrawal`, `executeWithdrawal` and `registeredWrapper()`;
@@ -41,24 +40,33 @@ manager followed by one queued and executed exit.
 The prototype makes these choices:
 
 1. Senior is a time-accruing liability at the fixed manager rate selected during initialisation.
-2. Manager actions checkpoint accounting. Delinquent valuation is capped at the last healthy price
-   observed by such a checkpoint.
-3. Deposits and exits round tranche shares down. Exits redeem the wrapper shares attributable to
-   the holder's class value and queue the market tokens actually received.
-4. Recovery is senior-first between classes and FIFO within each class.
-5. Market closure or the fixed delinquency threshold triggers irreversible wind-down. Wind-down
-   stops deposits and senior accrual.
+2. Manager actions checkpoint accounting. Delinquent valuation is capped at the last healthy
+   aggregate wrapper value observed by such a checkpoint.
+3. Deposits and exits round tranche shares down. An exit converts its class entitlement down to
+   whole wrapper shares, records their floor-normalised backed value as request face and removes
+   that face from the aggregate mark.
+4. Recovery is senior-first between classes and FIFO within each class. The pinned
+   `onExecuteWithdrawal` hook books a market withdrawal at its execution-time state and exact
+   expiry, whether `pokeRecovery` or another account called the public market executor. Recovery
+   from that execution is admitted only against face recorded for the same expiry. A generic balance sync
+   records all direct transfers and other unexplained cash as terminal surplus; it never makes a
+   queue face claimable. If the manager itself is sanctioned, the execution hook reverts before the
+   market consumes the batch into its sanctions escrow; execution resumes after clearance. The tagged reserve
+   can migrate only into a senior exit before cure.
+5. Market closure or an observed current delinquency counter at the fixed threshold triggers
+   irreversible wind-down. Wind-down stops deposits and senior accrual.
 6. Terminal wrapper-share dust is not swept in this prototype and needs a production rule.
 
 Required conservation statement:
 
 ```text
-manager wrapper value + idle base asset + base asset already paid
-  == active tranche value + queued claim value + explicit rounding dust
+manager live wrapper value + idle base asset + base asset already paid
+  == active marked tranche value + queued claim value
+   + unrecognised delinquency appreciation + recovery surplus + explicit terminal dust
 ```
 
-The stale healthy-price case is conservative until cure, but exact transition accounting would
-require a market callback or equivalent protocol integration.
+The stale healthy-price case is conservative until cure. Market closure is checkpointed exactly by
+the pinned tranching hook; an exact delinquency transition would require another protocol callback.
 
 ## Target source layout
 
@@ -66,6 +74,7 @@ require a market callback or equivalent protocol integration.
 src/
   TrancheFactory.sol
   TrancheManager.sol
+  TrancheOpenTermHooks.sol
   TrancheToken.sol
   libraries/
     WaterfallMath.sol
@@ -75,7 +84,7 @@ test/
   Invariant.t.sol
   Fork.t.sol
 lib/
-  v2-protocol/              pinned at 49be5432dbc8f268aec84beaada31de406fad875
+  v2-protocol/              pinned at e88e799 (PR #129 on PR #124)
 ```
 
 Keep pure waterfall arithmetic isolated from custody and lifecycle transitions. Prefer custom
@@ -106,6 +115,7 @@ proxy and there is no implementation pointer.
 `deployTranches` must verify before registration:
 
 - the market is registered with the pinned ArchController;
+- the market asset uses at least six decimals;
 - the caller is the market's current borrower and its registered borrower principal is nonzero;
 - the wrapper equals both `market.registeredWrapper()` and
   `wrapperFactory.wrapperForMarket(market)`;
@@ -202,19 +212,21 @@ event Deposited(
 An exit is not an ERC-4626 synchronous withdrawal. The manager must:
 
 1. checkpoint;
-2. calculate the holder's class entitlement and required wrapper shares;
+2. calculate the holder's exact class entitlement;
 3. burn tranche shares before external interactions;
-4. redeem wrapper shares to market tokens with the manager as receiver;
-5. queue those market tokens in the Wildcat withdrawal batch;
+4. redeem the calculated whole wrapper shares with the manager as receiver;
+5. queue the redemption label, verify the same scaled backing moved and reduce the aggregate mark
+   by its floor-normalised request face;
 6. append an immutable request containing owner, class, face, queue expiry and FIFO position;
 7. later execute the expired market batch permissionlessly;
 8. allocate observed base-asset recovery according to the frozen recovery rule;
-9. permit permissionless claiming only to the recorded owner or canonical sanctions escrow.
+9. permit anyone to trigger a claim, but send it only to the recorded owner or canonical sanctions
+   escrow.
 
 Events should make the lifecycle reconstructible without replaying internal math:
 
 ```solidity
-event RedemptionRequested(
+event RedeemRequested(
   uint256 indexed requestId,
   address indexed owner,
   address indexed tranche,
@@ -252,8 +264,7 @@ event StatusChanged(Status indexed previous, Status indexed current);
 event AccountingCheckpoint(
   uint256 timestamp,
   uint256 seniorOwed,
-  uint256 wrapperShares,
-  uint256 effectiveAssets
+  uint256 realisedValue
 );
 ```
 
@@ -355,23 +366,23 @@ wrapper total supply == wrapper balance of manager
 - junior cannot escape the subordination floor while active;
 - junior receives no distressed recovery while senior remains uncovered;
 - claims never exceed recovery or a request's FIFO entitlement;
-- no user action can strand wrapper shares after the last tranche share exits;
+- an empty tranche class cannot be reopened while residual value remains;
 - no entry policy can prevent burn and claim.
 
 ### Fork
 
 - selectors and hook flags against the pinned V2.5 deployment;
 - wrapper factory registration path;
-- actual market-token rounding and queue expiry behavior;
+- actual market-token rounding, queue expiry behavior and direct execution-hook accounting;
 - Safe MultiSend call semantics if it is part of the supported deployment path.
 
 ## Current prototype state
 
 `build/` contains ownerless deterministic deployment, a factory-only one-time initializer,
-base-asset deposits followed by market deposit and canonical wrapping, fixed-rate senior accrual,
-objective wind-down, class entry gates and reconstructible custody and recovery events. A small
-factory-owned deployer holds manager creation code so `TrancheFactory` remains below the EIP-170
-runtime limit.
+base-asset deposits followed by market deposit and canonical wrapping, time-deterministic fixed-rate
+senior accrual, exact market-close checkpointing, complete distress reserve, class entry gates and
+reconstructible custody and recovery events. A small factory-owned deployer holds manager creation
+code so `TrancheFactory` remains below the EIP-170 runtime limit.
 
 The pinned V2.5 deployment path is covered in `build/test/Fork.t.sol`. The next work is a full
 real-stack deposit and exit lifecycle, followed by terminal dust allocation and replacement of the

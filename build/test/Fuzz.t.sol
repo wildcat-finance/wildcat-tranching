@@ -39,10 +39,34 @@ contract WaterfallFuzzTest is Test {
         assertTrue(WaterfallMath.meetsSubordination(seniorValue, juniorValue - amount, minBips));
     }
 
-    function testFuzz_accrualMonotonic(uint256 owed, uint256 rate, uint256 elapsed) public pure {
-        owed = bound(owed, 0, 1e30);
+    function testFuzz_accrualMonotonic(uint256 principal, uint256 rate, uint256 elapsed) public pure {
+        principal = bound(principal, 0, 1e30);
         rate = bound(rate, 0, 1e4);
-        elapsed = bound(elapsed, 0, 3650 days);
-        assertGe(WaterfallMath.accrueSeniorOwed(owed, rate, elapsed), owed);
+        elapsed = bound(elapsed, 0, 3650 days - 1);
+        (uint256 interest, uint256 remainder) = WaterfallMath.accrueSeniorInterest(principal, rate, elapsed, 0);
+        (uint256 laterInterest, uint256 laterRemainder) =
+            WaterfallMath.accrueSeniorInterest(principal, rate, elapsed + 1, 0);
+        assertGe(laterInterest, interest);
+        assertLt(remainder, 1e4 * 365 days);
+        assertLt(laterRemainder, 1e4 * 365 days);
+    }
+
+    function testFuzz_accrualIsPartitionIndependent(uint256 principal, uint256 rate, uint256 first, uint256 second)
+        public
+        pure
+    {
+        principal = bound(principal, 0, 1e30);
+        rate = bound(rate, 0, 1e4);
+        first = bound(first, 0, 3650 days);
+        second = bound(second, 0, 3650 days);
+
+        (uint256 firstInterest, uint256 firstRemainder) = WaterfallMath.accrueSeniorInterest(principal, rate, first, 0);
+        (uint256 secondInterest, uint256 splitRemainder) =
+            WaterfallMath.accrueSeniorInterest(principal, rate, second, firstRemainder);
+        (uint256 wholeInterest, uint256 wholeRemainder) =
+            WaterfallMath.accrueSeniorInterest(principal, rate, first + second, 0);
+
+        assertEq(firstInterest + secondInterest, wholeInterest);
+        assertEq(splitRemainder, wholeRemainder);
     }
 }

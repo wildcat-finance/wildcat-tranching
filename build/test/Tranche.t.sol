@@ -5,6 +5,7 @@ import "forge-std/Test.sol";
 import {TrancheManager} from "../src/TrancheManager.sol";
 import {TrancheFactory} from "../src/TrancheFactory.sol";
 import {TrancheToken} from "../src/TrancheToken.sol";
+import {WaterfallMath} from "../src/libraries/WaterfallMath.sol";
 import {
     MockERC20,
     MockMarket,
@@ -158,6 +159,23 @@ contract TrancheTest is Test {
         );
     }
 
+    function test_ManagerRejectsAssetsBelowSixDecimals() public {
+        TrancheManager candidate = new TrancheManager(address(this));
+        market.setDecimals(5);
+        vm.expectRevert(bytes("BAD_DECIMALS"));
+        candidate.initialize(
+            TrancheManager.Params({
+                underlyingVault: address(wrapper),
+                sentinel: address(sentinel),
+                seniorGate: address(0),
+                juniorGate: address(0),
+                seniorRateBips: SENIOR_RATE_BIPS,
+                minJuniorBips: MIN_JUNIOR_BIPS,
+                defaultPenaltyWindow: WINDOW
+            })
+        );
+    }
+
     function test_FactoryRejectsDeploymentByNonBorrower() public {
         vm.prank(address(0xBEEF));
         vm.expectRevert(TrancheFactory.BorrowerMismatch.selector);
@@ -209,6 +227,327 @@ contract TrancheTest is Test {
         assertApproxEqAbs(juniorValue, 70e18, 1e15);
     }
 
+    function test_SeniorAccrualIsIndependentOfCheckpointFrequency() public {
+        uint256 start = block.timestamp;
+        uint256 snapshot = vm.snapshotState();
+        for (uint256 i; i < 365; ++i) {
+            vm.warp(start + ((i + 1) * 1 days));
+            manager.accrue();
+        }
+        uint256 daily = manager.seniorOwed();
+
+        assertTrue(vm.revertToStateAndDelete(snapshot));
+        vm.warp(start + 365 days);
+        manager.accrue();
+        assertEq(manager.seniorOwed(), daily);
+        assertEq(daily, 330e18);
+    }
+
+    function test_SeniorAccrualCarriesSubUnitRemainder() public pure {
+        uint256 interest;
+        uint256 remainder;
+        for (uint256 i; i < 365; ++i) {
+            (uint256 daily, uint256 nextRemainder) = WaterfallMath.accrueSeniorInterest(364, 10_000, 1 days, remainder);
+            interest += daily;
+            remainder = nextRemainder;
+        }
+        assertEq(interest, 364);
+        assertEq(remainder, 0);
+    }
+
+    function test_ValueViewsPreviewElapsedSeniorAccrual() public {
+        vm.warp(block.timestamp + 365 days);
+        assertEq(manager.seniorOwed(), 300e18, "stored checkpoint");
+        assertEq(manager.previewSeniorOwed(), 330e18, "previewed obligation");
+        assertEq(senior.totalAssets(), 330e18, "senior view");
+        assertEq(junior.totalAssets(), 70e18, "junior view");
+    }
+
+    function test_SeniorRedemptionRemovesPrincipalAndAccruedClaimProRata() public {
+        vm.warp(block.timestamp + 365 days);
+        manager.accrue();
+        uint256 shares = senior.balanceOf(srLP) / 2;
+        vm.prank(srLP);
+        manager.requestRedeem(true, shares);
+        assertEq(manager.seniorPrincipal(), 150e18);
+        assertEq(manager.seniorOwed(), 165e18);
+    }
+
+    function test_RequestFaceMatchesScaledBacking() public {
+        wrapper.setPrice(1.5e18);
+        vm.prank(srLP);
+        uint256 id = manager.requestRedeem(true, 2);
+        (,, uint128 face,, uint32 expiry) = manager.requests(id);
+
+        assertEq(face, 1, "floor-normalised request face");
+        assertEq(market.owed(address(manager), expiry), 2, "market queue backing");
+        assertEq(manager.seniorWmtQueued(), 1, "class face");
+    }
+
+    function test_RoundedFifoRequestCannotConsumeNextRequestsBacking() public {
+        address secondSenior = address(0x5E12);
+        seniorGate.setAllowed(secondSenior, true);
+        vm.prank(srLP);
+        senior.transfer(secondSenior, 2);
+        wrapper.setPrice(1.5e18);
+
+        vm.prank(srLP);
+        uint256 firstId = manager.requestRedeem(true, 2);
+        vm.prank(secondSenior);
+        uint256 secondId = manager.requestRedeem(true, 2);
+        (,,,, uint32 expiry) = manager.requests(secondId);
+
+        assertEq(manager.seniorWmtQueued(), 2, "two backed faces");
+        vm.warp(uint256(expiry) + 1);
+        manager.pokeRecovery(expiry);
+        assertEq(manager.claimable(firstId), 1, "first capped to own backing");
+        assertEq(manager.claimable(secondId), 1, "second retains its backing");
+    }
+
+    function test_UnattributedRecoveryCannotFundAnyRequest() public {
+        vm.prank(srLP);
+        uint256 firstId = manager.requestRedeem(true, 100e18);
+        (,, uint128 firstFace,,) = manager.requests(firstId);
+
+        usdc.mint(address(manager), uint256(firstFace) + 10e18);
+        manager.sync();
+        assertEq(manager.claimable(firstId), 0, "unattributed cash cannot fund a request");
+        assertEq(manager.recoverySurplus(), uint256(firstFace) + 10e18, "unattributed cash is surplus");
+
+        vm.prank(srLP);
+        uint256 secondId = manager.requestRedeem(true, 10e18);
+        assertEq(manager.claimable(secondId), 0, "later request cannot inherit old recovery");
+
+        (,, uint128 secondFace,,) = manager.requests(secondId);
+        usdc.mint(address(manager), secondFace);
+        manager.sync();
+        assertEq(manager.claimable(secondId), 0, "unattributed cash remains surplus");
+        assertEq(
+            manager.recoverySurplus(), uint256(firstFace) + 10e18 + secondFace, "surplus remains terminal"
+        );
+    }
+
+    function test_UnattributedCashCannotDoubleAdmitAnExecutedBatch() public {
+        market.setClosed(true);
+        market.setDelinquent(true);
+        wrapper.setPrice(1.5e18);
+
+        vm.prank(jrLP);
+        uint256 id = manager.requestRedeem(false, 2);
+        (,, uint128 face,, uint32 expiry) = manager.requests(id);
+
+        // The manager cannot know which market batch a bare token transfer belongs to.
+        usdc.mint(address(manager), face);
+        manager.sync();
+        assertEq(manager.allocatableUSDC(), 0, "unattributed transfer is not queue recovery");
+        assertEq(manager.recoverySurplus(), face, "unattributed transfer is terminal surplus");
+
+        vm.warp(uint256(expiry) + 1);
+        market.executeWithdrawal(address(manager), expiry);
+
+        assertEq(manager.recoveryObservedByExpiry(expiry), 2, "market receipt recorded once");
+        assertEq(manager.allocatableUSDC(), face, "only the batch face is admitted");
+        assertEq(manager.seniorDebtReserveUSDC(), face, "batch excess remains senior reserve");
+        assertEq(manager.recoverySurplus(), face, "earlier untagged cash remains surplus");
+    }
+
+    function test_RequestSynchronizesRecoveryBeforeAddingFace() public {
+        usdc.mint(address(manager), 10e18);
+
+        vm.prank(srLP);
+        uint256 id = manager.requestRedeem(true, 10e18);
+
+        assertEq(manager.recoverySurplus(), 10e18, "pre-existing recovery is surplus");
+        assertEq(manager.claimable(id), 0, "new request cannot inherit old recovery");
+    }
+
+    function test_DelayedSyncCannotCreateDistressedSeniorReserve() public {
+        market.setDelinquent(true);
+        usdc.mint(address(manager), 300e18);
+        manager.sync();
+        assertEq(manager.allocatableUSDC(), 0, "unobserved cash has no queue admission");
+        assertEq(manager.seniorDebtReserveUSDC(), 0, "late sync cannot infer distressed arrival");
+        assertEq(manager.recoverySurplus(), 300e18, "unobserved cash is terminal surplus");
+    }
+
+    function test_AtomicPokeTagsScaledWithdrawalExcessToSeniorReserve() public {
+        market.setClosed(true);
+        market.setDelinquent(true);
+        wrapper.setPrice(1.5e18);
+
+        vm.prank(jrLP);
+        uint256 juniorId = manager.requestRedeem(false, 2);
+        (,,,, uint32 expiry) = manager.requests(juniorId);
+        vm.warp(uint256(expiry) + 1);
+        manager.pokeRecovery(expiry);
+
+        assertEq(manager.claimable(juniorId), 0, "junior cannot use senior reserve in distress");
+        assertEq(manager.allocatableUSDC(), 1, "queued face receives its own admission");
+        assertEq(manager.seniorDebtReserveUSDC(), 1, "atomic excess is tagged to senior debt");
+
+        vm.prank(srLP);
+        uint256 seniorId = manager.requestRedeem(true, 2);
+        assertEq(manager.seniorDebtReserveUSDC(), 0, "reserve migrates into senior replacement face");
+        assertEq(manager.seniorCashAllocated(), 1, "migrated reserve fills senior before junior");
+        assertEq(manager.claimable(seniorId), 1, "senior can claim the tagged excess");
+    }
+
+    function test_MigratedSeniorReserveCannotDoubleFundItsBatch() public {
+        market.setClosed(true);
+        market.setDelinquent(true);
+        wrapper.setPrice(1.5e18);
+
+        vm.prank(jrLP);
+        uint256 juniorId = manager.requestRedeem(false, 2);
+        (,,,, uint32 juniorExpiry) = manager.requests(juniorId);
+        vm.warp(uint256(juniorExpiry) + 1);
+        manager.pokeRecovery(juniorExpiry);
+        assertEq(manager.seniorDebtReserveUSDC(), 1, "excess is reserved for senior");
+
+        vm.prank(srLP);
+        uint256 seniorId = manager.requestRedeem(true, 2);
+        (,, uint128 seniorFace,, uint32 seniorExpiry) = manager.requests(seniorId);
+        assertEq(seniorFace, 1, "senior batch face");
+        assertEq(manager.faceCreditedByExpiry(seniorExpiry), seniorFace, "reserve credits senior batch");
+        uint256 allocatableBefore = manager.allocatableUSDC();
+
+        vm.warp(uint256(seniorExpiry) + 1);
+        manager.pokeRecovery(seniorExpiry);
+
+        assertEq(manager.allocatableUSDC(), allocatableBefore, "executed batch cannot double-admit reserve face");
+        assertEq(manager.recoveryObservedByExpiry(seniorExpiry), 2, "full senior batch receipt recorded");
+    }
+
+    function test_PermissionlessExecutionUsesTheSameRecoveryProvenance() public {
+        market.setClosed(true);
+        market.setDelinquent(true);
+        wrapper.setPrice(1.5e18);
+
+        vm.prank(jrLP);
+        uint256 juniorId = manager.requestRedeem(false, 2);
+        (,,,, uint32 expiry) = manager.requests(juniorId);
+        vm.warp(uint256(expiry) + 1);
+
+        vm.prank(address(0xBEEF));
+        market.executeWithdrawal(address(manager), expiry);
+
+        assertEq(manager.recoveredUSDC(), 2, "hook books exact withdrawal before transfer");
+        assertEq(manager.allocatableUSDC(), 1, "queued face is admitted");
+        assertEq(manager.seniorDebtReserveUSDC(), 1, "excess has the same senior provenance");
+        assertEq(manager.recoverySurplus(), 0, "direct execution cannot force surplus treatment");
+        assertEq(manager.claimable(juniorId), 0, "senior priority is unchanged");
+    }
+
+    function test_ExecutedBatchCannotFundLaterBatch() public {
+        market.setClosed(true);
+        market.setDelinquent(true);
+        wrapper.setPrice(1.5e18);
+
+        vm.prank(jrLP);
+        uint256 firstId = manager.requestRedeem(false, 2);
+        (,,,, uint32 firstExpiry) = manager.requests(firstId);
+
+        // Queue a separate, later market batch before anyone executes the old one.
+        vm.warp(uint256(firstExpiry) + 1);
+        vm.prank(jrLP);
+        uint256 secondId = manager.requestRedeem(false, 2);
+        (,,,, uint32 secondExpiry) = manager.requests(secondId);
+        assertGt(secondExpiry, firstExpiry, "distinct withdrawal batches");
+        assertEq(manager.faceQueuedByExpiry(firstExpiry), 1, "first batch face");
+        assertEq(manager.faceQueuedByExpiry(secondExpiry), 1, "second batch face");
+
+        // First batch pays two market units for its one-unit normalized face. Its excess may be
+        // reserved for senior, but it cannot become recovery for the subsequently queued batch.
+        market.executeWithdrawal(address(manager), firstExpiry);
+
+        assertEq(manager.recoveryObservedByExpiry(firstExpiry), 2, "first batch receipt recorded");
+        assertEq(manager.allocatableUSDC(), 1, "only first batch face admitted");
+        assertEq(manager.seniorDebtReserveUSDC(), 1, "first batch excess keeps its provenance");
+        assertEq(manager.claimable(secondId), 0, "later batch has no recovery yet");
+    }
+
+    function test_SanctionedManagerDefersBatchExecutionUntilClear() public {
+        market.setClosed(true);
+        market.setDelinquent(true);
+        wrapper.setPrice(1.5e18);
+        vm.prank(jrLP);
+        uint256 juniorId = manager.requestRedeem(false, 2);
+        (,,,, uint32 expiry) = manager.requests(juniorId);
+        sentinel.setSanctioned(address(manager), true);
+        vm.warp(uint256(expiry) + 1);
+
+        vm.expectRevert(TrancheManager.ManagerSanctioned.selector);
+        market.executeWithdrawal(address(manager), expiry);
+
+        assertEq(manager.recoveredUSDC(), 0, "no recovery is booked before custody");
+        assertEq(manager.claimable(juniorId), 0, "no phantom claim is created");
+        address escrow = address(uint160(uint256(keccak256(abi.encodePacked("escrow", address(manager))))));
+        assertEq(usdc.balanceOf(escrow), 0, "batch remains executable after sanctions clear");
+
+        sentinel.setSanctioned(address(manager), false);
+        market.executeWithdrawal(address(manager), expiry);
+        assertEq(manager.recoveredUSDC(), 2, "clearance restores exact batch execution");
+    }
+
+    function test_ManagerSanctionCheckUsesLiveMarketPrincipal() public {
+        market.setClosed(true);
+        market.setDelinquent(true);
+        wrapper.setPrice(1.5e18);
+        vm.prank(jrLP);
+        uint256 juniorId = manager.requestRedeem(false, 2);
+        (,,,, uint32 expiry) = manager.requests(juniorId);
+
+        address nextPrincipal = address(0xB0B);
+        market.setBorrowerPrincipal(nextPrincipal);
+        sentinel.setSanctionedFor(nextPrincipal, address(manager), true);
+        vm.warp(uint256(expiry) + 1);
+
+        vm.expectRevert(TrancheManager.ManagerSanctioned.selector);
+        market.executeWithdrawal(address(manager), expiry);
+        assertEq(manager.recoveredUSDC(), 0, "live market namespace prevents phantom recovery");
+    }
+
+    function test_FullyCoveredSeniorReserveDoesNotBlockQueuedJuniorRecovery() public {
+        market.setClosed(true);
+        market.setDelinquent(true);
+        wrapper.setRedeemBonus(300e18);
+        uint256 juniorShares = junior.balanceOf(jrLP);
+        vm.prank(jrLP);
+        uint256 juniorId = manager.requestRedeem(false, juniorShares);
+        (,,,, uint32 expiry) = manager.requests(juniorId);
+
+        vm.warp(uint256(expiry) + 1);
+        manager.pokeRecovery(expiry);
+
+        assertEq(manager.allocatableUSDC(), 100e18, "junior face has its own admission");
+        assertEq(manager.seniorDebtReserveUSDC(), 300e18, "live senior debt is fully reserved");
+        assertEq(manager.claimable(juniorId), 100e18, "fully covered senior reserve does not double-block junior");
+    }
+
+    function test_PartitionedDelinquentExitCannotRealiseFrozenUpside() public {
+        uint256 seniorShares = senior.balanceOf(srLP);
+        vm.prank(srLP);
+        manager.requestRedeem(true, seniorShares);
+        market.setDelinquent(true);
+        uint256 livePrice = 1.1e18;
+        wrapper.setPrice(livePrice);
+        market.mintTokens(address(wrapper), 10e18);
+        uint256 half = junior.balanceOf(jrLP) / 2;
+
+        vm.startPrank(jrLP);
+        uint256 firstId = manager.requestRedeem(false, half);
+        uint256 secondId = manager.requestRedeem(false, junior.balanceOf(jrLP));
+        vm.stopPrank();
+
+        (,, uint128 firstFace,,) = manager.requests(firstId);
+        (,, uint128 secondFace,,) = manager.requests(secondId);
+        uint256 aggregateFace = wrapper.convertToAssets(wrapper.convertToShares(100e18));
+        assertEq(uint256(firstFace) + uint256(secondFace), aggregateFace, "partitioned face");
+        assertEq(manager.juniorWmtQueued(), aggregateFace, "class face");
+        assertEq(manager.markedAssets(), 100e18 - aggregateFace, "rounding stays in book value");
+        assertGt(wrapper.balanceOf(address(manager)), 0, "excluded appreciation remains in custody");
+    }
+
     function test_LossHitsJuniorFirst() public {
         wrapper.setPrice(0.8e18);
         (uint256 seniorValue, uint256 juniorValue) = manager.trancheValues();
@@ -236,6 +575,54 @@ contract TrancheTest is Test {
         manager.accrue();
         assertEq(uint256(manager.status()), uint256(TrancheManager.Status.WindDown));
         assertEq(manager.seniorOwedAtDefault(), manager.seniorOwed());
+    }
+
+    function test_DelayedCheckpointStopsSeniorAccrualAtMarketClosure() public {
+        uint256 start = block.timestamp;
+        vm.warp(start + 1 days);
+        vm.prank(address(hooks));
+        manager.onMarketClosed(address(market), 0);
+        vm.warp(start + 366 days);
+        manager.accrue();
+
+        (uint256 expectedInterest,) = WaterfallMath.accrueSeniorInterest(300e18, SENIOR_RATE_BIPS, 1 days, 0);
+        assertEq(manager.seniorOwed(), 300e18 + expectedInterest);
+        assertEq(manager.lastAccrual(), start + 1 days);
+    }
+
+    function test_CloseHookRejectsAnyOtherCaller() public {
+        vm.expectRevert(bytes("ONLY_MARKET_HOOKS"));
+        manager.onMarketClosed(address(market), 0);
+    }
+
+    function test_CloseHookRejectsAnotherMarketOnSameHook() public {
+        vm.prank(address(hooks));
+        vm.expectRevert(bytes("WRONG_MARKET"));
+        manager.onMarketClosed(address(0xBAD), 0);
+    }
+
+    function test_CloseHookUsesEarlierDelinquencyThreshold() public {
+        uint256 start = block.timestamp;
+        uint256 threshold = market.delinquencyGracePeriod() + WINDOW;
+        vm.warp(start + threshold + 30 days);
+        vm.prank(address(hooks));
+        manager.onMarketClosed(address(market), uint32(threshold + 30 days));
+
+        (uint256 expectedInterest,) = WaterfallMath.accrueSeniorInterest(300e18, SENIOR_RATE_BIPS, threshold, 0);
+        assertEq(manager.seniorOwed(), 300e18 + expectedInterest);
+        assertEq(manager.lastAccrual(), start + threshold);
+    }
+
+    function test_DelayedCheckpointStopsAtDelinquencyThreshold() public {
+        uint256 start = block.timestamp;
+        uint256 threshold = market.delinquencyGracePeriod() + WINDOW;
+        vm.warp(start + threshold + 7 days);
+        market.setTimeDelinquent(uint32(threshold + 7 days));
+        manager.accrue();
+
+        (uint256 expectedInterest,) = WaterfallMath.accrueSeniorInterest(300e18, SENIOR_RATE_BIPS, threshold, 0);
+        assertEq(manager.seniorOwed(), 300e18 + expectedInterest);
+        assertEq(manager.lastAccrual(), start + threshold);
     }
 
     function test_DelinquencyRejectsDepositsAndCureReopensEntry() public {
@@ -316,6 +703,61 @@ contract TrancheTest is Test {
                 defaultPenaltyWindow: WINDOW
             })
         );
+    }
+
+    function test_DistressReserveCoversQueuedAndLiveSenior() public {
+        market.setClosed(true);
+        uint256 juniorShares = junior.balanceOf(jrLP);
+        vm.prank(jrLP);
+        manager.requestRedeem(false, juniorShares);
+        uint256 seniorShares = senior.balanceOf(srLP) / 2;
+        vm.prank(srLP);
+        uint256 seniorId = manager.requestRedeem(true, seniorShares);
+        uint32 expiry = uint32(block.timestamp + market.withdrawalBatchDuration());
+
+        vm.prank(address(market));
+        usdc.transfer(address(0xBEEF), 200e18);
+        vm.warp(uint256(expiry) + 1);
+        manager.pokeRecovery(expiry);
+
+        assertEq(manager.seniorWmtQueued(), 150e18);
+        assertEq(manager.seniorOwed(), 150e18);
+        assertEq(manager.seniorCashAllocated(), 150e18);
+        assertEq(manager.juniorCashAllocated(), 0);
+        assertEq(manager.claimable(seniorId), 150e18);
+        manager.claim(seniorId);
+        assertEq(usdc.balanceOf(address(manager)), 50e18, "reserved for live senior");
+    }
+
+    function test_ZeroSupplyClassWithResidualValueCannotReopen() public {
+        uint256 seniorShares = senior.balanceOf(srLP);
+        vm.prank(srLP);
+        manager.requestRedeem(true, seniorShares);
+        uint256 wrapperBefore = wrapper.balanceOf(address(manager));
+        market.setDelinquent(true);
+        uint256 livePrice = 1.1e18;
+        wrapper.setPrice(livePrice);
+        market.mintTokens(address(wrapper), 10e18);
+        uint256 juniorShares = junior.balanceOf(jrLP);
+        vm.prank(jrLP);
+        uint256 id = manager.requestRedeem(false, juniorShares);
+        (,, uint128 face,,) = manager.requests(id);
+
+        uint256 expectedShares = (100e18 * 1e18) / livePrice;
+        uint256 expectedFace = (expectedShares * livePrice) / 1e18;
+        assertEq(face, expectedFace, "request uses scaled backing value");
+        assertEq(wrapperBefore - wrapper.balanceOf(address(manager)), expectedShares);
+        assertEq(junior.totalSupply(), 0);
+
+        address nextJunior = address(0xB0B);
+        juniorGate.setAllowed(nextJunior, true);
+        usdc.mint(nextJunior, 1e18);
+        market.setDelinquent(false);
+        vm.startPrank(nextJunior);
+        usdc.approve(address(manager), 1e18);
+        vm.expectRevert(bytes("RESIDUAL_VALUE"));
+        manager.depositJunior(1e18, nextJunior);
+        vm.stopPrank();
     }
 
     function test_ManagerHasNoControlPlaneSelectors() public {

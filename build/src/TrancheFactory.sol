@@ -162,7 +162,10 @@ contract TrancheFactory {
 
         HooksConfig hooksConfig = market.hooks();
         if (hooksConfig.hooksAddress() != p.hooks) revert HookMismatch();
-        if (!hooksConfig.useOnDeposit() || !hooksConfig.useOnTransfer()) {
+        if (
+            !hooksConfig.useOnDeposit() || !hooksConfig.useOnTransfer() || !hooksConfig.useOnCloseMarket()
+                || !hooksConfig.useOnExecuteWithdrawal()
+        ) {
             revert HookConfigurationInvalid();
         }
 

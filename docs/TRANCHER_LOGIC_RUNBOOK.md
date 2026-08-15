@@ -83,26 +83,30 @@ Stage status: complete. The manager ABI has no general control role or mutable e
 The suite covers open, denying and reverting gates; delinquent deposit refusal; objective closure;
 and exit after gate access is revoked.
 
-## Stage 2: make accounting independent of call timing
+## Stage 2: accounting independent of call timing
 
-The manager must produce the same class entitlement for the same market history regardless of who
+The manager now produces the same class entitlement for the same market history regardless of who
 calls a permissionless checkpoint, or how often.
 
 ### Senior accrual
 
-Replace per-call integer compounding with one time-deterministic calculation. The implementation
-must preserve fractional accrual and use an absolute time basis: either a fixed-point index or
-principal plus cumulative simple interest.
+Senior interest is simple interest on outstanding principal. The manager carries the fractional
+numerator between calls, so splitting an interval into many checkpoints does not discard interest
+or introduce call-dependent compounding.
 
-Accrual stops at the objective terminal instant. For market closure, use the market state timestamp
-recorded by the closing update. For delinquency wind-down, cap the interval at the point where the
-market's `timeDelinquent` counter crossed:
+Accrual stops at the objective market-close instant. `TrancheOpenTermHooks` calls the immutable
+manager during `closeMarket`, before V2.5 can lose the original close timestamp to a later state
+write. The callback also passes the pre-close delinquency counter, so a threshold already visible at
+closure takes precedence. For ordinary delinquency wind-down, the manager derives a cut-off from:
 
 ```text
 delinquencyGracePeriod + defaultPenaltyWindow
 ```
 
-A delayed manager call may discover that instant; it cannot accrue beyond it.
+V2.5's counter decays during cure; it is not a permanent record of a prior continuous delinquency
+period. The facility deliberately follows the current counter exposed by the market. Reconstructing
+a historical crossing after cure was considered separately and is outside this prototype. Closure
+is checkpointed synchronously by the pinned hook.
 
 ### Split senior ledger
 
@@ -115,11 +119,27 @@ cumulativeSeniorPriority = seniorWmtQueued + seniorOwed
 Queued senior face includes amounts already allocated or claimed because `recoveredUSDC` is also
 cumulative. Healthy allocation continues to reserve only senior face already queued.
 
+Each recovery delta is admitted only against obligations which exist when the cash arrives. Recovery
+against queued face is allocatable. The pinned execution hook records every market withdrawal with
+its execution-time state and expiry, including one called directly through the permissionless market
+method. It admits that receipt only against face recorded for the same expiry; its excess can be
+tagged against live senior owed but cannot fund a later batch. A generic late `sync()` records all
+unexplained balance changes as surplus and never makes queue face claimable. The tagged reserve may migrate only into senior face queued during
+distress. Cure, or an impaired exit which extinguishes more debt than it queues, retires the unused
+amount to `recoverySurplus`.
+
+If the manager itself is sanctioned, market execution reverts before the market consumes the batch
+into sanctions escrow. Escrow release has no batch expiry, so the batch must remain pending until
+the manager clears sanctions and can receive its authenticated recovery directly.
+
 ### Exit units and empty classes
 
-The request face must use the same economic units the market can recover after wrapper and market
-rounding. A rounded normalised transfer label must not give an earlier FIFO request a claim on cash
-backing a later request.
+The healthy checkpoint is an aggregate asset mark, not a frozen wrapper price. An exit converts the
+holder's class entitlement down to whole wrapper shares. Its request face is the floor-normalised
+value of those shares. Wrapper redemption and the market queue then move the same scaled units, and
+the aggregate mark falls by that backed face. If the live wrapper price is above the delinquent
+mark, unrecognised appreciation stays wrapped and outside book value until cure. Splitting an exit
+cannot queue more than the marked class value or borrow backing from a later FIFO request.
 
 If a class has zero token supply but nonzero value, deposits into that class remain closed. A later
 terminal-accounting stage will assign the residual; a first depositor cannot take it.
@@ -133,11 +153,15 @@ Prove:
 - a delayed call stops at closure or delinquency wind-down rather than call time;
 - partial senior exit plus distress never releases junior cash before queued and live senior are
   both covered;
-- small-unit wrapper and market rounding cannot move FIFO recovery between requests;
+- one-shot and partitioned exits never exceed the marked class value, including at small decimals;
+- recovery above existing obligations cannot be claimed by a later request;
+- a junior request cannot substitute for the live senior debt which admitted an earlier reserve;
 - zero supply plus residual class value cannot be captured by a new depositor.
 
-Exit condition: call timing, ledger placement and normalised/scaled rounding cannot change which
-class owns a unit of value.
+Stage status: complete under the current-counter delinquency semantics above. Unit, fuzz and fork
+tests cover partition-independent accrual, fractional carry, exact closure, the configured
+delinquency derivation, complete senior distress reserve, partition-independent request face and
+zero-supply residual refusal. Five stateful properties each run 32,768 calls without a revert.
 
 ## Stage 3: pin the deployment ceremony
 
@@ -149,12 +173,13 @@ The CREATE2 deployment shape is already close to the target. Keep it small.
 
 - the caller is the market's borrower;
 - the market is registered with the pinned ArchController;
+- the market asset uses at least six decimals;
 - no manager is already recorded for the market;
 - the supplied wrapper is both market-registered and canonical in the wrapper factory;
 - the wrapper points back to the same market;
 - the market sentinel matches the manager sentinel;
 - the hook instance came from the pinned singleton template;
-- deposit and transfer hook dispatch and access checks are enabled;
+- deposit, transfer and close hook dispatch are enabled, with deposit and transfer access checks;
 - global transfers are not disabled;
 - provider configuration is sealed;
 - the provider has one lender and it is the predicted manager.
@@ -249,7 +274,7 @@ Add one complete async exit against the same deployed stack:
 1. request a partial senior redemption;
 2. confirm tranche shares burn before external calls;
 3. confirm wrapper shares fall by the observed amount;
-4. confirm the manager queues the market tokens actually received;
+4. confirm wrapper redemption and market queueing move the request's exact scaled backing;
 5. advance to the batch expiry;
 6. fund and execute the batch through the supported market path;
 7. call `pokeRecovery` from another account;
@@ -260,8 +285,9 @@ Repeat with junior once the senior path works.
 
 Required assertions:
 
-- request face matches observed market tokens, subject to documented rounding;
+- request face equals the floor-normalised value of the scaled market tokens queued;
 - `recoveredUSDC == baseAsset.balanceOf(manager) + totalClaimedOut`;
+- `recoveredUSDC == allocatableUSDC + seniorDebtReserveUSDC + recoverySurplus`;
 - claimable cash never exceeds request face or recovered cash;
 - the request owner and FIFO position never change;
 - the manager retains no unintended market-token balance.
@@ -273,7 +299,7 @@ lifecycle.
 
 ### Marking
 
-- checkpoint a healthy wrapper mark;
+- checkpoint healthy aggregate wrapper value;
 - move live price above the mark and set the market delinquent;
 - prove tranche values do not book the upside;
 - move live price below the mark and prove the loss is recognised;
@@ -283,8 +309,10 @@ lifecycle.
 ### Redemption during delinquency
 
 - redeem at the live wrapper price;
-- prove request face equals the holder's frozen class claim;
-- prove the unrecognised appreciation remains with the manager;
+- prove request face does not exceed the holder's frozen class claim;
+- prove the aggregate mark falls by the backed request face;
+- prove unrecognised appreciation remains wrapped and outside book value until cure;
+- compare one-shot and partitioned exits;
 - vary live/frozen price ratios and wrapper rounding.
 
 ### Automatic wind-down
@@ -322,6 +350,8 @@ Exercise many requests and recoveries rather than one friendly batch.
 ### Cash arriving outside `pokeRecovery`
 
 - execute the manager's market withdrawal directly;
+- execute an older batch only after a later batch exists and prove the later request remains
+  unclaimable until its own batch recovers;
 - transfer base assets directly to the manager;
 - call `sync()` permissionlessly;
 - prove each balance increase is recognised once;

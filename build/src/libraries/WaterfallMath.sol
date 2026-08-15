@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.25;
 
+import {FixedPointMathLib} from "../../lib/solady/src/utils/FixedPointMathLib.sol";
+
 /// @title WaterfallMath
 /// @notice Pure senior/junior tranche accounting for the Wildcat in-house tranching layer.
 ///         Senior holds a priority claim that accrues at a target rate; junior is the
@@ -14,13 +16,22 @@ library WaterfallMath {
     uint256 internal constant BIPS = 1e4;
     uint256 internal constant YEAR = 365 days;
 
-    /// @notice Linear accrual of the senior's owed claim at an annual bips rate (Wildcat-style,
-    ///         linear-per-update). Senior accrues only while the market is performing; the
-    ///         manager stops calling this once a default is mirrored on-chain.
-    function accrueSeniorOwed(uint256 seniorOwed, uint256 annualRateBips, uint256 dt) internal pure returns (uint256) {
-        if (seniorOwed == 0 || annualRateBips == 0 || dt == 0) return seniorOwed;
-        uint256 interest = (seniorOwed * annualRateBips * dt) / (BIPS * YEAR);
-        return seniorOwed + interest;
+    /// @notice Simple interest on outstanding senior principal with exact remainder carry.
+    /// @dev Partitioning `dt` across any number of calls produces the same interest and remainder.
+    function accrueSeniorInterest(uint256 seniorPrincipal, uint256 annualRateBips, uint256 dt, uint256 remainder)
+        internal
+        pure
+        returns (uint256 interest, uint256 nextRemainder)
+    {
+        uint256 denominator = BIPS * YEAR;
+        if (seniorPrincipal == 0 || annualRateBips == 0 || dt == 0) return (0, remainder);
+        uint256 rateTime = annualRateBips * dt;
+        interest = FixedPointMathLib.fullMulDiv(seniorPrincipal, rateTime, denominator);
+        nextRemainder = mulmod(seniorPrincipal, rateTime, denominator) + remainder;
+        if (nextRemainder >= denominator) {
+            ++interest;
+            nextRemainder -= denominator;
+        }
     }
 
     /// @notice Split realised value: senior up to its owed claim, junior the residual.
