@@ -102,12 +102,17 @@ older batch cannot make a later request claimable.
 The factory also rejects a zero V2.5 delinquency fee: that protocol configuration does not advance
 the observable delinquency counter used by this facility's objective wind-down rule.
 
-The local suite covers deposit, exit and recovery accounting. The pinned fork suite proves the
+The local suite covers deposit, exit, recovery and terminal accounting. The factory records a
+nonzero immutable terminal recipient and rejects the predicted manager itself as that recipient.
+When the final tranche shares burn, the facility closes permanently and queues every remaining
+wrapper share or market token. Once every request has been claimed and custody and senior reserve
+are clear, anyone may settle proven surplus to that term recipient (or its sanctions escrow).
+
+The pinned fork suite proves the
 deployment, hook wiring, base-asset entry and a two-step queued settlement: an initial shortfall
 puts a later senior request ahead of earlier junior requests, then later recovery settles junior to
 the recorded claimant. That shortfall makes the market delinquent at execution and leaves accrued
-interest in its batch; terminal dust handling and a production settlement policy are deliberately
-not included. A second fork path proves a frozen mark, entry refusal, live-mark refresh after a
+interest in its batch. A second fork path proves a frozen mark, entry refusal, live-mark refresh after a
 delinquency cure, and the objective wind-down threshold.
 
 ## Read before implementing

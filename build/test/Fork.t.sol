@@ -137,7 +137,8 @@ contract ForkTest is Test {
                 juniorGate: address(0),
                 seniorRateBips: 800,
                 minJuniorBips: 2000,
-                defaultPenaltyWindow: 28 days
+                defaultPenaltyWindow: 28 days,
+                terminalRecipient: address(this)
             })
         );
         TrancheManager manager = TrancheManager(managerAddress);
@@ -237,6 +238,29 @@ contract ForkTest is Test {
         facility.manager.depositJunior(1e18, address(this));
     }
 
+    function test_fork_terminalFullWithdrawalLeavesNoScaledCustody() public {
+        Facility memory facility = _deployFacility();
+        asset.mint(address(this), 400e18);
+        asset.approve(facility.managerAddress, 400e18);
+        facility.manager.depositJunior(100e18, address(this));
+        facility.manager.depositSenior(300e18, address(this));
+
+        // The real market's scale factor is now non-integral. A final exit must consume the
+        // manager's exact scaled balance rather than queueing its rounded `balanceOf` display.
+        vm.warp(block.timestamp + 1 days);
+        facility.manager.accrue();
+        facility.manager.requestRedeem(true, facility.manager.senior().balanceOf(address(this)));
+        facility.manager.requestRedeem(false, facility.manager.junior().balanceOf(address(this)));
+
+        assertTrue(facility.manager.terminalised(), "final share burn terminalises facility");
+        assertEq(
+            Wildcat4626Wrapper(facility.wrapperAddress).balanceOf(facility.managerAddress),
+            0,
+            "no wrapper shares remain after terminal queue"
+        );
+        assertEq(facility.market.scaledBalanceOf(facility.managerAddress), 0, "no scaled market custody remains");
+    }
+
     function _deployFacility() internal returns (Facility memory facility) {
         _deployProtocolStack();
         address predictedManager = trancheFactory.computeManagerAddress(address(this), MANAGER_SALT);
@@ -268,7 +292,8 @@ contract ForkTest is Test {
                 juniorGate: address(0),
                 seniorRateBips: 800,
                 minJuniorBips: 2000,
-                defaultPenaltyWindow: 28 days
+                defaultPenaltyWindow: 28 days,
+                terminalRecipient: address(this)
             })
         );
         facility.market = WildcatMarket(facility.marketAddress);

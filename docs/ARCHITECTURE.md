@@ -20,9 +20,11 @@ Supporting an earlier
 V2 market without an equivalent immutable admission primitive is a separate design.
 
 The real-stack proof covers one bounded delinquent shortfall and later repayment. Broader
-delinquency, the terminal interest/dust rule and sanctions settlement remain hardening work. A
-separate fork cases prove frozen marking, entry refusal, cure recognition and the objective
-wind-down threshold without claiming that this is ready for deployment.
+delinquency and sanctions settlement remain hardening work. Terminal accounting is local-suite
+covered: the facility closes when both tranche supplies first reach zero, queues residual custody,
+and pays only the immutable deployment-time terminal recipient after all claims clear. Separate
+fork cases prove frozen marking, entry refusal, cure recognition and the objective wind-down
+threshold without claiming that this is ready for deployment.
 
 ## Terms
 
@@ -223,7 +225,9 @@ The implementation and tests should state these directly:
 15. No entry gate or sanctions path can prevent a holder from burning shares and creating an exit
     request.
 16. A sanctioned claim changes the destination to escrow, not the amount or queue position.
-17. A manager cannot be initialized twice or rebound to another market.
+17. A terminal facility cannot reopen. Its immutable nonzero terminal recipient cannot be the
+    manager, and terminal surplus is payable only after all requests and live custody clear.
+18. A manager cannot be initialized twice or rebound to another market.
 
 ## Prototype accounting choice
 

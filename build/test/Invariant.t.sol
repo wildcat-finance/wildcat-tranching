@@ -90,7 +90,8 @@ contract TrancheInvariantTest is Test {
                 juniorGate: address(0),
                 seniorRateBips: 1000,
                 minJuniorBips: 2000,
-                defaultPenaltyWindow: 90 days
+                defaultPenaltyWindow: 90 days,
+                terminalRecipient: address(this)
             })
         );
 

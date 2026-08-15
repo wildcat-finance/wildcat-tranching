@@ -75,6 +75,7 @@ contract TrancheFactory {
     error BorrowerMismatch();
     error SentinelMismatch();
     error ZeroDelinquencyFee();
+    error TerminalRecipientInvalid();
 
     constructor(address archController_, address wrapperFactory_, address singletonHooksTemplate_) {
         if (archController_ == address(0) || wrapperFactory_ == address(0) || singletonHooksTemplate_ == address(0)) {
@@ -99,15 +100,17 @@ contract TrancheFactory {
         uint256 seniorRateBips;
         uint256 minJuniorBips;
         uint256 defaultPenaltyWindow;
+        address terminalRecipient;
     }
 
     function deployTranches(bytes32 salt, DeployParams calldata p) external returns (address managerAddr) {
         if (p.market == address(0) || p.wrapper == address(0) || p.hooks == address(0)) revert ZeroAddress();
         if (msg.sender != p.borrower) revert BorrowerMismatch();
         if (!archController.isRegisteredMarket(p.market)) revert MarketNotRegistered();
-        if (managerForMarket[p.market] != address(0)) revert TranchesExist();
 
         managerAddr = computeManagerAddress(msg.sender, salt);
+        if (p.terminalRecipient == address(0) || p.terminalRecipient == managerAddr) revert TerminalRecipientInvalid();
+        if (managerForMarket[p.market] != address(0)) revert TranchesExist();
         _validateBindings(managerAddr, p);
 
         bytes32 effectiveSalt = _effectiveSalt(msg.sender, salt);
@@ -122,7 +125,8 @@ contract TrancheFactory {
                 juniorGate: p.juniorGate,
                 seniorRateBips: p.seniorRateBips,
                 minJuniorBips: p.minJuniorBips,
-                defaultPenaltyWindow: p.defaultPenaltyWindow
+                defaultPenaltyWindow: p.defaultPenaltyWindow,
+                terminalRecipient: p.terminalRecipient
             })
         );
 

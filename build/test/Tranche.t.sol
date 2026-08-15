@@ -104,7 +104,8 @@ contract TrancheTest is Test {
             juniorGate: address(juniorGate),
             seniorRateBips: SENIOR_RATE_BIPS,
             minJuniorBips: MIN_JUNIOR_BIPS,
-            defaultPenaltyWindow: WINDOW
+            defaultPenaltyWindow: WINDOW,
+            terminalRecipient: borrower
         });
     }
 
@@ -154,7 +155,8 @@ contract TrancheTest is Test {
                 juniorGate: address(juniorGate),
                 seniorRateBips: SENIOR_RATE_BIPS,
                 minJuniorBips: MIN_JUNIOR_BIPS,
-                defaultPenaltyWindow: WINDOW
+                defaultPenaltyWindow: WINDOW,
+                terminalRecipient: borrower
             })
         );
     }
@@ -171,7 +173,8 @@ contract TrancheTest is Test {
                 juniorGate: address(0),
                 seniorRateBips: SENIOR_RATE_BIPS,
                 minJuniorBips: MIN_JUNIOR_BIPS,
-                defaultPenaltyWindow: WINDOW
+                defaultPenaltyWindow: WINDOW,
+                terminalRecipient: borrower
             })
         );
     }
@@ -361,6 +364,40 @@ contract TrancheTest is Test {
         assertEq(manager.claimable(id), 0, "new request cannot inherit old recovery");
     }
 
+    function test_TerminalSurplusFollowsFinalShareBurnAfterAllClaims() public {
+        uint256 seniorShares = senior.balanceOf(srLP);
+        uint256 juniorShares = junior.balanceOf(jrLP);
+        vm.prank(srLP);
+        uint256 seniorId = manager.requestRedeem(true, seniorShares);
+        vm.prank(jrLP);
+        uint256 juniorId = manager.requestRedeem(false, juniorShares);
+        (,,,, uint32 expiry) = manager.requests(juniorId);
+
+        assertEq(manager.terminalRecipient(), borrower, "terminal recipient is immutable facility term");
+        assertEq(manager.markedAssets(), 0, "terminal facility has no marked tranche value");
+        vm.expectRevert(bytes("REQUESTS_PENDING"));
+        manager.settleTerminalSurplus();
+
+        vm.warp(uint256(expiry) + 1);
+        market.executeWithdrawal(address(manager), expiry);
+        manager.claim(seniorId);
+        manager.claim(juniorId);
+
+        usdc.mint(address(manager), 7e18);
+        manager.sync();
+        assertEq(manager.recoverySurplus(), 7e18, "late cash remains terminal surplus");
+        vm.startPrank(jrLP);
+        usdc.approve(address(manager), 1e18);
+        vm.expectRevert(bytes("TERMINAL"));
+        manager.depositJunior(1e18, jrLP);
+        vm.stopPrank();
+        uint256 before = usdc.balanceOf(borrower);
+        vm.prank(address(0xBEEF));
+        assertEq(manager.settleTerminalSurplus(), 7e18, "terminal settlement amount");
+        assertEq(usdc.balanceOf(borrower), before + 7e18, "caller cannot redirect terminal residual");
+        assertEq(manager.recoverySurplus(), 0, "terminal surplus cleared");
+    }
+
     function test_DelayedSyncCannotCreateDistressedSeniorReserve() public {
         market.setDelinquent(true);
         usdc.mint(address(manager), 300e18);
@@ -531,7 +568,9 @@ contract TrancheTest is Test {
         market.setDelinquent(true);
         uint256 livePrice = 1.1e18;
         wrapper.setPrice(livePrice);
-        market.mintTokens(address(wrapper), 10e18);
+        // The mock tracks only normalised balances while the production market tracks scaled
+        // balances. One extra wei supplies the mock's final round-up without changing the case.
+        market.mintTokens(address(wrapper), 10e18 + 1);
         uint256 half = junior.balanceOf(jrLP) / 2;
 
         vm.startPrank(jrLP);
@@ -544,8 +583,10 @@ contract TrancheTest is Test {
         uint256 aggregateFace = wrapper.convertToAssets(wrapper.convertToShares(100e18));
         assertEq(uint256(firstFace) + uint256(secondFace), aggregateFace, "partitioned face");
         assertEq(manager.juniorWmtQueued(), aggregateFace, "class face");
-        assertEq(manager.markedAssets(), 100e18 - aggregateFace, "rounding stays in book value");
-        assertGt(wrapper.balanceOf(address(manager)), 0, "excluded appreciation remains in custody");
+        assertEq(manager.markedAssets(), 0, "zero-share facility has no live book value");
+        assertEq(wrapper.balanceOf(address(manager)), 0, "excluded appreciation is terminal custody");
+        assertEq(market.balanceOf(address(manager)), 0, "terminal custody is queued immediately");
+        assertEq(market.queueFullWithdrawalCalls(), 1, "terminal queue consumes exact market balance");
     }
 
     function test_LossHitsJuniorFirst() public {
@@ -682,7 +723,8 @@ contract TrancheTest is Test {
                 juniorGate: address(0),
                 seniorRateBips: SENIOR_RATE_BIPS,
                 minJuniorBips: MIN_JUNIOR_BIPS,
-                defaultPenaltyWindow: WINDOW
+                defaultPenaltyWindow: WINDOW,
+                terminalRecipient: borrower
             })
         );
         assertEq(address(openManager.seniorGate()), address(0));
@@ -700,7 +742,8 @@ contract TrancheTest is Test {
                 juniorGate: address(0),
                 seniorRateBips: SENIOR_RATE_BIPS,
                 minJuniorBips: MIN_JUNIOR_BIPS,
-                defaultPenaltyWindow: WINDOW
+                defaultPenaltyWindow: WINDOW,
+                terminalRecipient: borrower
             })
         );
     }
@@ -733,11 +776,12 @@ contract TrancheTest is Test {
         uint256 seniorShares = senior.balanceOf(srLP);
         vm.prank(srLP);
         manager.requestRedeem(true, seniorShares);
-        uint256 wrapperBefore = wrapper.balanceOf(address(manager));
         market.setDelinquent(true);
         uint256 livePrice = 1.1e18;
         wrapper.setPrice(livePrice);
-        market.mintTokens(address(wrapper), 10e18);
+        // The mock tracks only normalised balances while the production market tracks scaled
+        // balances. One extra wei supplies the mock's final round-up without changing the case.
+        market.mintTokens(address(wrapper), 10e18 + 1);
         uint256 juniorShares = junior.balanceOf(jrLP);
         vm.prank(jrLP);
         uint256 id = manager.requestRedeem(false, juniorShares);
@@ -746,8 +790,16 @@ contract TrancheTest is Test {
         uint256 expectedShares = (100e18 * 1e18) / livePrice;
         uint256 expectedFace = (expectedShares * livePrice) / 1e18;
         assertEq(face, expectedFace, "request uses scaled backing value");
-        assertEq(wrapperBefore - wrapper.balanceOf(address(manager)), expectedShares);
+        assertEq(wrapper.balanceOf(address(manager)), 0, "final burn queues residual wrapper custody");
+        assertEq(market.balanceOf(address(manager)), 0, "terminal custody is not left liquid");
+        assertEq(market.queueFullWithdrawalCalls(), 1, "terminal queue uses exact full withdrawal");
         assertEq(junior.totalSupply(), 0);
+        assertTrue(manager.terminalised(), "zero supply permanently closes the facility");
+
+        // The final redeem burns only the frozen-mark backing. The live-price remainder is queued
+        // separately for the immutable terminal recipient rather than becoming unclaimable dust.
+        uint32 expiry = uint32(block.timestamp + market.withdrawalBatchDuration());
+        assertGt(market.owed(address(manager), expiry), uint256(face), "terminal residual is queued");
 
         address nextJunior = address(0xB0B);
         juniorGate.setAllowed(nextJunior, true);
@@ -755,7 +807,7 @@ contract TrancheTest is Test {
         market.setDelinquent(false);
         vm.startPrank(nextJunior);
         usdc.approve(address(manager), 1e18);
-        vm.expectRevert(bytes("RESIDUAL_VALUE"));
+        vm.expectRevert(bytes("TERMINAL"));
         manager.depositJunior(1e18, nextJunior);
         vm.stopPrank();
     }
@@ -835,6 +887,20 @@ contract TrancheTest is Test {
         factory.deployTranches(
             otherSalt, _params(address(otherMarket), address(otherWrapper), address(otherHooks), address(otherProvider))
         );
+    }
+
+    function test_FactoryRejectsInvalidTerminalRecipient() public {
+        bytes32 otherSalt = keccak256("terminal-recipient");
+        TrancheFactory.DeployParams memory p =
+            _params(address(market), address(wrapper), address(hooks), address(provider));
+
+        p.terminalRecipient = address(0);
+        vm.expectRevert(TrancheFactory.TerminalRecipientInvalid.selector);
+        factory.deployTranches(otherSalt, p);
+
+        p.terminalRecipient = factory.computeManagerAddress(address(this), otherSalt);
+        vm.expectRevert(TrancheFactory.TerminalRecipientInvalid.selector);
+        factory.deployTranches(otherSalt, p);
     }
 
     function test_FactoryRejectsWrongSingletonLender() public {

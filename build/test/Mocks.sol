@@ -83,6 +83,7 @@ contract MockMarket {
     uint32 internal _lastInterestAccruedTimestamp;
     uint16 internal _annualInterestBips = 1000;
     uint16 public delinquencyFeeBips = 1;
+    uint256 public queueFullWithdrawalCalls;
 
     mapping(address => mapping(uint32 => uint256)) public owed;
     mapping(address => mapping(uint32 => uint256)) public paid;
@@ -192,10 +193,19 @@ contract MockMarket {
     }
 
     function queueWithdrawal(uint256 amount) external returns (uint32 expiry) {
-        balanceOf[msg.sender] -= amount;
+        return _queueWithdrawal(msg.sender, amount);
+    }
+
+    function queueFullWithdrawal() external returns (uint32 expiry) {
+        ++queueFullWithdrawalCalls;
+        return _queueWithdrawal(msg.sender, balanceOf[msg.sender]);
+    }
+
+    function _queueWithdrawal(address account, uint256 amount) internal returns (uint32 expiry) {
+        balanceOf[account] -= amount;
         totalSupply -= amount;
         expiry = uint32(block.timestamp + withdrawalBatchDuration);
-        owed[msg.sender][expiry] += amount;
+        owed[account][expiry] += amount;
     }
 
     function executeWithdrawal(address account, uint32 expiry) external returns (uint256) {

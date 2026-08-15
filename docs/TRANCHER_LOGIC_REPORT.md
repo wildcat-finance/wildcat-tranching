@@ -242,8 +242,9 @@ An exit follows the market queue:
 
 The wrapper-share conversion uses the live price even when tranche valuation is frozen. The manager
 records only the floor-normalised value backed by those scaled shares. Excluded delinquency
-appreciation stays wrapped until cure rather than entering the request, while conversion dust stays
-in class book value for terminal accounting.
+appreciation stays wrapped until cure rather than entering the request. If the final tranche burn
+leaves wrapper or market-token custody, the manager queues it immediately for the immutable
+terminal recipient rather than leaving it in class book value or exposing it to a new depositor.
 
 Settlement is FIFO within each class and senior-first between classes:
 
@@ -276,7 +277,8 @@ batch's scaled excess cannot become backing for a request queued in a later batc
 a separate reserve against live senior obligations during distress. A generic
 later `sync()` cannot prove the arrival state or batch of direct transfers, so all such cash enters
 `recoverySurplus` and no request can claim it. The tagged reserve can migrate only into senior face queued before cure; a
-junior request cannot relabel it. Terminal accounting will assign any unused amount.
+junior request cannot relabel it. Once the facility is terminal and all requests are claimed, the
+immutable terminal recipient receives the unused amount.
 
 If the manager itself is sanctioned, its execution hook reverts before the market marks a batch
 executed and sends proceeds to sanctions escrow. That escrow release does not carry a batch expiry,
@@ -325,7 +327,6 @@ The economic shape is fixed. The remaining questions are narrower:
 
 - real-stack recovery across multiple batches, live-senior reserve and sanctions settlement cases;
 - whether exact delinquency marking deserves a protocol callback;
-- the final allocation of wrapper, market-token and base-asset dust;
 - unique senior and junior token metadata;
 - which class gates, if any, the first facility should select at deployment;
 - protocol-fee recovery tests at zero, deployment and maximum permitted rates;

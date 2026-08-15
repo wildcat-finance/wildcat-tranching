@@ -37,7 +37,8 @@ class issuance and post-deposit custody identities, then queues senior and junio
 batch. It deliberately creates a 100-asset shortfall, proves the market's available withdrawal and
 execution-hook recovery booking, then proves senior-first allocation before a later repayment
 settles junior to the recorded holder. The shortfall makes the market delinquent at execution; all
-tranche face settles, but accrued market interest remains queued for terminal accounting.
+tranche face settles, while accrued market interest remains in a later market withdrawal batch
+outside that fork scenario.
 
 The fork also retains junior and senior exposure through a separate delinquent batch. It proves that
 the manager freezes a healthy aggregate mark, excludes later live upside, refuses new entry, and
@@ -64,14 +65,18 @@ The prototype makes these choices:
    can migrate only into a senior exit before cure.
 5. Market closure or an observed current delinquency counter at the fixed threshold triggers
    irreversible wind-down. Wind-down stops deposits and senior accrual.
-6. Terminal wrapper-share dust is not swept in this prototype and needs a production rule.
+6. `terminalRecipient` is an immutable nonzero facility term. When both share supplies first reach
+   zero, the facility cannot reopen and the manager queues every residual wrapper share and market
+   token. After all requests are claimed, custody and the live senior reserve are clear, anyone may
+   settle `recoverySurplus` to that recipient or its sanctions escrow. `pendingRequests` makes this
+   final check constant-cost.
 
 Required conservation statement:
 
 ```text
 manager live wrapper value + idle base asset + base asset already paid
   == active marked tranche value + queued claim value
-   + unrecognised delinquency appreciation + recovery surplus + explicit terminal dust
+   + unrecognised delinquency appreciation + recovery surplus
 ```
 
 The stale healthy-price case is conservative until cure. Market closure is checkpointed exactly by
@@ -396,5 +401,5 @@ reconstructible custody and recovery events. A small factory-owned deployer hold
 code so `TrancheFactory` remains below the EIP-170 runtime limit.
 
 The pinned V2.5 deployment and deposit path is covered in `build/test/Fork.t.sol`. The next work is
-a real-stack exit lifecycle, followed by terminal dust allocation and replacement of the remaining
+the remaining entry, sanctions and release-evidence work, followed by replacement of the remaining
 manager string reverts with typed errors.

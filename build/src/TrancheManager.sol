@@ -70,6 +70,7 @@ contract TrancheManager is ReentrancyGuard {
     }
 
     Request[] public requests;
+    uint256 public pendingRequests;
     /// @notice Cumulative class face (in wmt) queued strictly BEFORE each request: its place in the
     ///         class FIFO. Recovered cash fills each class in queue order, so a request is paid only
     ///         once allocation reaches its position. This is what makes settlement conserving.
@@ -93,6 +94,10 @@ contract TrancheManager is ReentrancyGuard {
     uint256 public seniorDebtReserveUSDC; // recovery admitted only against live distressed senior debt
     uint256 public recoverySurplus; // recovery above those obligations; never inherited by later requests
     uint256 public totalClaimedOut; // cumulative USDC paid out via claim (to owners or escrow)
+    /// @notice Immutable facility term which receives proven residual after every holder and
+    ///         request is settled. It cannot be selected by a last-minute tranche buyer.
+    address public terminalRecipient;
+    bool public terminalised;
 
     // ----- bounds -----
     uint256 internal constant MAX_SENIOR_RATE_BIPS = 1e4;
@@ -126,6 +131,8 @@ contract TrancheManager is ReentrancyGuard {
     event WithdrawalExecuted(uint32 indexed expiry, uint256 baseAssetsReceived, uint256 totalRecovered);
     event RecoveryAllocated(uint256 seniorDelta, uint256 juniorDelta, uint256 seniorTotal, uint256 juniorTotal);
     event Claimed(uint256 indexed id, address indexed owner, address indexed recipient, uint256 usdc, bool toEscrow);
+    event TerminalCustodyQueued(uint256 wrapperShares, uint256 marketTokens, uint32 expiry);
+    event TerminalSurplusSettled(address indexed terminalRecipient, address indexed recipient, uint256 usdc, bool toEscrow);
     event StatusChanged(Status indexed previousStatus, Status indexed newStatus);
     event AccountingCheckpoint(uint256 timestamp, uint256 seniorOwed, uint256 realisedValue);
 
@@ -137,6 +144,7 @@ contract TrancheManager is ReentrancyGuard {
         uint256 seniorRateBips;
         uint256 minJuniorBips;
         uint256 defaultPenaltyWindow;
+        address terminalRecipient;
     }
 
     constructor(address factory_) {
@@ -148,6 +156,7 @@ contract TrancheManager is ReentrancyGuard {
         require(msg.sender == factory, "ONLY_FACTORY");
         require(!initialized, "ALREADY_INITIALIZED");
         require(p.underlyingVault != address(0), "ZERO_ADDR");
+        require(p.terminalRecipient != address(0), "ZERO_TERMINAL_RECIPIENT");
         require(p.seniorGate == address(0) || p.seniorGate.code.length != 0, "BAD_SENIOR_GATE");
         require(p.juniorGate == address(0) || p.juniorGate.code.length != 0, "BAD_JUNIOR_GATE");
         require(p.seniorRateBips <= MAX_SENIOR_RATE_BIPS, "BAD_RATE");
@@ -159,6 +168,7 @@ contract TrancheManager is ReentrancyGuard {
         marketHooks = market.hooks().hooksAddress();
         borrowerPrincipal = market.borrowerPrincipal();
         baseAsset = IERC20(market.asset());
+        terminalRecipient = p.terminalRecipient;
         sentinel = IWildcatSanctionsSentinel(p.sentinel);
         seniorGate = IEnterGate(p.seniorGate);
         juniorGate = IEnterGate(p.juniorGate);
@@ -371,6 +381,7 @@ contract TrancheManager is ReentrancyGuard {
         // Retire any unqueued senior-debt reserve from an earlier delinquency before fresh capital
         // can enter and become the apparent justification for it.
         _syncRecovered();
+        require(!terminalised, "TERMINAL");
         require(status == Status.Active, "NOT_ACTIVE");
         require(!_delinquent(), "DELINQUENT");
         require(receiver != address(0), "ZERO_RECEIVER");
@@ -455,6 +466,8 @@ contract TrancheManager is ReentrancyGuard {
             require(assetValue <= WaterfallMath.maxJuniorWithdraw(sv, jv, minJuniorBips), "SUBORDINATION");
         }
         token.burn(msg.sender, shares); // effects before external interactions
+        bool enteringTerminal = senior.totalSupply() == 0 && junior.totalSupply() == 0;
+        if (enteringTerminal) terminalised = true;
 
         // Remove an exact number of scaled wrapper shares, then denominate the request at the
         // floor-normalised value of those shares. The wrapper's redeem label and the market queue
@@ -480,11 +493,37 @@ contract TrancheManager is ReentrancyGuard {
         requests.push(
             Request({owner: msg.sender, isSenior: isSenior, wmt: uint128(requestFace), usdcClaimed: 0, expiry: expiry})
         );
+        ++pendingRequests;
         emit RedeemRequested(id, isSenior, msg.sender, shares, shares4626, requestFace, expiry);
         if (isSenior && _distressed()) _migrateSeniorDebtReserve(expiry, requestFace);
         // A newly queued senior (more senior room) or a reduced senior obligation (a senior exit) can
         // release cash that was being held back; re-run allocation so it reaches the right class.
         _allocate();
+        // A frozen mark can make the final tranche burn consume fewer live-priced wrapper shares
+        // than remain in custody. That excess belongs to the immutable facility residual, not to a
+        // later capital cycle (which is forbidden once this point is reached). Queue it now so the
+        // terminal settlement path can never be stranded behind an unreachable wrapper balance.
+        if (enteringTerminal) _queueTerminalCustody();
+    }
+
+    /// @dev Once both supplies are zero, no live holder exists to own residual wrapper or market
+    ///      custody. Queue it alongside the final holder withdrawal; its unaffiliated receipt is
+    ///      deliberately booked as `recoverySurplus` by the authenticated execution callback.
+    function _queueTerminalCustody() internal {
+        uint256 wrapperShares = underlyingVault.balanceOf(address(this));
+        if (wrapperShares > 0) {
+            underlyingVault.redeem(wrapperShares, address(this), address(this));
+        }
+
+        uint256 marketTokens = market.balanceOf(address(this));
+        // There is no longer a tranche claim on the aggregate mark once both supplies are gone.
+        markedAssets = 0;
+        if (marketTokens == 0) return;
+        // `balanceOf` is normalised while the market keeps scaled balances. Queueing that displayed
+        // amount can round back down and strand a scaled unit, so terminal custody must use the
+        // market's exact full-balance primitive.
+        uint32 expiry = market.queueFullWithdrawal();
+        emit TerminalCustodyQueued(wrapperShares, marketTokens, expiry);
     }
 
     function pokeRecovery(uint32 expiry) external nonReentrant {
@@ -645,6 +684,7 @@ contract TrancheManager is ReentrancyGuard {
         amt = claimable(id);
         if (amt == 0) return 0;
         r.usdcClaimed += uint128(amt); // effects before transfer
+        if (r.usdcClaimed == r.wmt) --pendingRequests;
         totalClaimedOut += amt; // keep recoveredUSDC = idle balance + claimed invariant intact
 
         bool toEscrow = _isSanctioned(r.owner);
@@ -652,6 +692,29 @@ contract TrancheManager is ReentrancyGuard {
         if (toEscrow) recipient = sentinel.createEscrow(borrowerPrincipal, r.owner, address(baseAsset));
         address(baseAsset).safeTransfer(recipient, amt);
         emit Claimed(id, r.owner, recipient, amt, toEscrow);
+    }
+
+    /// @notice Release base asset which is provably outside every tranche claim after the final
+    ///         position and request have settled. The recipient is an immutable facility term,
+    ///         never selected by this caller or by the final share burn.
+    function settleTerminalSurplus() external nonReentrant returns (uint256 amt) {
+        accrue();
+        _syncRecovered();
+        require(terminalised, "NOT_TERMINAL");
+        require(senior.totalSupply() == 0 && junior.totalSupply() == 0, "LIVE_SUPPLY");
+        require(underlyingVault.balanceOf(address(this)) == 0 && market.balanceOf(address(this)) == 0, "LIVE_CUSTODY");
+        require(seniorDebtReserveUSDC == 0, "SENIOR_RESERVE");
+        require(pendingRequests == 0, "REQUESTS_PENDING");
+
+        amt = recoverySurplus;
+        if (amt == 0) return 0;
+        recoverySurplus = 0;
+        totalClaimedOut += amt;
+        bool toEscrow = _isSanctioned(terminalRecipient);
+        address recipient = terminalRecipient;
+        if (toEscrow) recipient = sentinel.createEscrow(borrowerPrincipal, terminalRecipient, address(baseAsset));
+        address(baseAsset).safeTransfer(recipient, amt);
+        emit TerminalSurplusSettled(terminalRecipient, recipient, amt, toEscrow);
     }
 
     function requestsLength() external view returns (uint256) {

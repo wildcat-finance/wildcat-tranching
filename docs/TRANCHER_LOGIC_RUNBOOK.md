@@ -141,8 +141,11 @@ the aggregate mark falls by that backed face. If the live wrapper price is above
 mark, unrecognised appreciation stays wrapped and outside book value until cure. Splitting an exit
 cannot queue more than the marked class value or borrow backing from a later FIFO request.
 
-If a class has zero token supply but nonzero value, deposits into that class remain closed. A later
-terminal-accounting stage will assign the residual; a first depositor cannot take it.
+The first moment both tranche supplies reach zero, the facility closes permanently. The factory
+has already fixed a nonzero `terminalRecipient` for that facility and rejects the manager address
+as a recipient. The final burn queues every wrapper share and market token left in custody. Its
+receipt has no request face, so it reaches `recoverySurplus`; it cannot be relabelled as backing for
+another capital cycle because deposits are closed forever.
 
 ### Tests
 
@@ -157,6 +160,8 @@ Prove:
 - recovery above existing obligations cannot be claimed by a later request;
 - a junior request cannot substitute for the live senior debt which admitted an earlier reserve;
 - zero supply plus residual class value cannot be captured by a new depositor.
+- a final burn queues residual wrapper custody, leaves no live market-token balance and cannot
+  redirect terminal surplus to the final holder or settlement caller.
 
 Stage status: complete under the current-counter delinquency semantics above. Unit, fuzz and fork
 tests cover partition-independent accrual, fractional carry, exact closure, the configured
@@ -408,21 +413,24 @@ wind-down.
 
 ## Stage 8: settle terminal accounting
 
-Write the terminal rule before adding a sweep.
+The terminal recipient is a facility term supplied to `TrancheFactory.deployTranches`, not a prize
+for whichever holder burns their last wei latest. It is immutable, nonzero, and cannot be the
+predicted manager address.
 
-It must cover:
+When both supplies first reach zero, `terminalised` closes deposits for good. The request that
+caused it queues its own backed face, then the manager redeems and queues any residual wrapper or
+market-token custody with `queueFullWithdrawal()`, which consumes its exact scaled market balance.
+The latter has no request face and is therefore terminal surplus when the market batch executes. A
+direct base-asset transfer remains terminal surplus for the same reason.
 
-1. both tranche supplies are zero while requests remain unpaid;
-2. all requests are paid while wrapper dust remains;
-3. direct base assets arrive after the final claim;
-4. senior is fully paid and junior residual remains;
-5. both classes are impaired and the last conversion rounds down.
-
-Prefer a deterministic final-recipient rule. Any sweep must be limited to a proven surplus and must
-not choose an arbitrary destination.
+`pendingRequests` is incremented once per request and decremented only on its final claim. This
+makes the final check constant-cost even if holders created many small requests. Anyone can call
+`settleTerminalSurplus()` only after supplies are zero, custody is empty, the live senior reserve is
+zero and `pendingRequests` is zero. It pays the immutable recipient, or that recipient's sanctions
+escrow, and cannot touch an outstanding queue entitlement.
 
 Exit condition: no attributable wrapper share, market token or base asset can be stranded, and no
-caller can take value owed to an active request.
+holder, keeper or later depositor can choose the recipient of terminal value.
 
 ## Stage 9: finish entry, sanctions and metadata
 
@@ -472,8 +480,9 @@ Release evidence should name:
 - fixed senior rate, junior floor and default window;
 - protocol fee at deployment, its permitted bound, fee recipient and update authority;
 - immutable entry gates and sanctions sentinel;
+- immutable terminal recipient and its terminalisation rule;
 - test commands and results;
-- any remaining conservative marking or terminal-dust limitation.
+- any remaining conservative marking limitation.
 
 ## Suggested PR sequence
 
@@ -483,7 +492,7 @@ Release evidence should name:
 3. **Real deposit lifecycle:** base asset through market and wrapper into tranche shares.
 4. **Real exit lifecycle:** burn through queue, recovery allocation and claim.
 5. **Delinquency and recovery:** frozen mark, objective wind-down and stateful distress cases.
-6. **Terminal accounting:** final request and dust rules.
+6. **Terminal accounting:** immutable recipient, final request and residual-custody settlement.
 7. **Entry surface:** gate integration, real sanctions path and unique metadata.
 
 Each PR changes one accounting proposition at a time and carries the test which states it.
