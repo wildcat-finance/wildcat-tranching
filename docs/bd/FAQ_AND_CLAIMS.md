@@ -10,8 +10,9 @@ Junior takes loss first. Senior takes loss after junior reaches zero.
 
 ## Who gets paid first?
 
-Senior gets facility value and recovery cash first. Junior gets what remains. Requests stay FIFO inside
-each class.
+Senior has first claim on facility value. Senior exit requests clear before junior exit requests, and
+requests stay FIFO inside each class. During distress, cash is also reserved for the remaining live
+senior obligation.
 
 ## Is senior guaranteed?
 
@@ -19,13 +20,13 @@ No. Priority is not protection from a loss large enough to wipe out junior.
 
 ## Is the junior cushion maintained?
 
-No. It is checked when senior enters and when junior exits during normal operation. It can shrink or
-disappear after a loss.
+No. It is checked when senior enters and when junior exits while the manager remains Active. It can
+shrink or disappear after a loss.
 
 ## Is the senior target the loan coupon?
 
-No. The loan coupon is what the borrower pays. The senior target is how the facility divides value
-between senior and junior.
+No. The loan coupon is what the borrower pays. The senior target is an annual simple accounting hurdle
+used to divide value between senior and junior.
 
 ## How do I get cash out?
 
@@ -51,14 +52,15 @@ Not by itself. Legal default, enforcement and remedies belong in the deal docume
 
 ## What does the borrower pay?
 
-The loan rate plus the platform charge, before origination and arrears charges. The current facility adds
-no second manager fee. The platform charge is calculated on lender interest, not principal.
+The loan rate plus the Wildcat protocol fee, before origination and arrears charges. The current facility
+adds no second manager fee. The protocol fee is a platform charge calculated on lender interest, not
+principal.
 
 ## Who chooses the terms?
 
-The borrower proposes the senior target, junior percentage, extra workout window, class eligibility and
-final surplus recipient inside fixed ranges. Those facility terms are set once. Loan operating terms and
-platform settings sit elsewhere.
+The borrower proposes the senior target, junior percentage, extra workout window, fixed class-gate
+addresses and final surplus recipient inside fixed ranges. Manager economics and gate addresses are set
+once. Policy inside an external gate may change; loan and platform authorities sit elsewhere.
 
 ## Can the deal be repriced later?
 
@@ -68,7 +70,8 @@ Any consent rights need to be written into the offchain deal.
 ## What happens under sanctions?
 
 A sanctioned holder can exit, with proceeds routed to escrow. If the facility account is sanctioned,
-settlement for everyone waits until it is clear and the payment is retried.
+new withdrawal-batch execution and recovery are deferred for everyone until clearance and retry. Cash
+already allocated can still be claimed, subject to the holder's own sanctions routing.
 
 ## What belongs in credit committee?
 
@@ -81,8 +84,8 @@ No. It is a tested prototype. It is not rated, audited or in production.
 
 ## Say this
 
-One borrower exposure. Senior priority. Junior first loss. Fixed senior target. Asynchronous cash exit.
-Controlled transferability. Terms fixed at formation.
+One borrower exposure. Senior priority. Junior first loss. Annual simple senior target. Asynchronous cash
+exit. Controlled transferability. Manager economics and gate addresses fixed at formation.
 
 ## Never say this
 

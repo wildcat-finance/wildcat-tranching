@@ -70,3 +70,27 @@ Leads not pursued: none.
 | none | none | none | No finding. | clean |
 
 Leads not pursued: none.
+
+## Step 3, round 1 -- 15 August 2026
+
+| id | severity | file | finding | status |
+| --- | --- | --- | --- | --- |
+| S3-R1-01 | high | outward BD pack and `one-market-two-claims.svg` | "Senior gets paid first" overstated healthy cash priority. Senior has first claim on realised value and senior requests clear before junior requests; only distress also reserves cash for the remaining live senior obligation. | fixed in this audit branch |
+| S3-R1-02 | high | outward BD pack and rate graphics | The senior target lost its annual, simple-accrual basis and could be read as a lifetime hurdle or loan coupon. | fixed in this audit branch |
+| S3-R1-03 | medium | `healthy-lifecycle.svg` | Funding steps said each class received "interest" rather than tranche shares, before any senior target could accrue. | fixed in this audit branch |
+| S3-R1-04 | medium | `FAQ_AND_CLAIMS.md`, `PARAMETER_DISCOVERY.md` | Facility-account sanctions were said to halt all settlement. They defer new withdrawal-batch execution and recovery, not claims against cash already allocated. | fixed in this audit branch |
+| S3-R1-05 | low | `PRIMER.md` | The 340-value example called the junior mark's full 75 reduction a loss even though 15 came from senior accrual; the 280 case also blurred shortfall to target with loss below principal. | fixed in this audit branch |
+| S3-R1-06 | medium | `parameter-authority.svg` | Loan-borrower, loan-administrator, fee-setting and fee-propagation powers were grouped without naming their different actors. | fixed in this audit branch |
+| S3-R1-07 | medium | outward BD pack and `parameter-authority.svg` | Fixed gate addresses were blurred with external eligibility policy, which may change if the gate permits it. | fixed in this audit branch |
+| S3-R1-08 | medium | `PRIMER.md`, `PARAMETER_DISCOVERY.md`, `FAQ_AND_CLAIMS.md` | The junior-floor exit check was described as a normal-operation rule although it applies whenever the manager remains Active, including pre-wind-down arrears. | fixed in this audit branch |
+| S3-R1-09 | medium | `priority-waterfall.svg` | Scenario bars used different scales and visually changed the 315 senior claim between the 420 and 340 cases. | fixed in this audit branch |
+| S3-R1-10 | medium | `healthy-lifecycle.svg`, `INFOGRAPHICS.md` | Number badges, one connector and warning-box copy collided or broke the intended flow, making the no-overlap verification claim false. | fixed in this audit branch |
+| S3-R1-11 | medium | outward fee copy and `cost-and-yield-bridge.svg` | Platform charge, platform fee, platform APR and protocol fee looked like different costs; the zero facility fee also lacked a current-prototype qualifier. | fixed in this audit branch |
+| S3-R1-12 | medium | `INFOGRAPHICS.md`, `DELIVERY_RUNBOOK.md` | Foundry and invariant diagnostics sat in the outward gallery and could distract a desk or be mistaken for product assurance. | fixed in this audit branch |
+| S3-R1-13 | low | `one-market-two-claims.svg` | Redundant holder connectors crossed core copy and did not route symmetrically. | fixed in this audit branch |
+| S3-R1-14 | low | `parameter-authority.svg` | "Verified implementation" could imply formal or independent assurance. | fixed in this audit branch |
+
+The minimum credited first-deposit amount and separate loan minimum-deposit question were restored to the
+worksheet from an audit lead. Direct official links were not added to the outward pages: the repository's
+internal research report remains the source ledger, while the meeting pack is designed to travel with its
+plain prototype qualification.

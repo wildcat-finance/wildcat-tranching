@@ -4,9 +4,9 @@
 
 One borrower. One facility. Two tickets.
 
-Junior takes the first loss and owns the residual. Senior sits above it, earns a fixed accounting target
-and gets the first cash back. The structure gives the borrower access to two risk books without pretending
-the underlying credit changed.
+Junior takes the first loss and owns the residual. Senior sits above it, accrues an annual simple
+accounting target and has first claim on realised value. Senior exit requests clear before junior
+requests. The structure reaches two risk books without pretending the underlying credit changed.
 
 Then stop talking and ask about the deal.
 
@@ -20,15 +20,16 @@ Then stop talking and ask about the deal.
 
 ## Numbers to leave with
 
-- senior target: 0% to 100%;
+- senior target: 0% to 100% per year, simple accrual;
 - junior percentage at entry: 5% to 90%;
 - extra workout window after loan grace: more than 0 and no more than 90 days;
 - senior and junior eligibility: open or controlled;
 - loan rate, size, reserve, arrears charge and withdrawal period;
-- platform and origination charges; and
+- Wildcat protocol and origination charges; and
 - final recipient for genuine surplus after everyone is paid.
 
-The borrower proposes the facility terms at formation. They are not a standing right to reprice the deal.
+The borrower proposes the facility terms at formation. Manager economics and gate addresses are fixed;
+policy inside an external gate may change. None of this is a standing right to reprice the deal.
 
 ## If they are senior
 

@@ -16,47 +16,46 @@
   <text class="h" x="177" y="168" text-anchor="middle">Borrower at closing</text>
   <text class="tag" x="177" y="192" text-anchor="middle">FACILITY TERMS · FIXED</text>
   <line class="rule" x1="70" y1="212" x2="285" y2="212"/>
-  <text class="t" x="72" y="244">Senior target: 0–100%</text>
+  <text class="t" x="72" y="244">Senior target: 0–100% p.a.</text>
   <text class="t" x="72" y="278">Junior share: 5–90%</text>
   <text class="t" x="72" y="312">Extra window: &gt;0–90 days</text>
-  <text class="t" x="72" y="346">Senior eligibility</text>
-  <text class="t" x="72" y="380">Junior eligibility</text>
+  <text class="t" x="72" y="346">Senior gate address</text>
+  <text class="t" x="72" y="380">Junior gate address</text>
   <text class="t" x="72" y="414">Final surplus recipient</text>
   <text class="t" x="72" y="448">Formation reference</text>
   <line class="rule" x1="70" y1="470" x2="285" y2="470"/>
   <text class="tag" x="177" y="500" text-anchor="middle">NO LATER REPRICING</text>
   <text class="t" x="177" y="528" text-anchor="middle">All terms supplied up front</text>
-  <text class="t" x="177" y="552" text-anchor="middle">Eligibility policy may change</text>
+  <text class="t" x="177" y="552" text-anchor="middle">External gate policy may change</text>
 
   <rect class="c2" x="330" y="130" width="265" height="465" rx="14"/>
   <text class="h" x="462" y="168" text-anchor="middle">Underlying loan</text>
   <text class="tag" x="462" y="192" text-anchor="middle">OPERATING TERMS</text>
   <line class="rule" x1="355" y1="212" x2="570" y2="212"/>
-  <text class="t" x="357" y="244">Lender rate and facility size</text>
+  <text class="t" x="357" y="244">Loan borrower: rate and size</text>
   <text class="t" x="357" y="278">Liquidity reserve</text>
   <text class="t" x="357" y="312">Cash withdrawal period</text>
   <text class="t" x="357" y="346">Arrears charge and grace</text>
-  <text class="t" x="357" y="380">Rate and size can change</text>
-  <text class="t" x="357" y="414">Operating minimum can change</text>
-  <text class="t" x="357" y="448">Administrator can stop new money</text>
+  <text class="t" x="357" y="380">Borrower can change rate and size</text>
+  <text class="t" x="357" y="414">Loan admin: operating minimum</text>
+  <text class="t" x="357" y="448">Loan admin can stop new money</text>
   <line class="rule" x1="355" y1="470" x2="570" y2="470"/>
-  <text class="tag" x="462" y="500" text-anchor="middle">DILIGENCE AMENDMENT RIGHTS</text>
-  <text class="t" x="462" y="528" text-anchor="middle">Cannot rewrite the waterfall</text>
+  <text class="tag" x="462" y="500" text-anchor="middle">ADMIN ROLE CAN TRANSFER</text>
+  <text class="t" x="462" y="528" text-anchor="middle">Neither role rewrites the waterfall</text>
 
   <rect class="c3" x="615" y="130" width="265" height="465" rx="14"/>
   <text class="h" x="747" y="168" text-anchor="middle">Platform</text>
   <text class="tag" x="747" y="192" text-anchor="middle">SEPARATE FROM THE DEAL</text>
   <line class="rule" x1="640" y1="212" x2="855" y2="212"/>
-  <text class="t" x="642" y="244">Platform fee rate</text>
-  <text class="t" x="642" y="278">Fee recipient</text>
-  <text class="t" x="642" y="312">Origination charge</text>
-  <text class="t" x="642" y="346">Sanctions and escrow</text>
-  <text class="t" x="642" y="380">Custody and settlement rails</text>
-  <text class="t" x="642" y="414">Verified implementation</text>
+  <text class="t" x="642" y="244">ArchController owner: fee rate</text>
+  <text class="t" x="642" y="278">Any caller can propagate set rate</text>
+  <text class="t" x="642" y="312">Existing fee recipient is fixed</text>
+  <text class="t" x="642" y="346">Origination charge</text>
+  <text class="t" x="642" y="380">Sanctions and escrow</text>
+  <text class="t" x="642" y="414">Custody and settlement rails</text>
   <line class="rule" x1="640" y1="438" x2="855" y2="438"/>
-  <text class="t" x="642" y="470">Fee rate may change</text>
-  <text class="t" x="642" y="504">Existing fee recipient is fixed</text>
-  <text class="t" x="642" y="538">Borrower cannot replace the rails</text>
+  <text class="t" x="642" y="470">Pinned code and dependencies</text>
+  <text class="t" x="642" y="504">Borrower cannot replace the rails</text>
 
   <rect class="c4" x="900" y="130" width="255" height="465" rx="14"/>
   <text class="h" x="1027" y="168" text-anchor="middle">Facility mechanics</text>
