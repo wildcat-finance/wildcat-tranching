@@ -329,6 +329,10 @@ separate hardening work.
 - repeat with market closure;
 - prove deposits stay closed while requests, batch execution, `sync()` and claims remain live.
 
+Stage status: the pinned fork now proves frozen aggregate marking, exclusion of live upside, entry
+refusal and cure recognition during a short delinquency. It does not reconstruct a past continuous
+delinquency interval, and it does not prove the later wind-down threshold against the real stack.
+
 Exit condition: no account can choose the default outcome, and the transition cannot leak the final
 senior accrual interval to junior.
 

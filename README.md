@@ -105,7 +105,8 @@ deployment, hook wiring, base-asset entry and a two-step queued settlement: an i
 puts a later senior request ahead of earlier junior requests, then later recovery settles junior to
 the recorded claimant. That shortfall makes the market delinquent at execution and leaves accrued
 interest in its batch; terminal dust handling and a production settlement policy are deliberately
-not included.
+not included. A second fork path proves a frozen mark, entry refusal and live-mark refresh after a
+delinquency cure.
 
 ## Read before implementing
 

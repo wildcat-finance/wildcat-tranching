@@ -86,6 +86,14 @@ contract ForkTest is Test {
         uint32 expiry;
     }
 
+    struct Facility {
+        WildcatMarket market;
+        TrancheManager manager;
+        address marketAddress;
+        address managerAddress;
+        address wrapperAddress;
+    }
+
     function setUp() public {
         string memory rpc = vm.envOr("MAINNET_RPC_URL", DEFAULT_RPC);
         vm.createSelectFork(rpc, FORK_BLOCK);
@@ -163,6 +171,78 @@ contract ForkTest is Test {
         assertFalse(manager.junior().isSenior(), "junior class");
 
         _exerciseExitLifecycle(manager, market, asset, managerAddress, wrapperAddress);
+    }
+
+    function test_fork_delinquencyMarksAndCures() public {
+        Facility memory facility = _deployFacility();
+        asset.mint(address(this), 400e18);
+        asset.approve(facility.managerAddress, 400e18);
+        facility.manager.depositJunior(100e18, address(this));
+        facility.manager.depositSenior(300e18, address(this));
+
+        facility.market.borrow(300e18);
+        facility.manager.requestRedeem(false, 25e18);
+        facility.manager.requestRedeem(true, 250e18);
+
+        uint256 mark = facility.manager.markedAssets();
+        assertEq(mark, 125e18, "requests reduce the aggregate mark by backed face");
+        assertTrue(facility.market.currentState().isDelinquent, "unpaid batch makes market delinquent");
+
+        vm.warp(block.timestamp + 1 days);
+        uint256 live = Wildcat4626Wrapper(facility.wrapperAddress).convertToAssets(
+            Wildcat4626Wrapper(facility.wrapperAddress).balanceOf(facility.managerAddress)
+        );
+        assertGt(live, mark, "retained wrapper position accrues live value");
+        facility.manager.accrue();
+        assertEq(facility.manager.markedAssets(), mark, "delinquent checkpoint preserves healthy mark");
+        assertEq(facility.manager.realisedValue(), mark, "delinquent upside remains excluded from the mark");
+        vm.expectRevert(bytes("DELINQUENT"));
+        facility.manager.depositJunior(1e18, address(this));
+
+        asset.approve(facility.marketAddress, 300e18);
+        facility.market.repay(300e18);
+        assertFalse(facility.market.currentState().isDelinquent, "repayment cures liquidity shortfall");
+        facility.manager.accrue();
+        assertEq(facility.manager.markedAssets(), facility.manager.realisedValue(), "cure refreshes the live mark");
+        assertGt(facility.manager.markedAssets(), mark, "cure recognises retained live value");
+    }
+
+    function _deployFacility() internal returns (Facility memory facility) {
+        _deployProtocolStack();
+        address predictedManager = trancheFactory.computeManagerAddress(address(this), MANAGER_SALT);
+        bytes memory hooksConstructorArgs = _singletonConstructorArgs(predictedManager);
+        DeployMarketInputs memory marketInputs = _marketInputs();
+        bytes32 marketSalt = bytes32((uint256(uint160(address(this))) << 96) | uint256(14));
+        address hooksAddress;
+        (facility.marketAddress, hooksAddress) = hooksFactory.deployMarketAndHooks(
+            singletonHooksTemplate,
+            hooksConstructorArgs,
+            marketInputs,
+            abi.encode(uint128(0), false),
+            marketSalt,
+            address(0),
+            0
+        );
+        facility.wrapperAddress = wrapperFactory.createWrapper(facility.marketAddress);
+        RoleProvider[] memory providers = SingletonOpenTermHooks(hooksAddress).getPullProviders();
+        facility.managerAddress = trancheFactory.deployTranches(
+            MANAGER_SALT,
+            TrancheFactory.DeployParams({
+                market: facility.marketAddress,
+                wrapper: facility.wrapperAddress,
+                hooks: hooksAddress,
+                singletonProvider: providers[0].providerAddress(),
+                sentinel: address(sentinel),
+                borrower: address(this),
+                seniorGate: address(0),
+                juniorGate: address(0),
+                seniorRateBips: 800,
+                minJuniorBips: 2000,
+                defaultPenaltyWindow: 28 days
+            })
+        );
+        facility.market = WildcatMarket(facility.marketAddress);
+        facility.manager = TrancheManager(facility.managerAddress);
     }
 
     function _exerciseExitLifecycle(

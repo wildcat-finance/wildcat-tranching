@@ -20,8 +20,9 @@ Supporting an earlier
 V2 market without an equivalent immutable admission primitive is a separate design.
 
 The real-stack proof covers one bounded delinquent shortfall and later repayment. Broader
-delinquency, the terminal interest/dust rule and sanctions settlement remain hardening work, rather
-than a claim that this is ready for deployment.
+delinquency, the terminal interest/dust rule and sanctions settlement remain hardening work. A
+separate fork case proves frozen marking, entry refusal and cure recognition without claiming that
+this is ready for deployment.
 
 ## Terms
 

@@ -323,8 +323,7 @@ The implementation and tests should state these directly:
 
 The economic shape is fixed. The remaining questions are narrower:
 
-- real-stack recovery across multiple batches, live-senior reserve, delinquency and sanctions
-  settlement cases;
+- real-stack recovery across multiple batches, live-senior reserve and sanctions settlement cases;
 - whether exact delinquency marking deserves a protocol callback;
 - the final allocation of wrapper, market-token and base-asset dust;
 - unique senior and junior token metadata;

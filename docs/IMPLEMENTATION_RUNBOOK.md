@@ -39,6 +39,10 @@ execution-hook recovery booking, then proves senior-first allocation before a la
 settles junior to the recorded holder. The shortfall makes the market delinquent at execution; all
 tranche face settles, but accrued market interest remains queued for terminal accounting.
 
+The fork also retains junior and senior exposure through a separate delinquent batch. It proves that
+the manager freezes a healthy aggregate mark, excludes later live upside, refuses new entry, and
+refreshes the mark only after repayment cures the market.
+
 ## Gate 2: Prototype accounting semantics
 
 The prototype makes these choices:
