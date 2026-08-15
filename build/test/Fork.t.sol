@@ -2,7 +2,7 @@
 pragma solidity ^0.8.25;
 
 import "forge-std/Test.sol";
-import {TrancheController} from "../src/TrancheController.sol";
+import {TrancheManager} from "../src/TrancheManager.sol";
 import {IUnderlying4626, IWildcatMarket, MarketState} from "../src/interfaces/IExternal.sol";
 
 /// @notice Fork tests against the REAL deployed Wildcat contracts on Ethereum mainnet.
@@ -18,7 +18,7 @@ contract ForkTest is Test {
 
     IUnderlying4626 wrapper;
     IWildcatMarket market;
-    TrancheController c;
+    TrancheManager c;
 
     address srLP = address(0x5E11);
     address jrLP = address(0x10110);
@@ -35,8 +35,8 @@ contract ForkTest is Test {
         wrapper = IUnderlying4626(WRAPPER);
         market = IWildcatMarket(wrapper.market());
 
-        c = new TrancheController(
-            TrancheController.Params({
+        c = new TrancheManager(
+            TrancheManager.Params({
                 underlyingVault: WRAPPER,
                 sentinel: address(0), // sanctions logic is unit-tested; skip on fork
                 borrower: address(0xB0110), // unused while sentinel is zero; non-zero per ZERO_BORROWER guard

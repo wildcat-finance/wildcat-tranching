@@ -16,12 +16,8 @@ library WaterfallMath {
 
     /// @notice Linear accrual of the senior's owed claim at an annual bips rate (Wildcat-style,
     ///         linear-per-update). Senior accrues only while the market is performing; the
-    ///         controller stops calling this once a default is mirrored on-chain.
-    function accrueSeniorOwed(uint256 seniorOwed, uint256 annualRateBips, uint256 dt)
-        internal
-        pure
-        returns (uint256)
-    {
+    ///         manager stops calling this once a default is mirrored on-chain.
+    function accrueSeniorOwed(uint256 seniorOwed, uint256 annualRateBips, uint256 dt) internal pure returns (uint256) {
         if (seniorOwed == 0 || annualRateBips == 0 || dt == 0) return seniorOwed;
         uint256 interest = (seniorOwed * annualRateBips * dt) / (BIPS * YEAR);
         return seniorOwed + interest;
@@ -75,7 +71,7 @@ library WaterfallMath {
         uint256 lhsJ = juniorValue * BIPS;
         uint256 rhs = minJuniorBips * tvl;
         if (lhsJ <= rhs) return 0;
-        uint256 den = BIPS - minJuniorBips; // minJuniorBips < BIPS enforced by controller
+        uint256 den = BIPS - minJuniorBips; // minJuniorBips < BIPS enforced by manager
         return (lhsJ - rhs) / den;
     }
 
@@ -85,7 +81,7 @@ library WaterfallMath {
     ///             timeDelinquent >= delinquencyGracePeriod + penaltyWindow.
     /// @dev This is NOT the 90-day cap on the grace period itself; default requires grace to be
     ///      exhausted AND then lapped by `penaltyWindow` (default 90 days). A bilateral Loan
-    ///      Agreement may supersede this; the controller exposes a per-market override path.
+    ///      Agreement may supersede this; the manager exposes a per-market override path.
     function defaultReached(uint256 timeDelinquent, uint256 gracePeriod, uint256 penaltyWindow)
         internal
         pure

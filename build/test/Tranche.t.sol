@@ -2,7 +2,7 @@
 pragma solidity ^0.8.25;
 
 import "forge-std/Test.sol";
-import {TrancheController} from "../src/TrancheController.sol";
+import {TrancheManager} from "../src/TrancheManager.sol";
 import {TrancheFactory} from "../src/TrancheFactory.sol";
 import {TrancheToken} from "../src/TrancheToken.sol";
 import {MockERC20, MockMarket, MockWrapper, MockSentinel, MockArch} from "./Mocks.sol";
@@ -12,7 +12,7 @@ contract TrancheTest is Test {
     MockMarket market;
     MockWrapper wrapper;
     MockSentinel sentinel;
-    TrancheController c;
+    TrancheManager c;
     TrancheToken senior;
     TrancheToken junior;
 
@@ -32,8 +32,8 @@ contract TrancheTest is Test {
         wrapper = new MockWrapper(address(market));
         sentinel = new MockSentinel();
 
-        c = new TrancheController(
-            TrancheController.Params({
+        c = new TrancheManager(
+            TrancheManager.Params({
                 underlyingVault: address(wrapper),
                 sentinel: address(sentinel),
                 borrower: borrower,
@@ -140,7 +140,7 @@ contract TrancheTest is Test {
         market.setTimeDelinquent(uint32(10 days + WINDOW)); // grace + 90d penalty
         assertTrue(c.defaultReached(), "ToU default");
         c.checkDefault();
-        assertEq(uint256(c.status()), uint256(TrancheController.Status.WindDown));
+        assertEq(uint256(c.status()), uint256(TrancheManager.Status.WindDown));
         assertEq(c.seniorOwedAtDefault(), owedBefore);
 
         vm.warp(block.timestamp + 365 days);
@@ -151,7 +151,7 @@ contract TrancheTest is Test {
     function test_DeclareDefaultOverride() public {
         vm.prank(declarer);
         c.declareDefault();
-        assertEq(uint256(c.status()), uint256(TrancheController.Status.WindDown));
+        assertEq(uint256(c.status()), uint256(TrancheManager.Status.WindDown));
         assertTrue(c.forcedDefault());
     }
 
@@ -311,9 +311,9 @@ contract TrancheFactoryTest is Test {
         factory.deployTranches(p);
 
         arch.setRegistered(address(market), true);
-        address ctrl = factory.deployTranches(p);
-        assertEq(factory.controllerForMarket(address(market)), ctrl);
-        assertEq(factory.controllersLength(), 1);
+        address manager = factory.deployTranches(p);
+        assertEq(factory.managerForMarket(address(market)), manager);
+        assertEq(factory.managersLength(), 1);
 
         vm.expectRevert(bytes("TRANCHES_EXIST"));
         factory.deployTranches(p);

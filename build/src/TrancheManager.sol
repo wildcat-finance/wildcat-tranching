@@ -7,13 +7,13 @@ import {IUnderlying4626, IWildcatMarket, ISentinelLike, IERC20, MarketState} fro
 import {ReentrancyGuard} from "solady/utils/ReentrancyGuard.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 
-/// @title TrancheController
+/// @title TrancheManager
 /// @notice Senior/junior credit-tranche vault over a Wildcat ERC-4626 market wrapper (v-wmtUSDC).
 ///         Conservative Phase-0 model: priority-funded senior target (not a guarantee), junior
 ///         first-loss, fixed subordination floor, realised-only valuation, async redemption that
 ///         routes through the market's batched withdrawal queue senior-first, escrow on sanction,
 ///         and a default trigger mirroring Wildcat ToU §6.2 (grace + penalty window) on-chain.
-contract TrancheController is ReentrancyGuard {
+contract TrancheManager is ReentrancyGuard {
     using SafeTransferLib for address;
 
     // ----- immutable wiring -----
@@ -87,7 +87,9 @@ contract TrancheController is ReentrancyGuard {
     uint256 public constant RATE_TIMELOCK = 2 days;
 
     event Deposit(bool indexed isSenior, address indexed receiver, uint256 shares, uint256 assetValue);
-    event RedeemRequested(uint256 indexed id, bool isSenior, address indexed owner, uint256 shares, uint256 wmtQueued, uint32 expiry);
+    event RedeemRequested(
+        uint256 indexed id, bool isSenior, address indexed owner, uint256 shares, uint256 wmtQueued, uint32 expiry
+    );
     event RecoveryPoked(uint32 indexed expiry, uint256 usdcReceived, uint256 totalRecovered);
     event Claimed(uint256 indexed id, address indexed owner, uint256 usdc, bool toEscrow);
     event WindDownEntered(uint256 seniorOwedAtDefault, bool forced);
@@ -338,7 +340,9 @@ contract TrancheController is ReentrancyGuard {
             faceBefore[id] = juniorWmtQueued;
             juniorWmtQueued += wmtGot;
         }
-        requests.push(Request({owner: msg.sender, isSenior: isSenior, wmt: uint128(wmtGot), usdcClaimed: 0, expiry: expiry}));
+        requests.push(
+            Request({owner: msg.sender, isSenior: isSenior, wmt: uint128(wmtGot), usdcClaimed: 0, expiry: expiry})
+        );
         emit RedeemRequested(id, isSenior, msg.sender, shares, wmtGot, expiry);
         // A newly queued senior (more senior room) or a reduced senior obligation (a senior exit) can
         // release cash that was being held back; re-run allocation so it reaches the right class.
@@ -354,7 +358,7 @@ contract TrancheController is ReentrancyGuard {
         emit RecoveryPoked(expiry, got, recoveredUSDC);
     }
 
-    /// @notice Credit any USDC the controller holds that has not yet been booked, then re-allocate.
+    /// @notice Credit any USDC the manager holds that has not yet been booked, then re-allocate.
     ///         Recovery is derived from the actual balance (idle USDC + everything already claimed),
     ///         so USDC that arrives outside pokeRecovery (a permissionless market executeWithdrawal,
     ///         a direct transfer, or recovery above queued face) is captured rather than stranded.

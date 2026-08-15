@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.25;
 
-import {TrancheController} from "./TrancheController.sol";
+import {TrancheManager} from "./TrancheManager.sol";
 import {IUnderlying4626, IArchControllerLike} from "./interfaces/IExternal.sol";
 
 /// @title TrancheFactory
@@ -13,16 +13,16 @@ contract TrancheFactory {
     IArchControllerLike public immutable archController;
     /// @notice Only the owner may deploy tranche sets. Deployment is caller-supplied (governance,
     ///         sentinel, the vault itself), so leaving it open lets anyone front-run and squat the
-    ///         canonical controllerForMarket slot, or register a fake vault whose market() returns a
+    ///         canonical managerForMarket slot, or register a fake vault whose market() returns a
     ///         real registered market. Gating to a trusted owner closes both.
     address public owner;
     address public pendingOwner;
 
-    mapping(address => address) public controllerForMarket; // market => TrancheController
-    address[] public allControllers;
+    mapping(address => address) public managerForMarket; // market => TrancheManager
+    address[] public allManagers;
 
-    event TranchesDeployed(
-        address indexed market, address indexed underlying, address controller, address senior, address junior
+    event TrancheManagerDeployed(
+        address indexed market, address indexed underlying, address manager, address senior, address junior
     );
     event OwnerProposed(address indexed pending);
     event OwnerTransferred(address indexed from, address indexed to);
@@ -34,7 +34,7 @@ contract TrancheFactory {
         emit OwnerTransferred(address(0), msg.sender);
     }
 
-    /// @notice Two-step ownership transfer, mirroring TrancheController's governance rotation: the
+    /// @notice Two-step ownership transfer, mirroring TrancheManager's governance rotation: the
     ///         owner proposes a successor who must accept, so ownership can never be stranded on a
     ///         typo'd or uncontrolled address.
     function transferOwner(address next) external {
@@ -62,17 +62,17 @@ contract TrancheFactory {
         uint256 defaultPenaltyWindow;
     }
 
-    function deployTranches(DeployParams calldata p) external returns (address controllerAddr) {
+    function deployTranches(DeployParams calldata p) external returns (address managerAddr) {
         require(msg.sender == owner, "ONLY_OWNER");
         require(p.governance != address(0), "ZERO_GOV");
         require(p.sentinel != address(0), "ZERO_SENTINEL");
         require(p.borrower != address(0), "ZERO_BORROWER");
         address market = IUnderlying4626(p.underlyingVault).market();
         require(archController.isRegisteredMarket(market), "MARKET_NOT_REGISTERED");
-        require(controllerForMarket[market] == address(0), "TRANCHES_EXIST");
+        require(managerForMarket[market] == address(0), "TRANCHES_EXIST");
 
-        TrancheController c = new TrancheController(
-            TrancheController.Params({
+        TrancheManager c = new TrancheManager(
+            TrancheManager.Params({
                 underlyingVault: p.underlyingVault,
                 sentinel: p.sentinel,
                 borrower: p.borrower,
@@ -85,13 +85,13 @@ contract TrancheFactory {
             })
         );
 
-        controllerForMarket[market] = address(c);
-        allControllers.push(address(c));
-        controllerAddr = address(c);
-        emit TranchesDeployed(market, p.underlyingVault, controllerAddr, address(c.senior()), address(c.junior()));
+        managerForMarket[market] = address(c);
+        allManagers.push(address(c));
+        managerAddr = address(c);
+        emit TrancheManagerDeployed(market, p.underlyingVault, managerAddr, address(c.senior()), address(c.junior()));
     }
 
-    function controllersLength() external view returns (uint256) {
-        return allControllers.length;
+    function managersLength() external view returns (uint256) {
+        return allManagers.length;
     }
 }
