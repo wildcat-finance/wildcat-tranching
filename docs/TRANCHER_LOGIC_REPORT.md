@@ -1,26 +1,110 @@
-# TrancheManager Design and Implementation Position
+# TrancheManager Design
 
-## Scope
+## Position
 
-This document sets out the economic logic, contract shape and remaining choices for a two-class
-Wildcat trancher. It reads as the design itself: what senior and junior own, how value and losses are
-recognised, how exits settle, and what the singleton V2.5 construction permits.
+The trancher is part of the market, rather than an adapter which can be attached, replaced or
+reconfigured later. One Wildcat market has one `TrancheManager`, one canonical wrapper and two
+tranche tokens for its entire life.
 
-The current contracts are an engineering prototype. The deterministic deployment path works
-against the pinned V2.5 stack; the complete real-contract deposit and exit lifecycle is still the
-next proof.
+The borrower chooses the terms when creating the facility. Those terms do not move afterwards. If
+the borrower wants another senior rate, junior floor or default window, they create another market
+with another manager. The first manager stays where it is and continues servicing exits and claims.
 
-## The mechanism
+There is no manager owner, general governance role, upgrade path or successor-manager mechanism.
+Nothing can rewrite the waterfall, move custody, pause a holder's exit or change the senior claim
+after funding.
 
-The intended product is one Wildcat credit position with two claims over it:
+## Product rules
 
-- senior owns a priority target, expressed in base-asset terms;
-- junior owns the residual and takes the first loss;
-- neither class receives a promise that exceeds value actually held or cash actually recovered;
-- one manager is the lender to the market and custodian of the canonical wrapper shares;
-- entry may be restricted, but burns, withdrawal execution and claims must remain available.
+1. The manager is the market's only admitted lender.
+2. Users enter with the market's base asset and never handle market tokens or wrapper shares.
+3. Senior receives a priority target, not a guarantee.
+4. Junior owns the residual and takes the first loss.
+5. Tranche value comes from assets held by the manager; claims come from cash actually recovered.
+6. Entry policy may restrict who acquires exposure, but it cannot block burns, withdrawal execution
+   or claims.
+7. Every economic term is fixed when the manager is initialised.
 
-The accounting identity is simple:
+That gives the facility one fairly useful property: its risk cannot drift because somebody still has
+a key.
+
+## Contract shape
+
+```text
+senior holders -----------+
+                          | base asset
+junior holders -----------+
+                          v
+                    TrancheManager
+                          |
+                          | sole deposit credential
+                          v
+                    Wildcat market
+                          |
+                          | market-token backing
+                          v
+              canonical Wildcat4626Wrapper
+                          |
+                          | every wrapper share
+                          +--------------------> TrancheManager
+```
+
+The wrapper is a custody adapter, not another lender. The manager owns every wrapper share; the
+wrapper holds the corresponding market tokens. Outside a deposit, redemption or queueing call, the
+manager should hold neither idle market tokens nor standing token approvals.
+
+### `TrancheFactory`
+
+The factory is immutable and ownerless. It knows the canonical ArchController, wrapper factory and
+singleton hook template. It deploys fixed manager bytecode with CREATE2 and records one permanent
+manager for each market.
+
+The manager address must be known before the market exists, because the sealed singleton provider
+names that address as the sole lender. Deployment therefore runs in this order:
+
+1. predict the manager from borrower and salt;
+2. create and seal the singleton provider for that address;
+3. create the hooks and market;
+4. create the market's canonical wrapper;
+5. deploy and initialise the manager at the predicted address;
+6. verify every binding before recording it.
+
+The factory checks the registered market, current borrower, borrower principal, sentinel, wrapper
+factory, canonical wrapper, hook template, hook flags, sealed provider and predicted lender. A
+market with a recorded manager cannot receive another one.
+
+### `TrancheManager`
+
+The manager holds custody and accounting. Its one-time parameters are:
+
+- canonical wrapper and derived market/base asset;
+- canonical sanctions sentinel;
+- fixed senior rate;
+- fixed minimum junior ratio;
+- fixed default penalty window;
+- immutable senior and junior entry gates, if used.
+
+It accepts base assets, deposits them into the market, wraps every market token, mints tranche
+shares, burns those shares into async exit requests, queues market withdrawals and allocates the
+cash which comes back.
+
+It exposes no arbitrary call, asset rescue destination, upgrade hook, rate setter, deposit pause,
+discretionary default or role rotation.
+
+### `TrancheToken`
+
+Each tranche token has one immutable manager. Only that manager may mint or burn it. Ordinary
+transfers run the recipient through the class entry policy and both parties through sanctions.
+
+Mint and burn bypass the transfer hook. That is deliberate: entry can fail closed without turning
+the same policy into an exit veto.
+
+The token may expose ERC-4626-style valuation views, but it is not a synchronous ERC-4626 vault.
+Redemption lives on the manager and follows the Wildcat withdrawal queue.
+
+## Tranche accounting
+
+Everything is denominated in the market's base asset:
 
 ```text
 V = realised value attributable to the manager
@@ -30,85 +114,95 @@ J = V - S
 S + J = V
 ```
 
-`seniorOwed` starts with senior principal and accrues while the manager is active. Junior receives
-the market return left after that accrual. If value falls, junior reaches zero before senior is
-impaired.
+`seniorOwed` begins with senior principal and accrues at the manager's fixed annual rate while the
+facility is active. Junior receives whatever value remains after that claim. If value falls, junior
+reaches zero before senior is impaired.
 
-### Capital formation
+The rate is fixed because the senior liability needs one meaning between checkpoints. Tying it to a
+mutable market APR would let a borrower-side market change reprice senior after funding.
 
-`minJuniorBips` fixes the minimum junior fraction of total value. At a 20% floor, every 1 unit of
-junior supports at most 4 units of senior. The constraint is enforced on senior entry and junior
-exit:
+Every state-changing accounting path checkpoints before using `seniorOwed`: deposits, redemption
+requests, withdrawal execution, recovery synchronisation and the terminal-state check. The final
+active interval is accrued before wind-down freezes the claim.
+
+## Capital formation
+
+`minJuniorBips` fixes junior's minimum share of total value:
 
 ```text
 juniorValue / (seniorValue + juniorValue) >= minJuniorBips / 10,000
 ```
 
-That makes junior capital the admission condition for senior capital. A factory can deploy a
-manager with poor terms, but it cannot fill the senior tranche unless junior funds those terms.
+At a 20% junior floor, 1 unit of junior supports at most 4 units of senior. Once the facility sits on
+that floor, another senior deposit and any junior exit both fail. Another 1 unit of junior opens room
+for 4 units of senior.
 
-A useful facility shape is 20% junior and 80% senior. At that floor, senior entry and junior exit
-both close. An extra 1 unit of junior then permits 4 units of senior. The floor is therefore a live
-constraint, not a loss waterfall drawn on a slide.
+The manager checks the floor on senior entry and junior exit while active. Junior entry always
+improves the ratio. Senior exit does not need a floor check.
 
-### Value recognition during delinquency
+Deposits which would round to zero shares revert. The first deposit into either class has a minimum
+size. All share issuance rounds against the entrant and in favour of the existing pool.
 
-The design avoids an oracle. Wrapper price per share is allowed to advance while the market is
-healthy. Once the market reports delinquency, the manager caps valuation at the last healthy mark:
+## Value during delinquency
+
+The manager uses the canonical wrapper price rather than an external oracle. While the market is
+healthy, it advances a price-per-share mark. During delinquency:
 
 ```text
 effectivePps = min(livePps, lastHealthyPps)
 ```
 
-Penalty interest is not treated as profit before it is realised. Downward moves still count. A cure
-allows the live value to be recognised again.
+Penalty interest is not booked as profit before it is realised. A downward move still counts, so
+the mark cannot hide a loss. Cure reopens recognition of the live value.
 
-Two consequences follow:
+The mark is only as fresh as the last manager checkpoint. Capturing the exact healthy-to-delinquent
+transition would require a market callback or another protocol-level checkpoint.
 
-1. a checkpoint taken before the exact delinquency transition can leave some healthy appreciation
-   unrecognised until cure;
-2. entry during delinquency needs an explicit pricing rule because the existing position is held at
-   the frozen mark while new base assets are converted at the live wrapper price.
+Ordinary deposits should close while delinquent. The existing position is valued at the frozen
+mark, whereas newly invested base assets are converted at the live wrapper price. Allowing entry
+without a separate pricing rule would let `_invest` decide economics as a side effect. A junior
+rescue facility can be designed later if a real term sheet calls for one.
 
-The first is a conservative marking choice. The second needs a direct rule: `_invest` accepts base
-assets and returns the live wrapper conversion, while the existing position is valued at the frozen
-mark. The tests do not cover a deposit after the mark has frozen and the live wrapper price has
-moved. Entry during delinquency should therefore be closed until its pricing is specified.
+## Wind-down
 
-### Default and wind-down
+Wind-down is objective and one-way. It begins when either:
 
-The automatic default proxy is:
+```text
+market.currentState().isClosed
+```
+
+or:
 
 ```text
 timeDelinquent >= delinquencyGracePeriod + defaultPenaltyWindow
 ```
 
-A closed market also triggers wind-down. Governance or an optional `defaultDeclarer` may force the
-same transition earlier. The transition is one-way. The manager accrues the final active interval,
-freezes the senior obligation, closes deposits and stops further senior accrual.
+Any account may checkpoint the manager and advance it into wind-down once the condition is true.
+The final active interval accrues first; future senior accrual then stops. New deposits close, while
+redemption requests, withdrawal execution, recovery synchronisation and claims stay live.
 
-This order is required. Checking default before accruing understates `seniorOwed` and can release
-cash to junior too early. The final active interval must be booked before wind-down.
+There is no discretionary default button. If a facility needs an off-chain party to declare a
+legal default, that is a different product term and should not be smuggled into this contract as a
+general control role.
 
-### Exit and recovery
+## Exit and recovery
 
-Exit mirrors the Wildcat withdrawal queue:
+An exit follows the market queue:
 
-1. burn tranche shares;
-2. calculate the class value represented by those shares;
-3. redeem enough wrapper shares at the live wrapper price to receive that amount of market tokens;
-4. queue the market tokens in a Wildcat withdrawal batch;
-5. record the request's class, face, expiry and FIFO position;
-6. execute the batch after expiry;
-7. allocate recovered base assets senior-first, then permit claims.
+1. checkpoint value and lifecycle state;
+2. calculate the holder's share of its class value;
+3. burn tranche shares;
+4. redeem enough wrapper shares at the live wrapper price to receive that value in market tokens;
+5. queue the market tokens in a Wildcat withdrawal batch;
+6. record owner, class, face, expiry and FIFO position;
+7. execute the expired batch;
+8. allocate observed base assets;
+9. pay the recorded owner or sanctions escrow.
 
-Wrapper redemption must use the live price even while tranche valuation uses the frozen mark.
-Sizing the wrapper withdrawal at the frozen mark would let an exiter pull delinquency appreciation
-which the accounting has deliberately excluded.
+The wrapper redemption uses the live price even when tranche valuation is frozen. Sizing it at the
+frozen mark would pull the delinquency appreciation which the accounting has excluded.
 
-Settlement uses cumulative FIFO positions. Dividing a class cash pool by a face total which keeps
-growing would let a late request claim against cash already paid to an earlier request. The
-conserving form is:
+Settlement is FIFO within each class and senior-first between classes:
 
 ```text
 faceBefore[id] = class face queued before this request
@@ -116,115 +210,67 @@ entitlement = clamp(classCashAllocated - faceBefore[id], 0, requestFace)
 claimable = entitlement - alreadyClaimed
 ```
 
-This is FIFO within each class and senior-first between classes. FIFO was chosen because it matches
-the market's batch ordering, is O(1) per request and never needs a clawback. It is not pari-passu
-within a tranche.
+FIFO matches the underlying batch ordering, keeps every request O(1) and never needs a clawback. It
+does mean an earlier request in one class fills before a later request in the same class.
 
-While healthy, junior cash is held behind senior face already queued. While delinquent or in
-wind-down, junior cash is held behind the full senior obligation, including senior which has not
-queued. This is the point which turns a normal queue into an actual senior/junior recovery waterfall.
+While healthy, junior cash may only be allocated after senior face already queued. During
+delinquency or wind-down, junior cash may only be allocated after the full senior obligation,
+including senior which has not queued. Without that second rule, junior could leave during a slow
+default while senior remained in the manager.
 
-Recovery is derived from the manager's base-asset balance plus cash already claimed. This lets a
-permissionless `sync()` account for funds which arrive outside `pokeRecovery`, including a market
-withdrawal executed directly by another caller.
-
-### Access and sanctions
-
-The tranche tokens call the manager on ordinary transfers. Mint and burn skip the hook, so an entry
-policy cannot block exit. The current policy is:
-
-- both tranches: sender and recipient must not be sanctioned;
-- junior: recipient must also be in `juniorAllowed`;
-- a sanctioned owner may still claim, but the payment goes to a sentinel escrow;
-- sanctions use the market's registered borrower principal, which remains stable across borrower
-  wallet rotation.
-
-The manager currently keeps a local junior allowlist and leaves senior open apart from sanctions.
-External entry gates are useful only if eligibility policy must be shared across products.
-
-## Design position
-
-| Question | Adopted position | Remaining work |
-|---|---|---|
-| Custody | The manager deposits base assets, wraps every market token and holds every wrapper share. | Prove the complete custody cycle against the pinned contracts. |
-| Market admission | The borrower deploys a predicted CREATE2 manager already named by a sealed singleton provider. | Keep the factory verification matched to the final V2.5 hook ABI. |
-| Deposit asset | Base asset only. The singleton boundary says users should not own market tokens or wrapper shares. | Specify whether any entry is allowed during delinquency. |
-| Senior return | Fixed annual `seniorRateBips`, checkpointed before a timelocked change. | Confirm the facility rate and who controls changes. |
-| Junior floor | Immutable minimum junior ratio, bounded to 5% through 90%. | Select the facility value at deployment. |
-| Valuation | Wrapper-price watermark frozen during delinquency. | Define exact-transition marking and delinquent-entry pricing. |
-| Default | Market closure, grace plus penalty window, or an authorised declaration. | Confirm the declarer and whether the role can later be retired. |
-| Recovery | Senior-first across classes, FIFO within each class, full senior reserve under distress. | Restore broad distress and recovery coverage on the current manager. |
-| Entry rules | Manager-local junior allowlist; senior is restricted only by sanctions. | Decide whether either class needs an external gate. |
-| Factory registry | One manager per market; replacement is rejected. | Resolve successor semantics before any facility needs replacement. |
-| Governance recovery | None. Lost governance freezes policy but does not block exit. | Decide before production whether recovery is wanted at all. |
-| Token metadata | Hard-coded `sr-wmt` and `jr-wmt`. | Make names unique before two managers are presented to users. |
-| Batch claims | Single `claim`. | `claimMany` is convenience work and does not block the mechanism proof. |
-| Terminal dust | No allocation rule. | Specify and test it before deployment. |
-
-## Contract shape
-
-The present topology is internally coherent:
+Recovery is balance-derived:
 
 ```text
-senior/junior users
-        |
-        | base asset
-        v
-TrancheManager -- sole deposit credential --> Wildcat market
-        |                                      |
-        | owns every share                     | market-token backing
-        v                                      v
-canonical Wildcat4626Wrapper <-----------------+
+recoveredBaseAsset = baseAsset.balanceOf(manager) + totalClaimedOut
 ```
 
-The manager address is known before the market exists. The singleton provider is sealed with that
-address as its lender. The market and canonical wrapper are then created, and the manager is
-deployed at the predicted address. The factory verifies the market, wrapper, hook template,
-provider and sentinel before initialising the manager.
+Anyone may call `sync()` after a market withdrawal, direct transfer or other cash arrival. Allocation
+never depends on one privileged keeper observing the transfer.
 
-This makes the factory slot unsquattable without introducing a factory owner. The product is not a
-tranching adapter attached to an ordinary market with other direct lenders. The manager is the only
-economic lender, and the wrapper is only its custody adapter.
+## Entry and sanctions
 
-`build/test/Fork.t.sol` proves deployment against the V2.5 contracts pinned at
-`49be5432dbc8f268aec84beaada31de406fad875`. It does not yet run a base-asset deposit and async exit
-through that real stack. Deployment is proven; the economic lifecycle is not.
+The manager stores an immutable entry-gate address for each class. A zero gate means unrestricted
+entry. A facility may require a junior gate while leaving senior open.
 
-## Open design decisions
+The manager checks the receiver on deposit and recipient on ordinary transfer. It does not check
+the sender, burn, redemption request or claim. Any mutability inside a gate belongs to that policy
+contract and cannot alter tranche economics or exit rights.
 
-### 1. Fixed or floating senior rate
+Sanctions use the market's registered borrower principal and canonical sentinel. Both parties to an
+ordinary transfer are checked. A sanctioned holder may still burn and queue an exit; the eventual
+claim keeps its value and queue position but pays the canonical escrow instead of the holder.
 
-The current fixed rate is the better prototype default. A floating definition would let a borrower
-APR change alter the senior target at the next checkpoint. A fixed manager rate gives each
-checkpoint one unambiguous liability. A floating product can still be built, but it should be a
-term-sheet choice with its own tests.
+## Invariants
 
-### 2. Deposits during delinquency
+The implementation and tests should state these directly:
 
-There are three defensible rules: reject new deposits while delinquent; admit only junior rescue
-capital using a stated price; or admit both classes under a frozen-mark calculation. The code should
-not choose among them as a side effect of `_invest`. The shortest route to a trustworthy prototype
-is to reject ordinary entry while delinquent, then add a separate junior rescue path later if the
-facility needs one.
+1. The manager, market and canonical wrapper all resolve to the same registered facility.
+2. The sealed singleton provider names the manager as its only lender.
+3. The manager owns every wrapper share and holds no idle market tokens outside a custody call.
+4. Senior value plus junior value equals realised manager value, apart from explicit rounding dust.
+5. Junior reaches zero before senior takes loss.
+6. Senior entry and active junior exit cannot breach the minimum junior ratio.
+7. Allocated recovery never exceeds observed base assets.
+8. A request never receives more than its face or FIFO entitlement.
+9. During distress, junior receives no cash while the senior obligation is uncovered.
+10. Entry policy and sanctions cannot prevent burns, withdrawal execution or claims.
+11. Wind-down cannot be reversed and senior accrual cannot restart.
+12. The manager cannot be rebound, replaced or initialised twice.
 
-### 3. Supersession
+## Work still open
 
-Two live managers for one market would make the senior claims of one manager pari-passu at market
-level with the junior assets of the other. That breaks the meaning of seniority. Replacement should
-therefore move the factory's current pointer only after the incumbent is wound down or has no
-tranche supply, while claims on the retired manager remain callable forever.
+The economic shape is fixed. The remaining questions are narrower:
 
-### 4. Governance loss
+- whether exact delinquency marking deserves a protocol callback;
+- the final allocation of wrapper, market-token and base-asset dust;
+- unique senior and junior token metadata;
+- whether either tranche needs an external entry gate for the first facility;
+- whether `claimMany` is worth adding;
+- whether the request surface should advertise an ERC-7540 interface.
 
-Lost governance currently freezes policy while leaving exits alive. That is a safe failure mode for
-the assets, albeit awkward operationally. A borrower recovery path adds takeover risk and should not
-be added merely for convenience.
+The current Solidity prototype still contains a manager governance address, mutable senior rate,
+deposit pause, local junior allowlist and discretionary default path. Those do not belong in this
+design and should be removed before the lifecycle work is treated as representative.
 
-### 5. Exact delinquency marking and terminal dust
-
-Both affect who receives value. They need written rules before code. A market callback could capture
-the exact healthy-to-delinquent mark. A terminal rule must say who receives residual wrapper shares,
-base assets and rounding dust after all tranche supply and requests are gone.
-
-The build sequence from here is in
+The implementation sequence is in
 [`TRANCHER_LOGIC_RUNBOOK.md`](TRANCHER_LOGIC_RUNBOOK.md).
