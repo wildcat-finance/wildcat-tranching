@@ -74,6 +74,7 @@ contract TrancheFactory {
     error SingletonLenderMismatch();
     error BorrowerMismatch();
     error SentinelMismatch();
+    error ZeroDelinquencyFee();
 
     constructor(address archController_, address wrapperFactory_, address singletonHooksTemplate_) {
         if (archController_ == address(0) || wrapperFactory_ == address(0) || singletonHooksTemplate_ == address(0)) {
@@ -152,6 +153,10 @@ contract TrancheFactory {
         WildcatMarket market = WildcatMarket(p.market);
         if (market.borrower() != p.borrower) revert BorrowerMismatch();
         if (market.borrowerPrincipal() == address(0)) revert BorrowerMismatch();
+        // V2.5 advances `timeDelinquent` only when this fee is nonzero. The manager's objective
+        // wind-down threshold is defined in terms of that counter, so a zero-fee market would
+        // silently leave the facility Active forever while delinquent.
+        if (market.delinquencyFeeBips() == 0) revert ZeroDelinquencyFee();
         if (market.sentinel() != p.sentinel) revert SentinelMismatch();
         if (market.wrapperFactory() != address(wrapperFactory)) revert WrapperFactoryMismatch();
         if (

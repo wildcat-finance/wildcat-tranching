@@ -330,8 +330,10 @@ separate hardening work.
 - prove deposits stay closed while requests, batch execution, `sync()` and claims remain live.
 
 Stage status: the pinned fork now proves frozen aggregate marking, exclusion of live upside, entry
-refusal and cure recognition during a short delinquency. It does not reconstruct a past continuous
-delinquency interval, and it does not prove the later wind-down threshold against the real stack.
+refusal, cure recognition, the fixed wind-down threshold and stopped senior accrual. It does not
+reconstruct a past continuous delinquency interval. V2.5 maintains debt-based market-token value:
+the local wrapper-price tests, not the pinned market test, supply the controllable loss vector. The
+threshold fork explicitly cures its market afterwards and proves the manager remains in wind-down.
 
 Exit condition: no account can choose the default outcome, and the transition cannot leak the final
 senior accrual interval to junior.

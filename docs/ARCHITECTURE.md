@@ -21,8 +21,8 @@ V2 market without an equivalent immutable admission primitive is a separate desi
 
 The real-stack proof covers one bounded delinquent shortfall and later repayment. Broader
 delinquency, the terminal interest/dust rule and sanctions settlement remain hardening work. A
-separate fork case proves frozen marking, entry refusal and cure recognition without claiming that
-this is ready for deployment.
+separate fork cases prove frozen marking, entry refusal, cure recognition and the objective
+wind-down threshold without claiming that this is ready for deployment.
 
 ## Terms
 
@@ -207,21 +207,23 @@ The implementation and tests should state these directly:
    above that mark remains excluded until cure.
 8. Junior absorbs loss before senior.
 9. No senior deposit or active-state junior exit can violate minimum subordination.
-10. Allocated recovery never exceeds recovered base assets.
-11. Allocatable recovery plus the tagged senior-debt reserve and terminal recovery surplus equals
+10. The bound market has a nonzero V2.5 delinquency fee, so its observable delinquency counter can
+    reach the immutable wind-down threshold.
+11. Allocated recovery never exceeds recovered base assets.
+12. Allocatable recovery plus the tagged senior-debt reserve and terminal recovery surplus equals
     cumulative observed recovery.
-12. A request synchronises recovery before adding face, can never claim more than its class FIFO
+13. A request synchronises recovery before adding face, can never claim more than its class FIFO
     entitlement and cannot consume recovery which arrived before its face existed. Recovery admitted
     solely against live distressed senior debt can migrate only into senior replacement face and is
     retired on cure or when an impaired exit extinguishes more debt than it queues. A generic late
     balance sync cannot create that reserve. A market execution admits recovery only against face
     recorded for its exact expiry, so an older batch cannot fund a later request. Unattributed base
     asset is terminal surplus and does not fund any queue face.
-13. During distress, junior cannot receive assets while the senior obligation is uncovered.
-14. No entry gate or sanctions path can prevent a holder from burning shares and creating an exit
+14. During distress, junior cannot receive assets while the senior obligation is uncovered.
+15. No entry gate or sanctions path can prevent a holder from burning shares and creating an exit
     request.
-15. A sanctioned claim changes the destination to escrow, not the amount or queue position.
-16. A manager cannot be initialized twice or rebound to another market.
+16. A sanctioned claim changes the destination to escrow, not the amount or queue position.
+17. A manager cannot be initialized twice or rebound to another market.
 
 ## Prototype accounting choice
 

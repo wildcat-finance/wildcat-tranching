@@ -205,6 +205,36 @@ contract ForkTest is Test {
         facility.manager.accrue();
         assertEq(facility.manager.markedAssets(), facility.manager.realisedValue(), "cure refreshes the live mark");
         assertGt(facility.manager.markedAssets(), mark, "cure recognises retained live value");
+
+    }
+
+    function test_fork_delinquencyThresholdWindDown() public {
+        Facility memory facility = _deployFacility();
+        asset.mint(address(this), 400e18);
+        asset.approve(facility.managerAddress, 400e18);
+        facility.manager.depositJunior(100e18, address(this));
+        facility.manager.depositSenior(300e18, address(this));
+        facility.market.borrow(300e18);
+        facility.manager.requestRedeem(false, 25e18);
+        facility.manager.requestRedeem(true, 250e18);
+        assertTrue(facility.market.currentState().isDelinquent, "unpaid batch starts delinquency clock");
+
+        vm.warp(block.timestamp + facility.manager.delinquencyGracePeriod() + facility.manager.defaultPenaltyWindow());
+        facility.manager.accrue();
+        assertEq(uint256(facility.manager.status()), uint256(TrancheManager.Status.WindDown), "threshold enters wind-down");
+        uint256 frozenOwed = facility.manager.seniorOwedAtDefault();
+
+        asset.approve(facility.marketAddress, 300e18);
+        facility.market.repay(300e18);
+        assertFalse(facility.market.currentState().isDelinquent, "repayment cures market after wind-down");
+        facility.manager.accrue();
+        assertEq(uint256(facility.manager.status()), uint256(TrancheManager.Status.WindDown), "cure cannot reactivate manager");
+        assertEq(facility.manager.seniorOwed(), frozenOwed, "cure cannot restart senior accrual");
+        vm.warp(block.timestamp + 365 days);
+        facility.manager.accrue();
+        assertEq(facility.manager.seniorOwed(), frozenOwed, "senior accrual stops after wind-down");
+        vm.expectRevert(bytes("NOT_ACTIVE"));
+        facility.manager.depositJunior(1e18, address(this));
     }
 
     function _deployFacility() internal returns (Facility memory facility) {
@@ -407,7 +437,7 @@ contract ForkTest is Test {
             symbolPrefix: "WC",
             maxTotalSupply: 1_000_000e18,
             annualInterestBips: 1000,
-            delinquencyFeeBips: 0,
+            delinquencyFeeBips: 1,
             withdrawalBatchDuration: 14 days,
             reserveRatioBips: 1000,
             delinquencyGracePeriod: 28 days,

@@ -824,6 +824,13 @@ contract TrancheTest is Test {
         wrapperFactory.setWrapper(address(otherMarket), address(otherWrapper));
         arch.setRegistered(address(otherMarket), true);
 
+        otherMarket.setDelinquencyFeeBips(0);
+        vm.expectRevert(TrancheFactory.ZeroDelinquencyFee.selector);
+        factory.deployTranches(
+            otherSalt, _params(address(otherMarket), address(otherWrapper), address(otherHooks), address(otherProvider))
+        );
+
+        otherMarket.setDelinquencyFeeBips(1);
         vm.expectRevert(TrancheFactory.HookConfigurationInvalid.selector);
         factory.deployTranches(
             otherSalt, _params(address(otherMarket), address(otherWrapper), address(otherHooks), address(otherProvider))

@@ -99,14 +99,16 @@ A nonzero gate is consulted only when an account acquires exposure: on deposit a
 side of an ordinary transfer. It cannot block a burn, withdrawal request, recovery execution or
 claim. Recovery from the permissionless market executor is recorded by withdrawal expiry, so an
 older batch cannot make a later request claimable.
+The factory also rejects a zero V2.5 delinquency fee: that protocol configuration does not advance
+the observable delinquency counter used by this facility's objective wind-down rule.
 
 The local suite covers deposit, exit and recovery accounting. The pinned fork suite proves the
 deployment, hook wiring, base-asset entry and a two-step queued settlement: an initial shortfall
 puts a later senior request ahead of earlier junior requests, then later recovery settles junior to
 the recorded claimant. That shortfall makes the market delinquent at execution and leaves accrued
 interest in its batch; terminal dust handling and a production settlement policy are deliberately
-not included. A second fork path proves a frozen mark, entry refusal and live-mark refresh after a
-delinquency cure.
+not included. A second fork path proves a frozen mark, entry refusal, live-mark refresh after a
+delinquency cure, and the objective wind-down threshold.
 
 ## Read before implementing
 

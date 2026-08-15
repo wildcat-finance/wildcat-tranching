@@ -41,7 +41,8 @@ tranche face settles, but accrued market interest remains queued for terminal ac
 
 The fork also retains junior and senior exposure through a separate delinquent batch. It proves that
 the manager freezes a healthy aggregate mark, excludes later live upside, refuses new entry, and
-refreshes the mark only after repayment cures the market.
+refreshes the mark only after repayment cures the market. A third fork path holds that batch through
+the fixed threshold, proves irreversible wind-down and confirms senior accrual stops.
 
 ## Gate 2: Prototype accounting semantics
 
@@ -75,6 +76,8 @@ manager live wrapper value + idle base asset + base asset already paid
 
 The stale healthy-price case is conservative until cure. Market closure is checkpointed exactly by
 the pinned tranching hook; an exact delinquency transition would require another protocol callback.
+The factory rejects a zero `delinquencyFeeBips` setting because V2.5 otherwise leaves
+`timeDelinquent` at zero, making the manager's counter-based wind-down threshold unreachable.
 
 ## Target source layout
 

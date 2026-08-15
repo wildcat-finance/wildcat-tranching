@@ -82,6 +82,7 @@ contract MockMarket {
     uint32 internal _timeDelinquent;
     uint32 internal _lastInterestAccruedTimestamp;
     uint16 internal _annualInterestBips = 1000;
+    uint16 public delinquencyFeeBips = 1;
 
     mapping(address => mapping(uint32 => uint256)) public owed;
     mapping(address => mapping(uint32 => uint256)) public paid;
@@ -106,6 +107,10 @@ contract MockMarket {
 
     function setDecimals(uint8 value) external {
         decimals = value;
+    }
+
+    function setDelinquencyFeeBips(uint16 value) external {
+        delinquencyFeeBips = value;
     }
 
     function setFactory(address factory_) external {
