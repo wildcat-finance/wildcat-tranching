@@ -11,9 +11,14 @@ a credit rating, a legal opinion or a promise of liquidity or repayment.
 
 ## Start here
 
+Start with the [counterparty primer](PRIMER.md), then use the [meeting brief](MEETING_BRIEF.md) on a
+call. The [parameter discovery guide](PARAMETER_DISCOVERY.md) records what borrowers and lenders would
+accept, while the [FAQ and claims guide](FAQ_AND_CLAIMS.md) keeps the answers inside the prototype's
+actual behaviour.
+
 Read the [research report](RESEARCH_REPORT.md) for the contracts, lifecycle, parameter authority,
-constraints and source list. The [delivery runbook](DELIVERY_RUNBOOK.md) records how the shareable
-primer, meeting material and infographics are being assembled and checked.
+constraints and source list. The [delivery runbook](DELIVERY_RUNBOOK.md) records how the material and
+infographics are being assembled and checked.
 
 For the underlying design and test status, use the repository's
 [architecture](../ARCHITECTURE.md), [prototype handoff](../PROTOTYPE_HANDOFF.md) and
