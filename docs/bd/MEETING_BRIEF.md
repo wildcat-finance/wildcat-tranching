@@ -23,13 +23,14 @@ Then stop talking and ask about the deal.
 - senior target: 0% to 100% per year, simple accrual;
 - junior percentage at entry: 5% to 90%;
 - extra workout window after loan grace: more than 0 and no more than 90 days;
-- senior and junior eligibility providers: open or controlled;
+- senior and junior eligibility: open or a fixed provider;
 - loan rate, size, reserve, arrears charge and withdrawal period;
 - Wildcat protocol and origination charges; and
 - final recipient for genuine surplus after everyone is paid.
 
-The borrower proposes the facility terms at formation. Manager economics and eligibility providers are
-fixed; a provider's policy may change. None of this is a standing right to reprice the deal.
+The borrower proposes the facility terms at formation. Manager economics and each class's open-or-provider
+setting are fixed; a selected provider's policy may change. None of this is a standing right to reprice
+the deal.
 
 ## If they are senior
 

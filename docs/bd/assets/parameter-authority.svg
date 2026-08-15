@@ -19,14 +19,14 @@
   <text class="t" x="72" y="244">Senior target: 0–100% p.a.</text>
   <text class="t" x="72" y="278">Junior share: 5–90%</text>
   <text class="t" x="72" y="312">Extra window: &gt;0–90 days</text>
-  <text class="t" x="72" y="346">Senior eligibility provider</text>
-  <text class="t" x="72" y="380">Junior eligibility provider</text>
+  <text class="t" x="72" y="346">Senior: open or fixed provider</text>
+  <text class="t" x="72" y="380">Junior: open or fixed provider</text>
   <text class="t" x="72" y="414">Final surplus recipient</text>
   <text class="t" x="72" y="448">Formation reference</text>
   <line class="rule" x1="70" y1="470" x2="285" y2="470"/>
   <text class="tag" x="177" y="500" text-anchor="middle">NO LATER REPRICING</text>
   <text class="t" x="177" y="528" text-anchor="middle">All terms supplied up front</text>
-  <text class="t" x="177" y="552" text-anchor="middle">Provider policy may change</text>
+  <text class="t" x="177" y="552" text-anchor="middle">Selected provider policy may change</text>
 
   <rect class="c2" x="330" y="130" width="265" height="465" rx="14"/>
   <text class="h" x="462" y="168" text-anchor="middle">Underlying loan</text>
@@ -54,7 +54,7 @@
   <text class="t" x="642" y="380">Sanctions and escrow</text>
   <text class="t" x="642" y="414">Custody and settlement rails</text>
   <line class="rule" x1="640" y1="438" x2="855" y2="438"/>
-  <text class="t" x="642" y="470">Platform-approved components</text>
+  <text class="t" x="642" y="470">Required deployment components</text>
   <text class="t" x="642" y="504">Borrower cannot replace the rails</text>
 
   <rect class="c4" x="900" y="130" width="255" height="465" rx="14"/>
@@ -62,7 +62,7 @@
   <text class="tag" x="1027" y="192" text-anchor="middle">FIXED IN CODE</text>
   <line class="rule" x1="925" y1="212" x2="1130" y2="212"/>
   <text class="t" x="927" y="244">One facility per loan</text>
-  <text class="t" x="927" y="278">Senior requests before junior</text>
+  <text class="t" x="927" y="278">Senior-request cash first</text>
   <text class="t" x="927" y="312">Junior-first loss</text>
   <text class="t" x="927" y="346">FIFO within each class</text>
   <text class="t" x="927" y="380">Sanctions and escrow routing</text>

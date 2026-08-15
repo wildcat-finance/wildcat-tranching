@@ -58,9 +58,9 @@ principal.
 
 ## Who chooses the terms?
 
-The borrower proposes the senior target, junior percentage, extra workout window, fixed class-eligibility
-providers and final surplus recipient inside fixed ranges. Manager economics and eligibility providers
-are set once. A provider's policy may change; loan and platform authorities sit elsewhere.
+The borrower proposes the senior target, junior percentage, extra workout window, each class's eligibility
+setting and final surplus recipient inside fixed ranges. Entry can be open or use a fixed provider. Manager
+economics and that open-or-provider choice are set once; a selected provider's policy may change.
 
 ## Can the deal be repriced later?
 
@@ -85,7 +85,7 @@ No. It is a tested prototype. It is not rated, audited or in production.
 ## Say this
 
 One borrower exposure. Senior priority. Junior first loss. Annual simple senior target. Asynchronous cash
-exit. Controlled transferability. Manager economics and eligibility providers fixed at formation.
+exit. Controlled transferability. Manager economics and eligibility settings fixed at formation.
 
 ## Never say this
 

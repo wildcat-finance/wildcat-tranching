@@ -108,3 +108,14 @@ plain prototype qualification.
 | S3-R2-07 | low | `one-market-two-claims.svg` | "One cash flow" could imply one payment rather than shared value and cash; the replacement label then crowded both boxes, so the redundant edge label was removed. | fixed in this audit branch |
 
 Leads not pursued: none.
+
+## Step 3, round 3 -- 15 August 2026
+
+| id | severity | file | finding | status |
+| --- | --- | --- | --- | --- |
+| S3-R3-01 | medium | `one-market-two-claims.svg`, `parameter-authority.svg` | Two labels could be read as ordering submission of exit requests rather than ordering the cash allocated to them. | fixed in this audit branch |
+| S3-R3-02 | low | outward BD pack and `parameter-authority.svg` | "Eligibility provider" sounded mandatory although open entry uses no provider. | fixed in this audit branch |
+| S3-R3-03 | medium | `parameter-authority.svg` | "Platform-approved components" implied an approval or assurance not claimed by the prototype. | fixed in this audit branch |
+| S3-R3-04 | low | `PARAMETER_DISCOVERY.md` | "Post-conversion opening dust floor" was crypto jargon and still made the raw-unit amount hard to price. | fixed in this audit branch |
+
+Leads not pursued: none.

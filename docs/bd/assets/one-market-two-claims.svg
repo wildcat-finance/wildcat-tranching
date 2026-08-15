@@ -44,7 +44,7 @@
   <text class="h" x="1045" y="407" text-anchor="middle">Junior ticket</text>
   <text class="t" x="1045" y="439" text-anchor="middle">Residual return</text>
   <text class="t" x="1045" y="465" text-anchor="middle">First realised loss</text>
-  <text class="small" x="1045" y="491" text-anchor="middle">Exit requests after senior</text>
+  <text class="small" x="1045" y="491" text-anchor="middle">Cash after senior requests</text>
 
   <path class="line" d="M250 290H325"/>
   <path class="line" d="M550 290H625"/>

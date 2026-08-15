@@ -23,7 +23,7 @@ hand-waving.
 | Junior share at entry | 500 to 9,000 bips |  |  |  |  |
 | Senior amount or proportion | Constrained by junior share |  |  |  |  |
 | Junior amount or proportion | Funds first |  |  |  |  |
-| Post-conversion opening dust floor | 1,000,000 smallest-denomination units; human amount depends on asset decimals and the tender may need to be larger after rounding |  |  |  |  |
+| Minimum opening credited value | At least `1e6` smallest units after conversion: 1.00 for a six-decimal asset; confirm the human amount and rounding for the chosen asset |  |  |  |  |
 | Additional workout window | More than 0; no more than 90 days |  |  |  |  |
 | Senior eligibility | Open or controlled |  |  |  |  |
 | Junior eligibility | Open or controlled |  |  |  |  |
