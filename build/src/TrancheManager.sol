@@ -8,35 +8,33 @@ import {ReentrancyGuard} from "solady/utils/ReentrancyGuard.sol";
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 
 /// @title TrancheManager
-/// @notice Senior/junior credit-tranche vault over a Wildcat ERC-4626 market wrapper (v-wmtUSDC).
-///         Conservative Phase-0 model: priority-funded senior target (not a guarantee), junior
-///         first-loss, fixed subordination floor, realised-only valuation, async redemption that
-///         routes through the market's batched withdrawal queue senior-first, escrow on sanction,
-///         and a default trigger mirroring Wildcat ToU §6.2 (grace + penalty window) on-chain.
+/// @notice Per-market custody and accounting contract for two Wildcat credit tranches.
+/// @dev The manager is the singleton-authorised market lender. It accepts only the base asset,
+///      deposits it into the market, wraps every market token, and never transfers wrapper shares.
 contract TrancheManager is ReentrancyGuard {
     using SafeTransferLib for address;
 
-    // ----- immutable wiring -----
-    IUnderlying4626 public immutable underlyingVault; // v-wmtUSDC
-    IWildcatMarket public immutable market; // market token + delinquency state + withdrawal queue
-    IERC20 public immutable baseAsset; // USDC (market.asset())
-    ISentinelLike public immutable sentinel;
-    address public immutable borrower;
-    TrancheToken public immutable senior;
-    TrancheToken public immutable junior;
+    // ----- one-time factory wiring -----
+    address public immutable factory;
+    bool public initialized;
+    IUnderlying4626 public underlyingVault;
+    IWildcatMarket public market;
+    IERC20 public baseAsset;
+    ISentinelLike public sentinel;
+    TrancheToken public senior;
+    TrancheToken public junior;
 
-    uint256 public immutable minJuniorBips;
-    uint256 public immutable defaultPenaltyWindow;
+    uint256 public minJuniorBips;
+    uint256 public defaultPenaltyWindow;
 
     // ----- governance (bounded; senior share behind a timelock) -----
     address public governance;
     address public pendingGovernance;
     address public defaultDeclarer;
-    /// @notice Senior's share of the market's base APR, in bips of BIPS (<= BIPS). The effective
-    ///         senior target rate is derived live from the market; see currentSeniorRateBips().
-    uint256 public seniorShareBips;
-    uint256 public pendingSeniorShareBips;
-    uint256 public seniorShareEta;
+    /// @notice Fixed annual senior target. Changes checkpoint the old rate before taking effect.
+    uint256 public seniorRateBips;
+    uint256 public pendingSeniorRateBips;
+    uint256 public seniorRateEta;
     bool public depositsPaused;
     mapping(address => bool) public juniorAllowed;
 
@@ -79,23 +77,39 @@ contract TrancheManager is ReentrancyGuard {
     uint256 public totalClaimedOut; // cumulative USDC paid out via claim (to owners or escrow)
 
     // ----- bounds -----
-    uint256 internal constant BIPS = 1e4;
-    uint256 internal constant MAX_SENIOR_SHARE_BIPS = 1e4; // senior may take at most 100% of the base APR
+    uint256 internal constant MAX_SENIOR_RATE_BIPS = 1e4;
     uint256 internal constant MAX_PENALTY_WINDOW = 90 days;
     uint256 internal constant MIN_INITIAL = 1e6;
     uint256 internal constant PPS_UNIT = 1e18;
     uint256 public constant RATE_TIMELOCK = 2 days;
 
-    event Deposit(bool indexed isSenior, address indexed receiver, uint256 shares, uint256 assetValue);
-    event RedeemRequested(
-        uint256 indexed id, bool isSenior, address indexed owner, uint256 shares, uint256 wmtQueued, uint32 expiry
+    event Initialized(
+        address indexed market, address indexed wrapper, address indexed governance, address senior, address junior
     );
-    event RecoveryPoked(uint32 indexed expiry, uint256 usdcReceived, uint256 totalRecovered);
-    event Claimed(uint256 indexed id, address indexed owner, uint256 usdc, bool toEscrow);
-    event WindDownEntered(uint256 seniorOwedAtDefault, bool forced);
-    event SeniorShareProposed(uint256 shareBips, uint256 eta);
-    event SeniorShareSet(uint256 shareBips);
-    event SeniorShareProposalCancelled();
+    event Deposited(
+        bool indexed isSenior,
+        address indexed caller,
+        address indexed receiver,
+        uint256 baseAssets,
+        uint256 trancheShares
+    );
+    event RedeemRequested(
+        uint256 indexed id,
+        bool isSenior,
+        address indexed owner,
+        uint256 shares,
+        uint256 wrapperShares,
+        uint256 wmtQueued,
+        uint32 expiry
+    );
+    event WithdrawalExecuted(uint32 indexed expiry, uint256 baseAssetsReceived, uint256 totalRecovered);
+    event RecoveryAllocated(uint256 seniorDelta, uint256 juniorDelta, uint256 seniorTotal, uint256 juniorTotal);
+    event Claimed(uint256 indexed id, address indexed owner, address indexed recipient, uint256 usdc, bool toEscrow);
+    event StatusChanged(Status indexed previousStatus, Status indexed newStatus, bool forced);
+    event SeniorRateProposed(uint256 rateBips, uint256 eta);
+    event SeniorRateSet(uint256 previousRateBips, uint256 newRateBips);
+    event SeniorRateProposalCancelled();
+    event AccountingCheckpoint(uint256 timestamp, uint256 seniorOwed, uint256 realisedValue);
     event JuniorAllowed(address indexed account, bool allowed);
     event DepositsPaused(bool paused);
     event DefaultDeclarerSet(address indexed declarer);
@@ -105,20 +119,24 @@ contract TrancheManager is ReentrancyGuard {
     struct Params {
         address underlyingVault;
         address sentinel;
-        address borrower;
         address governance;
         address defaultDeclarer;
-        uint256 seniorShareBips;
+        uint256 seniorRateBips;
         uint256 minJuniorBips;
         uint256 defaultPenaltyWindow;
-        uint8 shareDecimals;
     }
 
-    constructor(Params memory p) {
+    constructor(address factory_) {
+        require(factory_ != address(0), "ZERO_FACTORY");
+        factory = factory_;
+    }
+
+    function initialize(Params memory p) external {
+        require(msg.sender == factory, "ONLY_FACTORY");
+        require(!initialized, "ALREADY_INITIALIZED");
         require(p.underlyingVault != address(0), "ZERO_ADDR");
         require(p.governance != address(0), "ZERO_GOV");
-        require(p.borrower != address(0), "ZERO_BORROWER");
-        require(p.seniorShareBips <= MAX_SENIOR_SHARE_BIPS, "BAD_SHARE");
+        require(p.seniorRateBips <= MAX_SENIOR_RATE_BIPS, "BAD_RATE");
         require(p.minJuniorBips >= 500 && p.minJuniorBips <= 9000, "BAD_SUBORDINATION");
         require(p.defaultPenaltyWindow > 0 && p.defaultPenaltyWindow <= MAX_PENALTY_WINDOW, "BAD_WINDOW");
 
@@ -126,19 +144,21 @@ contract TrancheManager is ReentrancyGuard {
         market = IWildcatMarket(IUnderlying4626(p.underlyingVault).market());
         baseAsset = IERC20(market.asset());
         sentinel = ISentinelLike(p.sentinel);
-        borrower = p.borrower;
         governance = p.governance;
         defaultDeclarer = p.defaultDeclarer;
-        seniorShareBips = p.seniorShareBips;
+        seniorRateBips = p.seniorRateBips;
         minJuniorBips = p.minJuniorBips;
         defaultPenaltyWindow = p.defaultPenaltyWindow;
 
-        senior = new TrancheToken("Wildcat Senior Tranche", "sr-wmtUSDC", p.shareDecimals, true);
-        junior = new TrancheToken("Wildcat Junior Tranche", "jr-wmtUSDC", p.shareDecimals, false);
+        uint8 shareDecimals = market.decimals();
+        senior = new TrancheToken("Wildcat Senior Tranche", "sr-wmt", shareDecimals, true);
+        junior = new TrancheToken("Wildcat Junior Tranche", "jr-wmt", shareDecimals, false);
 
         lastAccrual = block.timestamp;
         status = Status.Active;
         markPps = _curPps();
+        initialized = true;
+        emit Initialized(address(market), address(underlyingVault), governance, address(senior), address(junior));
     }
 
     modifier onlyGovernance() {
@@ -182,7 +202,7 @@ contract TrancheManager is ReentrancyGuard {
 
     // ============================================================ views
     function underlying() external view returns (address) {
-        return address(underlyingVault);
+        return address(baseAsset);
     }
 
     function realisedValue() public view returns (uint256) {
@@ -203,7 +223,7 @@ contract TrancheManager is ReentrancyGuard {
 
     function trancheTotalAssets(bool isSenior) external view returns (uint256) {
         (uint256 sv, uint256 jv) = trancheValues();
-        return underlyingVault.convertToShares(isSenior ? sv : jv);
+        return isSenior ? sv : jv;
     }
 
     function defaultReached() public view returns (bool) {
@@ -213,13 +233,10 @@ contract TrancheManager is ReentrancyGuard {
         return WaterfallMath.defaultReached(s.timeDelinquent, market.delinquencyGracePeriod(), defaultPenaltyWindow);
     }
 
-    /// @notice Effective senior target rate (bips), derived live from the market's base APR:
-    ///         senior = marketBaseAPR * seniorShareBips / BIPS, capped at the base APR so junior
-    ///         bears credit risk, not rate risk. Reads annualInterestBips (base), never the penalty rate.
+    /// @notice Fixed senior target rate in annual bips. It is deliberately not read from the
+    ///         market's mutable APR, avoiding retroactive repricing between checkpoints.
     function currentSeniorRateBips() public view returns (uint256) {
-        uint256 marketApr = market.currentState().annualInterestBips;
-        uint256 rate = (marketApr * seniorShareBips) / BIPS;
-        return rate > marketApr ? marketApr : rate;
+        return seniorRateBips;
     }
 
     // ============================================================ accrual / lifecycle
@@ -238,6 +255,7 @@ contract TrancheManager is ReentrancyGuard {
             }
         }
         _syncDefault();
+        emit AccountingCheckpoint(block.timestamp, seniorOwed, realisedValue());
     }
 
     function checkDefault() external {
@@ -246,9 +264,10 @@ contract TrancheManager is ReentrancyGuard {
 
     function _syncDefault() internal {
         if (status == Status.Active && defaultReached()) {
+            Status previous = status;
             status = Status.WindDown;
             seniorOwedAtDefault = seniorOwed;
-            emit WindDownEntered(seniorOwed, forcedDefault);
+            emit StatusChanged(previous, status, forcedDefault);
         }
     }
 
@@ -259,28 +278,29 @@ contract TrancheManager is ReentrancyGuard {
     }
 
     // ============================================================ deposits
-    function depositSenior(uint256 underlyingShares, address receiver) external nonReentrant returns (uint256) {
-        return _deposit(true, underlyingShares, receiver);
+    function depositSenior(uint256 baseAssets, address receiver) external nonReentrant returns (uint256) {
+        return _deposit(true, baseAssets, receiver);
     }
 
-    function depositJunior(uint256 underlyingShares, address receiver) external nonReentrant returns (uint256) {
-        return _deposit(false, underlyingShares, receiver);
+    function depositJunior(uint256 baseAssets, address receiver) external nonReentrant returns (uint256) {
+        return _deposit(false, baseAssets, receiver);
     }
 
-    function _deposit(bool isSenior, uint256 underlyingShares, address receiver) internal returns (uint256 shares) {
+    function _deposit(bool isSenior, uint256 baseAssets, address receiver) internal returns (uint256 shares) {
         accrue();
         require(status == Status.Active, "NOT_ACTIVE");
         require(!depositsPaused, "DEPOSITS_PAUSED");
+        require(receiver != address(0), "ZERO_RECEIVER");
         require(!_isSanctioned(receiver) && !_isSanctioned(msg.sender), "SANCTIONED");
         if (!isSenior) require(juniorAllowed[receiver], "JUNIOR_NOT_WHITELISTED");
-
-        uint256 dV = _assetsOf(underlyingShares);
-        require(dV > 0, "ZERO_VALUE");
 
         (uint256 sv, uint256 jv) = trancheValues();
         TrancheToken token = isSenior ? senior : junior;
         uint256 supply = token.totalSupply();
         uint256 valueBefore = isSenior ? sv : jv;
+
+        uint256 dV = _invest(baseAssets);
+        require(dV > 0, "ZERO_VALUE");
 
         if (supply == 0) {
             require(dV >= MIN_INITIAL, "MIN_INITIAL");
@@ -291,14 +311,29 @@ contract TrancheManager is ReentrancyGuard {
         }
         require(shares > 0, "ZERO_SHARES");
 
-        address(underlyingVault).safeTransferFrom(msg.sender, address(this), underlyingShares);
-
         if (isSenior) {
             seniorOwed += dV;
             require(WaterfallMath.meetsSubordination(sv + dV, jv, minJuniorBips), "SUBORDINATION");
         }
         token.mint(receiver, shares);
-        emit Deposit(isSenior, receiver, shares, dV);
+        emit Deposited(isSenior, msg.sender, receiver, baseAssets, shares);
+    }
+
+    function _invest(uint256 baseAssets) internal returns (uint256 value) {
+        address(baseAsset).safeTransferFrom(msg.sender, address(this), baseAssets);
+        uint256 marketBefore = market.balanceOf(address(this));
+        address(baseAsset).safeApproveWithRetry(address(market), baseAssets);
+        market.deposit(baseAssets);
+        address(baseAsset).safeApproveWithRetry(address(market), 0);
+        uint256 marketTokens = market.balanceOf(address(this)) - marketBefore;
+        require(marketTokens > 0, "ZERO_MARKET_TOKENS");
+
+        uint256 wrapperBefore = underlyingVault.balanceOf(address(this));
+        address(market).safeApproveWithRetry(address(underlyingVault), marketTokens);
+        underlyingVault.deposit(marketTokens, address(this));
+        address(market).safeApproveWithRetry(address(underlyingVault), 0);
+        uint256 wrapperShares = underlyingVault.balanceOf(address(this)) - wrapperBefore;
+        value = underlyingVault.convertToAssets(wrapperShares);
     }
 
     // ============================================================ async redemption
@@ -343,7 +378,7 @@ contract TrancheManager is ReentrancyGuard {
         requests.push(
             Request({owner: msg.sender, isSenior: isSenior, wmt: uint128(wmtGot), usdcClaimed: 0, expiry: expiry})
         );
-        emit RedeemRequested(id, isSenior, msg.sender, shares, wmtGot, expiry);
+        emit RedeemRequested(id, isSenior, msg.sender, shares, shares4626, wmtGot, expiry);
         // A newly queued senior (more senior room) or a reduced senior obligation (a senior exit) can
         // release cash that was being held back; re-run allocation so it reaches the right class.
         _allocate();
@@ -355,7 +390,7 @@ contract TrancheManager is ReentrancyGuard {
         market.executeWithdrawal(address(this), expiry);
         uint256 got = baseAsset.balanceOf(address(this)) - before;
         _syncRecovered();
-        emit RecoveryPoked(expiry, got, recoveredUSDC);
+        emit WithdrawalExecuted(expiry, got, recoveredUSDC);
     }
 
     /// @notice Credit any USDC the manager holds that has not yet been booked, then re-allocate.
@@ -392,16 +427,20 @@ contract TrancheManager is ReentrancyGuard {
             seniorCashAllocated += toSenior;
             undistributed -= toSenior;
         }
-        if (undistributed == 0) return;
-
-        // Junior is gated: while distressed, reserve the entire senior obligation (protects even
-        // senior that has not queued yet); otherwise only the senior amount actually queued.
-        uint256 seniorReserve = _distressed() ? seniorOwed : seniorWmtQueued;
-        uint256 juniorCeil = recoveredUSDC > seniorReserve ? recoveredUSDC - seniorReserve : 0;
-        if (juniorCeil > juniorWmtQueued) juniorCeil = juniorWmtQueued;
-        uint256 juniorRoom = juniorCeil > juniorCashAllocated ? juniorCeil - juniorCashAllocated : 0;
-        uint256 toJunior = undistributed < juniorRoom ? undistributed : juniorRoom;
-        if (toJunior > 0) juniorCashAllocated += toJunior;
+        uint256 toJunior;
+        if (undistributed > 0) {
+            // Junior is gated: while distressed, reserve the entire senior obligation (protects even
+            // senior that has not queued yet); otherwise only the senior amount actually queued.
+            uint256 seniorReserve = _distressed() ? seniorOwed : seniorWmtQueued;
+            uint256 juniorCeil = recoveredUSDC > seniorReserve ? recoveredUSDC - seniorReserve : 0;
+            if (juniorCeil > juniorWmtQueued) juniorCeil = juniorWmtQueued;
+            uint256 juniorRoom = juniorCeil > juniorCashAllocated ? juniorCeil - juniorCashAllocated : 0;
+            toJunior = undistributed < juniorRoom ? undistributed : juniorRoom;
+            if (toJunior > 0) juniorCashAllocated += toJunior;
+        }
+        if (toSenior > 0 || toJunior > 0) {
+            emit RecoveryAllocated(toSenior, toJunior, seniorCashAllocated, juniorCashAllocated);
+        }
         // Any remainder stays undistributed: reserved for the senior obligation or for later requests.
     }
 
@@ -427,13 +466,10 @@ contract TrancheManager is ReentrancyGuard {
         totalClaimedOut += amt; // keep recoveredUSDC = idle balance + claimed invariant intact
 
         bool toEscrow = _isSanctioned(r.owner);
-        if (toEscrow) {
-            address escrow = sentinel.createEscrow(borrower, r.owner, address(baseAsset));
-            address(baseAsset).safeTransfer(escrow, amt);
-        } else {
-            address(baseAsset).safeTransfer(r.owner, amt);
-        }
-        emit Claimed(id, r.owner, amt, toEscrow);
+        address recipient = r.owner;
+        if (toEscrow) recipient = sentinel.createEscrow(market.borrowerPrincipal(), r.owner, address(baseAsset));
+        address(baseAsset).safeTransfer(recipient, amt);
+        emit Claimed(id, r.owner, recipient, amt, toEscrow);
     }
 
     function requestsLength() external view returns (uint256) {
@@ -442,38 +478,40 @@ contract TrancheManager is ReentrancyGuard {
 
     // ============================================================ transfer hook + sanctions
     function beforeTrancheTransfer(address token, address from, address to, uint256) external view {
+        require(msg.sender == token && (token == address(senior) || token == address(junior)), "ONLY_TRANCHE_TOKEN");
         require(!_isSanctioned(from) && !_isSanctioned(to), "SANCTIONED");
         if (token == address(junior)) require(juniorAllowed[to], "JUNIOR_NOT_WHITELISTED");
     }
 
     function _isSanctioned(address account) internal view returns (bool) {
         if (address(sentinel) == address(0)) return false;
-        return sentinel.isSanctioned(borrower, account);
+        return sentinel.isSanctioned(market.borrowerPrincipal(), account);
     }
 
     // ============================================================ governance
-    function proposeSeniorShareBips(uint256 shareBips) external onlyGovernance {
-        require(shareBips <= MAX_SENIOR_SHARE_BIPS, "BAD_SHARE");
-        pendingSeniorShareBips = shareBips;
-        seniorShareEta = block.timestamp + RATE_TIMELOCK;
-        emit SeniorShareProposed(shareBips, seniorShareEta);
+    function proposeSeniorRateBips(uint256 rateBips) external onlyGovernance {
+        require(rateBips <= MAX_SENIOR_RATE_BIPS, "BAD_RATE");
+        pendingSeniorRateBips = rateBips;
+        seniorRateEta = block.timestamp + RATE_TIMELOCK;
+        emit SeniorRateProposed(rateBips, seniorRateEta);
     }
 
-    function executeSeniorShareBips() external {
-        require(seniorShareEta != 0 && block.timestamp >= seniorShareEta, "TIMELOCK");
+    function executeSeniorRateBips() external {
+        require(seniorRateEta != 0 && block.timestamp >= seniorRateEta, "TIMELOCK");
         accrue();
-        seniorShareBips = pendingSeniorShareBips;
-        seniorShareEta = 0;
-        emit SeniorShareSet(seniorShareBips);
+        uint256 previous = seniorRateBips;
+        seniorRateBips = pendingSeniorRateBips;
+        seniorRateEta = 0;
+        emit SeniorRateSet(previous, seniorRateBips);
     }
 
     /// @notice Cancel a pending senior-share proposal before it executes. Execution is permissionless
     ///         once the timelock elapses, so without this a mis-entered proposal could only be
     ///         overwritten (resetting the clock); cancelling lets governance abort it outright.
-    function cancelSeniorShareProposal() external onlyGovernance {
-        pendingSeniorShareBips = 0;
-        seniorShareEta = 0;
-        emit SeniorShareProposalCancelled();
+    function cancelSeniorRateProposal() external onlyGovernance {
+        pendingSeniorRateBips = 0;
+        seniorRateEta = 0;
+        emit SeniorRateProposalCancelled();
     }
 
     function setJuniorAllowed(address account, bool allowed) external onlyGovernance {

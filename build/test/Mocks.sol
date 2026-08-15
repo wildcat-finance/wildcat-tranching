@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.25;
 
-import {MarketState, IERC20} from "../src/interfaces/IExternal.sol";
+import {MarketState, HookedMarket, IERC20} from "../src/interfaces/IExternal.sol";
 
 contract MockERC20 {
     string public name;
@@ -16,40 +16,44 @@ contract MockERC20 {
         symbol = s;
     }
 
-    function mint(address to, uint256 a) external {
-        totalSupply += a;
-        balanceOf[to] += a;
+    function mint(address to, uint256 amount) external {
+        totalSupply += amount;
+        balanceOf[to] += amount;
     }
 
-    function approve(address sp, uint256 a) external returns (bool) {
-        allowance[msg.sender][sp] = a;
+    function approve(address spender, uint256 amount) external returns (bool) {
+        allowance[msg.sender][spender] = amount;
         return true;
     }
 
-    function transfer(address to, uint256 a) external returns (bool) {
-        balanceOf[msg.sender] -= a;
-        balanceOf[to] += a;
+    function transfer(address to, uint256 amount) external returns (bool) {
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
         return true;
     }
 
-    function transferFrom(address f, address t, uint256 a) external returns (bool) {
-        uint256 al = allowance[f][msg.sender];
-        if (al != type(uint256).max) allowance[f][msg.sender] = al - a;
-        balanceOf[f] -= a;
-        balanceOf[t] += a;
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        uint256 allowed = allowance[from][msg.sender];
+        if (allowed != type(uint256).max) allowance[from][msg.sender] = allowed - amount;
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
         return true;
     }
 }
 
-/// @notice Mock Wildcat market: ERC20 market token + delinquency state + USDC withdrawal queue.
 contract MockMarket {
-    // --- market-token ERC20 (wmtUSDC) ---
+    uint8 public constant decimals = 18;
     uint256 public totalSupply;
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
 
-    // --- state ---
-    address public immutable asset; // USDC
+    address public immutable asset;
+    address public immutable wrapperFactory;
+    address public borrower;
+    address public immutable borrowerPrincipal;
+    address public immutable sentinel;
+    uint256 public immutable hooks;
+    address public registeredWrapper;
     uint256 public delinquencyGracePeriod = 10 days;
     uint256 public withdrawalBatchDuration = 1 days;
     bool internal _isClosed;
@@ -57,99 +61,117 @@ contract MockMarket {
     uint32 internal _timeDelinquent;
     uint16 internal _annualInterestBips = 1000;
 
-    // --- withdrawal queue ---
-    mapping(address => mapping(uint32 => uint256)) public owed; // account => expiry => wmt queued
-    mapping(address => mapping(uint32 => uint256)) public paid; // account => expiry => USDC paid
+    mapping(address => mapping(uint32 => uint256)) public owed;
+    mapping(address => mapping(uint32 => uint256)) public paid;
 
-    constructor(address _usdc) {
-        asset = _usdc;
+    constructor(address baseAsset_, address wrapperFactory_, address hooks_, address borrower_, address sentinel_) {
+        asset = baseAsset_;
+        wrapperFactory = wrapperFactory_;
+        borrower = borrower_;
+        borrowerPrincipal = borrower_;
+        sentinel = sentinel_;
+        hooks = (uint256(uint160(hooks_)) << 96) | (uint256(1) << 95) | (uint256(1) << 92);
     }
 
-    function mintTokens(address to, uint256 a) external {
-        totalSupply += a;
-        balanceOf[to] += a;
+    function setRegisteredWrapper(address wrapper) external {
+        require(registeredWrapper == address(0), "WRAPPER_SET");
+        registeredWrapper = wrapper;
     }
 
-    function approve(address sp, uint256 a) external returns (bool) {
-        allowance[msg.sender][sp] = a;
+    function setBorrower(address borrower_) external {
+        borrower = borrower_;
+    }
+
+    function deposit(uint256 amount) external {
+        IERC20(asset).transferFrom(msg.sender, address(this), amount);
+        totalSupply += amount;
+        balanceOf[msg.sender] += amount;
+    }
+
+    function mintTokens(address to, uint256 amount) external {
+        totalSupply += amount;
+        balanceOf[to] += amount;
+    }
+
+    function approve(address spender, uint256 amount) external returns (bool) {
+        allowance[msg.sender][spender] = amount;
         return true;
     }
 
-    function transfer(address to, uint256 a) external returns (bool) {
-        balanceOf[msg.sender] -= a;
-        balanceOf[to] += a;
+    function transfer(address to, uint256 amount) external returns (bool) {
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
         return true;
     }
 
-    function transferFrom(address f, address t, uint256 a) external returns (bool) {
-        balanceOf[f] -= a;
-        balanceOf[t] += a;
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        uint256 allowed = allowance[from][msg.sender];
+        if (allowed != type(uint256).max) allowance[from][msg.sender] = allowed - amount;
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
         return true;
     }
 
-    function setTimeDelinquent(uint32 t) external {
-        _timeDelinquent = t;
+    function setTimeDelinquent(uint32 value) external {
+        _timeDelinquent = value;
     }
 
-    function setClosed(bool c) external {
-        _isClosed = c;
+    function setClosed(bool value) external {
+        _isClosed = value;
     }
 
-    function setDelinquent(bool d) external {
-        _isDelinquent = d;
+    function setDelinquent(bool value) external {
+        _isDelinquent = value;
     }
 
-    function setAnnualInterestBips(uint16 b) external {
-        _annualInterestBips = b;
+    function setAnnualInterestBips(uint16 value) external {
+        _annualInterestBips = value;
     }
 
-    function currentState() external view returns (MarketState memory s) {
-        s.isClosed = _isClosed;
-        s.isDelinquent = _isDelinquent;
-        s.timeDelinquent = _timeDelinquent;
-        s.annualInterestBips = _annualInterestBips;
-        s.scaleFactor = uint112(1e27);
+    function currentState() external view returns (MarketState memory state) {
+        state.isClosed = _isClosed;
+        state.isDelinquent = _isDelinquent;
+        state.timeDelinquent = _timeDelinquent;
+        state.annualInterestBips = _annualInterestBips;
+        state.scaleFactor = uint112(1e27);
     }
 
     function queueWithdrawal(uint256 amount) external returns (uint32 expiry) {
-        balanceOf[msg.sender] -= amount; // burn into the batch
+        balanceOf[msg.sender] -= amount;
         totalSupply -= amount;
         expiry = uint32(block.timestamp + withdrawalBatchDuration);
         owed[msg.sender][expiry] += amount;
     }
 
-    /// @dev Pays the account min(outstanding, market USDC balance) to model partial liquidity.
     function executeWithdrawal(address account, uint32 expiry) external returns (uint256) {
         require(block.timestamp >= expiry, "NOT_EXPIRED");
         uint256 due = owed[account][expiry] - paid[account][expiry];
-        uint256 bal = IERC20(asset).balanceOf(address(this));
-        uint256 pay = due < bal ? due : bal;
-        paid[account][expiry] += pay;
-        if (pay > 0) IERC20(asset).transfer(account, pay);
-        return pay;
+        uint256 available = IERC20(asset).balanceOf(address(this));
+        uint256 amount = due < available ? due : available;
+        paid[account][expiry] += amount;
+        if (amount > 0) IERC20(asset).transfer(account, amount);
+        return amount;
     }
 }
 
-/// @notice Mock v-wmtUSDC: ERC-4626 wrapper over the market token, priced by a settable WAD.
 contract MockWrapper {
-    string public constant name = "v-wmtUSDC";
+    string public constant name = "v-wmt";
     uint256 public totalSupply;
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
+    address public immutable market;
+    uint256 public price = 1e18;
 
-    address public immutable market; // MockMarket
-    uint256 public price = 1e18; // market tokens per wrapper share, WAD
-
-    constructor(address _market) {
-        market = _market;
+    constructor(address market_) {
+        market = market_;
     }
 
     function asset() external view returns (address) {
         return market;
     }
 
-    function setPrice(uint256 p) external {
-        price = p;
+    function setPrice(uint256 value) external {
+        price = value;
     }
 
     function convertToAssets(uint256 shares) public view returns (uint256) {
@@ -164,51 +186,99 @@ contract MockWrapper {
         return convertToAssets(shares);
     }
 
-    function mintShares(address to, uint256 a) external {
-        totalSupply += a;
-        balanceOf[to] += a;
-    }
-
-    function approve(address sp, uint256 a) external returns (bool) {
-        allowance[msg.sender][sp] = a;
+    function approve(address spender, uint256 amount) external returns (bool) {
+        allowance[msg.sender][spender] = amount;
         return true;
     }
 
-    function transfer(address to, uint256 a) external returns (bool) {
-        balanceOf[msg.sender] -= a;
-        balanceOf[to] += a;
+    function transfer(address to, uint256 amount) external returns (bool) {
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
         return true;
     }
 
-    function transferFrom(address f, address t, uint256 a) external returns (bool) {
-        uint256 al = allowance[f][msg.sender];
-        if (al != type(uint256).max) allowance[f][msg.sender] = al - a;
-        balanceOf[f] -= a;
-        balanceOf[t] += a;
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        uint256 allowed = allowance[from][msg.sender];
+        if (allowed != type(uint256).max) allowance[from][msg.sender] = allowed - amount;
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
         return true;
     }
 
-    function deposit(uint256 assets, address to) external returns (uint256 shares) {
+    function deposit(uint256 assets, address receiver) external returns (uint256 shares) {
         MockMarket(market).transferFrom(msg.sender, address(this), assets);
         shares = convertToShares(assets);
         totalSupply += shares;
-        balanceOf[to] += shares;
+        balanceOf[receiver] += shares;
     }
 
-    /// @dev Burns wrapper shares from `owner`, mints equivalent market tokens to `to`.
-    function redeem(uint256 shares, address to, address owner) external returns (uint256 assets) {
+    function redeem(uint256 shares, address receiver, address owner) external returns (uint256 assets) {
         balanceOf[owner] -= shares;
         totalSupply -= shares;
         assets = convertToAssets(shares);
-        MockMarket(market).mintTokens(to, assets);
+        MockMarket(market).transfer(receiver, assets);
+    }
+}
+
+contract MockWrapperFactory {
+    mapping(address => address) public wrapperForMarket;
+
+    function setWrapper(address market, address wrapper) external {
+        wrapperForMarket[market] = wrapper;
+    }
+}
+
+contract MockSingletonProvider {
+    address public immutable lender;
+
+    constructor(address lender_) {
+        lender = lender_;
+    }
+}
+
+contract MockSingletonHooks {
+    bool public roleProviderConfigurationSealed = true;
+    uint256[] internal _providers;
+    mapping(address => HookedMarket) internal _markets;
+
+    constructor(address provider) {
+        _providers.push(uint256(uint160(provider)) << 64);
+    }
+
+    function version() external pure returns (string memory) {
+        return "SingletonOpenTermHooks";
+    }
+
+    function setSealed(bool value) external {
+        roleProviderConfigurationSealed = value;
+    }
+
+    function setMarket(address market, bool transfersDisabled) external {
+        _markets[market] = HookedMarket(true, true, true, 0, transfersDisabled);
+    }
+
+    function getPullProviders() external view returns (uint256[] memory) {
+        return _providers;
+    }
+
+    function getHookedMarket(address market) external view returns (HookedMarket memory) {
+        return _markets[market];
+    }
+}
+
+contract MockUnpinnedHooks is MockSingletonHooks {
+    constructor(address provider) MockSingletonHooks(provider) {}
+
+    function marker() external pure returns (bytes32) {
+        return keccak256("not-the-pinned-template");
     }
 }
 
 contract MockSentinel {
     mapping(address => bool) public flagged;
 
-    function setSanctioned(address a, bool v) external {
-        flagged[a] = v;
+    function setSanctioned(address account, bool value) external {
+        flagged[account] = value;
     }
 
     function isSanctioned(address, address account) external view returns (bool) {
@@ -223,7 +293,7 @@ contract MockSentinel {
 contract MockArch {
     mapping(address => bool) public isRegisteredMarket;
 
-    function setRegistered(address m, bool v) external {
-        isRegisteredMarket[m] = v;
+    function setRegistered(address market, bool value) external {
+        isRegisteredMarket[market] = value;
     }
 }
