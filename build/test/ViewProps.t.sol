@@ -2,7 +2,7 @@
 pragma solidity ^0.8.25;
 
 import "forge-std/Test.sol";
-import {TrancheController} from "../src/TrancheController.sol";
+import {TrancheManager} from "../src/TrancheManager.sol";
 import {TrancheToken} from "../src/TrancheToken.sol";
 import {MockERC20, MockMarket, MockWrapper, MockSentinel} from "./Mocks.sol";
 
@@ -15,7 +15,7 @@ contract ViewPropsTest is Test {
     MockMarket market;
     MockWrapper wrapper;
     MockSentinel sentinel;
-    TrancheController c;
+    TrancheManager c;
     TrancheToken senior;
     TrancheToken junior;
 
@@ -28,8 +28,8 @@ contract ViewPropsTest is Test {
         market = new MockMarket(address(usdc));
         wrapper = new MockWrapper(address(market));
         sentinel = new MockSentinel();
-        c = new TrancheController(
-            TrancheController.Params({
+        c = new TrancheManager(
+            TrancheManager.Params({
                 underlyingVault: address(wrapper),
                 sentinel: address(sentinel),
                 borrower: address(0xB0110),
@@ -80,9 +80,7 @@ contract ViewPropsTest is Test {
 
     /// @dev round-trip never mints value: convertToShares(convertToAssets(s)) <= s, and
     ///      convertToAssets is monotonic non-decreasing in shares.
-    function testFuzz_roundTripNoValueCreation(uint256 jDep, uint256 sDep, uint256 priceWad, uint256 shares)
-        public
-    {
+    function testFuzz_roundTripNoValueCreation(uint256 jDep, uint256 sDep, uint256 priceWad, uint256 shares) public {
         jDep = bound(jDep, 1e6, 1e24);
         sDep = bound(sDep, 1e6, 4 * jDep); // within the subordination cap
         priceWad = bound(priceWad, 0.4e18, 3e18);

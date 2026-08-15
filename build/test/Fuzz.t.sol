@@ -3,7 +3,7 @@ pragma solidity ^0.8.25;
 
 import "forge-std/Test.sol";
 import {WaterfallMath} from "../src/libraries/WaterfallMath.sol";
-import {TrancheController} from "../src/TrancheController.sol";
+import {TrancheManager} from "../src/TrancheManager.sol";
 import {TrancheToken} from "../src/TrancheToken.sol";
 import {MockERC20, MockMarket, MockWrapper, MockSentinel} from "./Mocks.sol";
 
@@ -52,14 +52,14 @@ contract WaterfallFuzzTest is Test {
 
 /// @notice Stateful invariant handler: random deposits and redemptions in both tranches, price
 ///         moves, time, donations, delinquency toggles, the ToU default clock, and recovery+claims.
-///         Every controller call is wrapped so the fuzzer keeps exploring through expected reverts.
+///         Every manager call is wrapped so the fuzzer keeps exploring through expected reverts.
 contract InvariantHandler is Test {
-    TrancheController public c;
+    TrancheManager public c;
     MockWrapper public w;
     MockMarket public m;
     MockERC20 public usdc;
 
-    constructor(TrancheController _c, MockWrapper _w, MockMarket _m, MockERC20 _u) {
+    constructor(TrancheManager _c, MockWrapper _w, MockMarket _m, MockERC20 _u) {
         c = _c;
         w = _w;
         m = _m;
@@ -131,7 +131,7 @@ contract InvariantHandler is Test {
 }
 
 contract TrancheInvariantTest is Test {
-    TrancheController c;
+    TrancheManager c;
     MockWrapper w;
     MockMarket m;
     MockERC20 usdc;
@@ -143,8 +143,8 @@ contract TrancheInvariantTest is Test {
         w = new MockWrapper(address(m));
         MockSentinel sentinel = new MockSentinel();
 
-        c = new TrancheController(
-            TrancheController.Params({
+        c = new TrancheManager(
+            TrancheManager.Params({
                 underlyingVault: address(w),
                 sentinel: address(sentinel),
                 borrower: address(0xB0110),

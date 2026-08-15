@@ -1,68 +1,87 @@
-# Wildcat In-House Tranching
+# Wildcat Tranching Prototype
 
-Senior/junior credit-tranche vault over a Wildcat ERC-4626 market wrapper (`v-abcUSDC` in the worked example).
-Conservative model: a senior target derived from the facility's base APR (a priority claim, not a guarantee), junior first-loss, a fixed
-subordination floor, realised-only valuation, async redemption routed through the market's batched
-withdrawal queue (senior-first), escrow on sanction, and a default trigger that mirrors Wildcat
-**Terms of Use §6.2** (grace + 90-day penalty) on-chain.
+This repository is an implementation sketch for issuing senior and junior claims over one Wildcat
+market. The target architecture is deliberately narrow:
 
-The tranche tokens build on Solady's ERC20 (with EIP-2612 permit) and expose an ERC-4626 value-view
-surface; redemption is asynchronous (ERC-7540 style), so there is no synchronous 4626 `withdraw`.
-The controller uses reentrancy guards and safe transfers, and values its holdings realised-only. NAV
-is held at a high-watermark while the market is delinquent, so unrealised penalty accrual is never
-booked as profit.
-
-> Two agentic review cycles complete, every actionable finding regression-pinned. No human audit yet; one precedes real capital.
-
-## Documentation
-- [Tranching-Explained.md](Tranching-Explained.md): plain-language explainer of the whole facility (also rendered to PDF under `report/`).
-- [Design-Risk-Specification.md](Design-Risk-Specification.md): the design and risk decisions behind the model — Q1–Q16 as built, plus the adopted-pending-build access/deployment/entry decisions (Q17–Q21) and the open-decision register.
-- [report/Six-Seven-Mechanisms-Report.md](report/Six-Seven-Mechanisms-Report.md): every mechanism instantiated on a concrete facility (abcUSDC / Six Seven Ltd), with worked waterfalls, the distress clock, and the entry-gate design; companion infographic in `report/six-seven-mechanisms.html`.
-- [report/Deployment-Access-Governance-Notes.md](report/Deployment-Access-Governance-Notes.md): who deploys, how capital enters, what the governance role is, and the decisions still open.
-- [Red-Team-Technical-Framework.md](Red-Team-Technical-Framework.md): adversarial-review brief: trust model, invariants, and the candidate-weakness list.
-- [BD-Primer.md](BD-Primer.md): structured-credit framing for business development and trading desks.
-- [Wildcat-Tranching-Effort-Assessment.md](Wildcat-Tranching-Effort-Assessment.md): build effort and common-ground assessment vs Strata / Royco / Pareto.
-- `report/`: branded PDFs (architecture, BD primer, explainer). `deck/`: slide decks.
-- `frontend/index.html`: interactive model of the waterfall (open in a browser).
-
-## Contracts (`build/`)
+```text
+senior and junior holders
+            |
+            v
+      TrancheManager
+            |
+            v
+canonical v- ERC-4626 wrapper
+            |
+            v
+singleton-admission Wildcat market
 ```
+
+`TrancheManager` is the only economic lender. The market's singleton role provider admits the
+manager, while the canonical wrapper is the sole exception to the normal recipient-credential
+check. Tranche holders never hold the Wildcat market token or the wrapper share.
+
+The contracts under [`build/`](build/) are a runnable accounting prototype, not a deployment
+candidate. They demonstrate the waterfall, subordination checks, async redemption and sanctions
+handling. They predate the complete singleton-plus-wrapper deployment flow and therefore must not
+be deployed without the changes in the implementation runbook.
+
+## Design rules
+
+1. One `TrancheManager` serves one registered Wildcat market.
+2. One live tranche set exists per market; no concurrent managers compete for the same recovery.
+3. All custody is measured through the market's canonical `v-` ERC-4626 wrapper.
+4. The manager is the only admitted depositor and the only holder of wrapper shares.
+5. The transfer hook remains access-required; only the canonical registered wrapper bypasses the
+   normal recipient-credential check.
+6. Senior is a priority claim, not a guaranteed claim. Junior absorbs loss first.
+7. Redemptions follow the Wildcat withdrawal queue. The tranche layer never promises synchronous
+   liquidity that the market does not have.
+8. Entry policy may reject deposits or incoming transfers, but no policy can block burning tranche
+   shares or claiming recovered assets.
+9. Deployment is deterministic, verifiable and usable by an EOA or a Safe without changing the
+   resulting market invariants.
+10. Prototype code makes no audit, production-readiness or legal-compliance claim.
+
+## Repository map
+
+```text
 build/src/
-  libraries/WaterfallMath.sol   # accrual, value/loss split, subordination, ToU default trigger
-  TrancheController.sol         # brain: deposits, async redemption, default/wind-down, gating, gov
-  TrancheToken.sol              # Solady ERC20 + permit + ERC-4626 views (sr-/jr-, derived per market)
-  TrancheFactory.sol            # protocol-level, ArchController-gated, one set per market
-  interfaces/IExternal.sol      # lean interfaces matching the Wildcat ABIs
+  TrancheFactory.sol          current deployment sketch
+  TrancheManager.sol          per-market accounting and settlement sketch
+  TrancheToken.sol            senior/junior share token
+  libraries/WaterfallMath.sol pure waterfall helpers
+
 build/test/
-  Tranche.t.sol                 # unit/behaviour tests
-  Fuzz.t.sol                    # property fuzz + stateful invariants (conservation, first-loss)
-  Fork.t.sol                    # mainnet-fork tests vs a live production wrapper + market
-  Mocks.sol                     # full-fidelity mocks (market, wrapper, sentinel, arch, USDC)
+  Tranche.t.sol               behavior and lifecycle tests
+  Fuzz.t.sol                  math properties and stateful invariants
+  ViewProps.t.sol             tranche-token value-view properties
+  Fork.t.sol                  optional mainnet-fork ABI checks
+  Mocks.sol                   local test doubles
+
+docs/
+  ARCHITECTURE.md              target topology, trust boundaries and invariants
+  IMPLEMENTATION_RUNBOOK.md    build order, interfaces, events, tests and deployment flows
+  SINGLETON_WRAPPER_HANDOFF.md handoff for the singleton-role-provider implementation
 ```
 
-## Run
-```bash
-export FOUNDRY_DISABLE_NIGHTLY_WARNING=true
+## Run the current sketch
 
-# everything (local + mainnet fork): 55 tests
-cd build && forge test
-
-# local only (unit + fuzz + invariants)
-cd build && forge test --no-match-path test/Fork.t.sol
-
-# mainnet fork only
-cd build && forge test --match-path test/Fork.t.sol -vv
+```sh
+cd build
+forge test --no-match-path test/Fork.t.sol
 ```
-The fork suite deposits shares of a live production wrapper, decodes the live `MarketState`, and round-trips a
-redemption through the real withdrawal queue. `forge-std` and `solady` are vendored under
-`build/lib`, so the suite builds on clone.
 
-## Explore (frontend)
-Open `frontend/index.html` in a browser: a JS model of `WaterfallMath`. Deposit senior/junior,
-add yield/loss, advance time, drive delinquency to the ToU default, and work the senior-first
-redemption queue. Demo links: `frontend/index.html?demo=loss`, `frontend/index.html?demo=seniorfirst`.
+The fork tests require an Ethereum RPC endpoint accepted by the test configuration:
 
-## Audit scope
-Independent review should focus on the credit-loss / redemption edge cases, the gas/DoS profile of
-the `requests` array at scale (claim-batching), and ERC-4626 property conformance of the view surface.
-See [Red-Team-Technical-Framework.md](Red-Team-Technical-Framework.md) for the full brief.
+```sh
+cd build
+forge test --match-path test/Fork.t.sol -vv
+```
+
+## Read before implementing
+
+Start with [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), then follow
+[`docs/IMPLEMENTATION_RUNBOOK.md`](docs/IMPLEMENTATION_RUNBOOK.md). The wrapper-aware singleton
+recipient exception is a prerequisite, not an optional polish item; the exact request to the singleton
+workstream is isolated in
+[`docs/SINGLETON_WRAPPER_HANDOFF.md`](docs/SINGLETON_WRAPPER_HANDOFF.md).
