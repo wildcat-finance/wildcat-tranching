@@ -27,7 +27,6 @@ the non-fork conventional/fuzz/view/release suites complete with their actual re
 **Tests.** Run the bundled prose lint over all three files. Run `forge fmt --check` and
 `forge test --no-match-path test/Fork.t.sol`; record the dependency diagnostic separately if Foundry
 emits it again.
-
 ## Step 2: Write the counterparty conversation pack
 
 **Goal.** Give BD concise material for explaining the facility, asking about acceptable terms and
@@ -70,4 +69,3 @@ inspection, and validate internal Markdown links. Run the prose lint over all fi
 `build/`, run `forge fmt --check`, the conventional/fuzz/view/release suites, the configured stateful
 suite, the seven pinned fork paths and the release-evidence test. Report every command that ran and any
 environmental failure without upgrading it into a successful result.
-

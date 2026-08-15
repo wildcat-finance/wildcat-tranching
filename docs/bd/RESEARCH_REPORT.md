@@ -70,11 +70,12 @@ Existing prose already establishes the technical design:
 - `docs/assets/tranching-prototype-infographic.png` supplies an attractive topology image, but contains
   no explanatory labels for terms, fees, queues or distress.
 
-The local non-fork baseline on 15 August 2026 ran 52 unit/integration tests, five fuzz tests, one view
-test and one release-evidence test successfully. Foundry also emitted an unresolved-symbol diagnostic
-from the pinned SphereX source while continuing to execute the selected suites; that diagnostic must
-not be reported as a clean formatting or lint result. The fork suite and
-`build/test/Invariant.t.sol` belong in the final verification step.
+On 15 August 2026, the selected conventional, fuzz, view and release suites reported 52
+unit/integration tests, five fuzz tests, one view test and one release-evidence test passing. The exact
+non-fork command was also attempted, but it ended before reporting the stateful property campaigns or a shell
+exit status. Foundry emitted an unresolved-symbol diagnostic from the pinned SphereX source while
+continuing through the reported suites. The result is therefore not recorded as a complete non-fork
+baseline. The stateful property and fork suites remain part of the final verification step.
 
 ### Parameter authority established by the code
 
@@ -92,26 +93,42 @@ not be reported as a clean formatting or lint result. The fork suite and
 The caller must equal both the supplied borrower and `market.borrower()`. The terms are written during
 factory-only initialisation. There are no setters. A nonzero gate address is fixed, although the policy
 inside that external gate may itself be mutable. The correct phrase is therefore "fixed gate contract",
-not "immutable allowlist".
+not "immutable allowlist". The factory supplies no economic defaults: the borrower must submit every
+one-time tranche term. A 0% senior target and open gates are valid choices.
+
+The first deposit into either empty tranche class must be at least `1e6` raw base-asset units. The
+human amount depends on the asset's decimals; the manager requires at least six decimals. This is a
+fixed implementation constraint, not a borrower parameter.
 
 #### Borrower-selected or borrower-operated in the underlying market
 
 The Wildcat market is created before the tranching factory attaches a manager. At market creation the
 borrower supplies market inputs such as capacity, lender APR, reserve ratio, withdrawal-batch duration,
 delinquency fee and delinquency grace period, subject to the chosen hook template and protocol bounds.
+The current generic bounds are 0 to 10,000 bips for APR, reserve ratio and delinquency fee; 0 to 90 days
+for grace; and 0 to 365 days for the withdrawal-batch duration. The tranching factory narrows the
+delinquency-fee range to 1 through 10,000 bips because it rejects a zero-fee market. Capacity is stored
+as a `uint128`. The upstream market-hook minimum deposit is also a `uint128`, with zero meaning none.
 Market capacity and APR retain borrower-authorised update paths under Wildcat rules. Reserve-ratio
 changes travel with APR changes and can be constrained or derived by the OpenTerm hook rather than
 accepted as a free borrower choice. The manager's senior target deliberately does not track a later
-market APR change. The fixed hook administrator can also change the upstream minimum deposit and block
-or unblock the manager from making fresh market deposits. That can suspend new tranche entry at the
-market layer without changing the manager's economics, custody or exit waterfall.
+market APR change. The current hook administrator can change the upstream minimum deposit and block or
+unblock the manager from making fresh market deposits. The role starts with the registered borrower
+principal and can be transferred to another registered borrower under Wildcat's two-step
+administrator-transfer rules. Its actions can suspend new tranche entry at the market layer without
+changing the manager's economics, custody or exit waterfall.
 
 #### Protocol or factory authority
 
-The protocol fee and fee recipient come from the Wildcat hook-template configuration, not from the
-tranche borrower. The pinned market permits the market factory to update the protocol fee, capped at
-1,000 bips. The tranching factory's ArchController, wrapper factory, singleton hook template and manager
-bytecode commitment are also fixed when that factory is deployed.
+The protocol-fee rate and fee recipient come from the Wildcat hook-template configuration selected
+through the ArchController owner, not from the tranche borrower. `protocolFeeBips` is a percentage of
+base lender interest and is charged on top rather than deducted from it. Its 1,000-bip cap therefore
+means at most 10% of the lender rate: a 10% lender APR and 1,000-bip fee setting produce 11% borrower
+cost. The factory can push a changed fee rate to existing open markets; an existing market's fee
+recipient is immutable. The template can also specify an origination-fee asset and amount which the
+borrower must echo and pay when creating the market. The tranching factory's ArchController, wrapper
+factory, singleton hook template and manager bytecode commitment are fixed when that factory is
+deployed.
 
 #### Verified, inherited or algorithmic
 
@@ -170,8 +187,9 @@ trancher as a prototype.
 - State that a redemption request burns tranche shares into the Wildcat withdrawal process. Timing and
   amount depend on market liquidity and borrower repayment.
 - Show protocol fee at the market layer. The manager charges no additional fee in the current code.
-  Accrued protocol fees have priority at the market level, and the manager can divide only what its
-  market position produces and recovers.
+  Accrued fees are reserved ahead of unprocessed market withdrawals; already-processed unclaimed
+  withdrawals rank ahead of later fee collection. The manager can divide only what its market position
+  produces and recovers.
 - Show the exact distinction between a fixed gate address and potentially mutable gate policy.
 - Distinguish the manager's lack of admin setters from the upstream hook administrator's ability to
   change the market minimum deposit or block fresh deposits by the manager.
@@ -240,8 +258,9 @@ working.
    escalation points.
 7. `docs/bd/INFOGRAPHICS.md`: a gallery with captions, alt text and instructions for reuse.
 8. `docs/bd/assets/one-market-two-claims.svg`: custody and exposure topology.
-9. `docs/bd/assets/priority-waterfall.svg`: protocol fee at market layer, then senior and junior manager
-   recovery with full, junior-loss and senior-impairment examples.
+9. `docs/bd/assets/priority-waterfall.svg`: conditional protocol-fee reserve at market layer, then the
+   manager's senior and junior allocation of cash actually recovered, with full, junior-loss and
+   senior-impairment examples.
 10. `docs/bd/assets/parameter-authority.svg`: borrower-at-formation, market borrower, protocol/factory,
     inherited and hard-coded columns.
 11. `docs/bd/assets/healthy-lifecycle.svg`: formation through deposit, accrual, request, batch and claim.
@@ -263,8 +282,9 @@ working.
   redemption date. Pair transfer language with gate, sanctions and queue conditions.
 - **Subordination drift.** The formation constraint becomes a maintained 20% cushion. Explain that market
   loss can consume junior value and then impair senior.
-- **Fee omission.** A scenario compares market APR and senior target without the protocol fee or market-
-  level fee priority. Show borrower cost, lender APR and tranche allocation separately.
+- **Fee omission.** A scenario compares market APR and senior target without the protocol-fee basis,
+  origination charge or exact withdrawal ordering. Show borrower cost, lender APR and tranche allocation
+  separately; distinguish unprocessed from already-processed withdrawals.
 - **Legal analogy drift.** TradFi language becomes a legal classification or rating claim. Label every
   capital-stack example as an analogy and prototype illustration.
 - **Version drift.** Current material is reused after manager source, compiler profile or V2.5 pin changes.
@@ -283,7 +303,8 @@ working.
   one-way wind-down at market grace plus the tranche window.
 - Direct base asset sent to the manager is terminal surplus and does not fund an exit request.
 - A sanctioned holder can exit, but recovered assets route to the canonical escrow.
-- The protocol fee is upstream of manager recovery; the trancher does not waive or duplicate it.
+- Accrued protocol fees reserve liquidity ahead of unprocessed manager withdrawals, while processed
+  unclaimed withdrawals are not later displaced. The trancher does not waive or duplicate the fee.
 - Holder sanctions checks retain the manager's initial borrower-principal namespace; the manager's own
   market-settlement check uses the market's live principal.
 - The V2.5 audit-bundle branch discussed in `V25_AUDIT_BUNDLE_ASSESSMENT.md` is not faulty because it lacks
@@ -302,8 +323,8 @@ status.
 - **Base asset:** the ERC-20 asset lent to the Wildcat market and used for tranche accounting.
 - **Wildcat market:** the single underlying borrower credit market; the trancher does not create a
   second loan.
-- **Canonical wrapper:** the market's registered ERC-4626 wrapper, held only by the manager in this
-  design.
+- **Canonical wrapper:** the market's registered ERC-4626 wrapper. It holds the market-token backing;
+  the manager holds all wrapper shares in this design.
 - **TrancheManager:** the per-market custody, accounting, exit and recovery contract.
 - **Senior tranche:** the claim with a fixed accounting target and first priority in realised value and
   recovery, still exposed after junior is exhausted.
@@ -332,33 +353,42 @@ status.
 
 ### Repository
 
-- `README.md`
-- `build/src/TrancheFactory.sol`
-- `build/src/TrancheManager.sol`
-- `build/src/TrancheToken.sol`
-- `build/src/TrancheOpenTermHooks.sol`
-- `build/src/libraries/WaterfallMath.sol`
-- `build/test/Tranche.t.sol`
-- `build/test/Fuzz.t.sol`
-- `build/test/Invariant.t.sol`
-- `build/test/Fork.t.sol`
-- `build/test/ReleaseEvidence.t.sol`
-- `docs/ARCHITECTURE.md`
-- `docs/IMPLEMENTATION_RUNBOOK.md`
-- `docs/TRANCHER_LOGIC_REPORT.md`
-- `docs/PROTOTYPE_HANDOFF.md`
-- `docs/TRADFI_OUTREACH_PRIMER.md`
-- `docs/RELEASE_EVIDENCE.md`
-- `docs/V25_AUDIT_BUNDLE_ASSESSMENT.md`
+- [README](../../README.md)
+- [TrancheFactory](../../build/src/TrancheFactory.sol)
+- [TrancheManager](../../build/src/TrancheManager.sol)
+- [TrancheToken](../../build/src/TrancheToken.sol)
+- [TrancheOpenTermHooks](../../build/src/TrancheOpenTermHooks.sol)
+- [WaterfallMath](../../build/src/libraries/WaterfallMath.sol)
+- [Tranche tests](../../build/test/Tranche.t.sol)
+- [Fuzz tests](../../build/test/Fuzz.t.sol)
+- [Invariant tests](../../build/test/Invariant.t.sol)
+- [Fork tests](../../build/test/Fork.t.sol)
+- [Release evidence tests](../../build/test/ReleaseEvidence.t.sol)
+- [Architecture](../ARCHITECTURE.md)
+- [Implementation runbook](../IMPLEMENTATION_RUNBOOK.md)
+- [Trancher logic report](../TRANCHER_LOGIC_REPORT.md)
+- [Prototype handoff](../PROTOTYPE_HANDOFF.md)
+- [TradFi outreach primer](../TRADFI_OUTREACH_PRIMER.md)
+- [Release evidence](../RELEASE_EVIDENCE.md)
+- [V2.5 audit-bundle assessment](../V25_AUDIT_BUNDLE_ASSESSMENT.md)
 
 ### Pinned upstream source
 
-- `build/lib/v2-protocol` at `e88e799bedd3108feb5ff45b33dc7b62f865b56c`
-- `build/lib/v2-protocol/src/HooksFactory.sol`
-- `build/lib/v2-protocol/src/market/WildcatMarketConfig.sol`
-- `build/lib/v2-protocol/src/market/WildcatMarketBase.sol`
-- `build/lib/v2-protocol/src/libraries/FeeMath.sol`
-- `build/lib/v2-protocol/src/vault/Wildcat4626Wrapper.sol`
+The V2.5 submodule is pinned at `e88e799bedd3108feb5ff45b33dc7b62f865b56c`.
+
+- [Market deployment and template fees](../../build/lib/v2-protocol/src/HooksFactory.sol)
+- [Market input structure](../../build/lib/v2-protocol/src/interfaces/WildcatStructsAndEnums.sol)
+- [Market parameter bounds](../../build/lib/v2-protocol/src/access/MarketConstraintHooks.sol)
+- [OpenTerm controls](../../build/lib/v2-protocol/src/access/OpenTermHooks.sol)
+- [Hook-administrator transfer and access controls](../../build/lib/v2-protocol/src/access/BaseAccessControls.sol)
+- [Sealed singleton hook](../../build/lib/v2-protocol/src/access/SingletonOpenTermHooks.sol)
+- [Sealed singleton lender provider](../../build/lib/v2-protocol/src/providers/SingletonRoleProvider.sol)
+- [Mutable market configuration](../../build/lib/v2-protocol/src/market/WildcatMarketConfig.sol)
+- [Market immutables](../../build/lib/v2-protocol/src/market/WildcatMarketBase.sol)
+- [Market-state withdrawal ordering](../../build/lib/v2-protocol/src/libraries/MarketState.sol)
+- [Withdrawal availability](../../build/lib/v2-protocol/src/libraries/Withdrawal.sol)
+- [Protocol-fee calculation](../../build/lib/v2-protocol/src/libraries/FeeMath.sol)
+- [Canonical wrapper](../../build/lib/v2-protocol/src/vault/Wildcat4626Wrapper.sol)
 
 ### Public references
 

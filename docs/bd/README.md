@@ -41,14 +41,17 @@ terms are fixed after deployment. The factory does not grant the borrower a cont
 | Authority | What it covers | What BD should say |
 | --- | --- | --- |
 | Borrower, once at tranche formation | Senior target rate; minimum junior percentage; additional delinquency window; fixed senior and junior gate contracts; terminal recipient; deployment salt | "The borrower proposes the tranche economics and entry structure within hard bounds, then those manager terms are fixed." |
-| Borrower or hook administrator at the Wildcat market layer | Initial market capacity, lender APR, reserve settings, withdrawal timing, delinquency terms, minimum deposit and access administration; some terms retain Wildcat-authorised update paths | "The underlying market has its own operating terms and authorities. They are not all frozen by the tranching factory." |
-| Wildcat protocol or factory | Protocol fee and recipient; registered dependencies; canonical wrapper factory; hook template; exact manager bytecode commitment | "The tranche borrower does not set the protocol fee or replace the verified deployment stack." |
+| Market borrower | Initial capacity, lender APR, reserve setting, withdrawal timing and delinquency terms; capacity and APR retain Wildcat-authorised update paths | "The underlying market has its own borrower-set operating terms. They are separate from the fixed tranche terms." |
+| Current hook administrator | Upstream market-hook minimum deposit and block or unblock of fresh deposits; the role starts with the registered borrower principal and can be transferred under Wildcat's rules | "The hook administrator can affect new capital entering the market, but cannot rewrite existing tranche claims or the waterfall." |
+| Wildcat protocol or factory | Protocol-fee rate and recipient, any origination fee, registered dependencies, canonical wrapper factory, hook template and exact manager bytecode commitment | "The tranche borrower does not set protocol charges or replace the verified deployment stack." |
 | Derived or fixed in code | Bound market and asset; market grace period; senior-first recovery; junior-first realised loss; FIFO within class; sanctions routing; objective wind-down; terminal settlement | "These are verified facts or code rules, not commercial dials." |
 
 The address of each nonzero entry gate is fixed, but the policy inside that external contract may change.
 The manager itself has no economic setter, upgrade route, pause role or discretionary default button.
-The surrounding Wildcat hook administrator can still operate upstream deposit controls, including
-blocking fresh market deposits, without rewriting existing tranche claims or their exit waterfall.
+The current Wildcat hook administrator can still change the upstream market-hook minimum deposit and
+block or unblock fresh deposits by the manager. That role is transferable under Wildcat's
+administrator-transfer rules. Its holder cannot rewrite existing tranche claims or their exit
+waterfall.
 
 ## Claims boundary
 
@@ -60,6 +63,7 @@ Do not use "guaranteed yield", "principal protected", "instant redemption", "fre
 manager wind-down is not, by itself, a legal declaration of default.
 
 The protocol fee remains at the Wildcat market layer. The manager adds no second fee in the current
-code. Borrower cost, lender APR and tranche economics should be shown separately because the protocol
-fee is paid in addition to lender base interest and has market-level priority.
-
+code. The fee rate is a percentage of base lender interest, charged on top to the borrower: a 1,000-bip
+setting on a 10% lender APR adds 1% to borrower cost. Accrued fees are reserved ahead of unprocessed
+market withdrawals; an already-processed unclaimed withdrawal is not later displaced by fee
+collection. Senior and junior divide only the manager's position and cash actually recovered.
