@@ -2,15 +2,16 @@
 pragma solidity ^0.8.25;
 
 import {TrancheManager} from "./TrancheManager.sol";
-import {
-    HookedMarket,
-    IUnderlying4626,
-    IWildcatMarket,
-    IWrapperFactoryLike,
-    ISingletonHooksLike,
-    ISingletonProviderLike,
-    IArchControllerLike
-} from "./interfaces/IExternal.sol";
+import {HookedMarket} from "v2-protocol/src/access/OpenTermHooks.sol";
+import {SingletonOpenTermHooks} from "v2-protocol/src/access/SingletonOpenTermHooks.sol";
+import {IHooksFactory} from "v2-protocol/src/IHooksFactory.sol";
+import {IWildcatArchController} from "v2-protocol/src/interfaces/IWildcatArchController.sol";
+import {WildcatMarket} from "v2-protocol/src/market/WildcatMarket.sol";
+import {ISingletonRoleProvider} from "v2-protocol/src/providers/ISingletonRoleProvider.sol";
+import {RoleProvider} from "v2-protocol/src/types/RoleProvider.sol";
+import {HooksConfig} from "v2-protocol/src/types/HooksConfig.sol";
+import {Wildcat4626Wrapper} from "v2-protocol/src/vault/Wildcat4626Wrapper.sol";
+import {Wildcat4626WrapperFactory} from "v2-protocol/src/vault/Wildcat4626WrapperFactory.sol";
 
 /// @dev Keeps the manager creation code out of TrancheFactory's runtime bytecode. Only its parent
 ///      factory can consume a salt; the manager itself still records that parent as `factory`.
@@ -42,14 +43,10 @@ contract TrancheManagerDeployer {
 /// @dev Deployment is permissionless but not squattable: the sealed singleton provider must name
 ///      the manager address predicted for the caller and salt before any code is deployed.
 contract TrancheFactory {
-    uint256 internal constant HOOK_ADDRESS_SHIFT = 96;
-    uint256 internal constant DEPOSIT_HOOK_BIT = 95;
-    uint256 internal constant TRANSFER_HOOK_BIT = 92;
-
-    IArchControllerLike public immutable archController;
-    IWrapperFactoryLike public immutable wrapperFactory;
+    IWildcatArchController public immutable archController;
+    Wildcat4626WrapperFactory public immutable wrapperFactory;
     TrancheManagerDeployer public immutable managerDeployer;
-    bytes32 public immutable singletonHooksCodehash;
+    address public immutable singletonHooksTemplate;
 
     mapping(address => address) public managerForMarket;
     address[] public allManagers;
@@ -70,7 +67,7 @@ contract TrancheFactory {
     error WrapperFactoryMismatch();
     error WrapperMismatch();
     error HookMismatch();
-    error HookCodehashMismatch();
+    error HookTemplateMismatch();
     error HookConfigurationInvalid();
     error ProviderConfigurationNotSealed();
     error ProviderConfigurationInvalid();
@@ -82,10 +79,10 @@ contract TrancheFactory {
         if (archController_ == address(0) || wrapperFactory_ == address(0) || singletonHooksTemplate_ == address(0)) {
             revert ZeroAddress();
         }
-        archController = IArchControllerLike(archController_);
-        wrapperFactory = IWrapperFactoryLike(wrapperFactory_);
-        if (singletonHooksTemplate_.code.length == 0) revert HookCodehashMismatch();
-        singletonHooksCodehash = singletonHooksTemplate_.codehash;
+        archController = IWildcatArchController(archController_);
+        wrapperFactory = Wildcat4626WrapperFactory(wrapperFactory_);
+        if (singletonHooksTemplate_.code.length == 0) revert HookTemplateMismatch();
+        singletonHooksTemplate = singletonHooksTemplate_;
         managerDeployer = new TrancheManagerDeployer(address(this));
     }
 
@@ -152,24 +149,27 @@ contract TrancheFactory {
     }
 
     function _validateBindings(address predictedManager, DeployParams calldata p) internal view {
-        IWildcatMarket market = IWildcatMarket(p.market);
+        WildcatMarket market = WildcatMarket(p.market);
         if (market.borrower() != p.borrower) revert BorrowerMismatch();
         if (market.borrowerPrincipal() == address(0)) revert BorrowerMismatch();
         if (market.sentinel() != p.sentinel) revert SentinelMismatch();
         if (market.wrapperFactory() != address(wrapperFactory)) revert WrapperFactoryMismatch();
         if (
             market.registeredWrapper() != p.wrapper || wrapperFactory.wrapperForMarket(p.market) != p.wrapper
-                || IUnderlying4626(p.wrapper).market() != p.market || IUnderlying4626(p.wrapper).asset() != p.market
+                || Wildcat4626Wrapper(p.wrapper).market() != p.market
+                || Wildcat4626Wrapper(p.wrapper).asset() != p.market
         ) revert WrapperMismatch();
 
-        uint256 hooksConfig = market.hooks();
-        if (address(uint160(hooksConfig >> HOOK_ADDRESS_SHIFT)) != p.hooks) revert HookMismatch();
-        if (((hooksConfig >> DEPOSIT_HOOK_BIT) & 1) == 0 || ((hooksConfig >> TRANSFER_HOOK_BIT) & 1) == 0) {
+        HooksConfig hooksConfig = market.hooks();
+        if (hooksConfig.hooksAddress() != p.hooks) revert HookMismatch();
+        if (!hooksConfig.useOnDeposit() || !hooksConfig.useOnTransfer()) {
             revert HookConfigurationInvalid();
         }
 
-        ISingletonHooksLike hooks = ISingletonHooksLike(p.hooks);
-        if (p.hooks.codehash != singletonHooksCodehash) revert HookCodehashMismatch();
+        SingletonOpenTermHooks hooks = SingletonOpenTermHooks(p.hooks);
+        if (IHooksFactory(market.factory()).getHooksTemplateForInstance(p.hooks) != singletonHooksTemplate) {
+            revert HookTemplateMismatch();
+        }
         if (!hooks.roleProviderConfigurationSealed()) revert ProviderConfigurationNotSealed();
         HookedMarket memory hooked = hooks.getHookedMarket(p.market);
         if (
@@ -177,11 +177,11 @@ contract TrancheFactory {
                 || hooked.transfersDisabled
         ) revert HookConfigurationInvalid();
 
-        uint256[] memory providers = hooks.getPullProviders();
-        if (providers.length != 1 || address(uint160(providers[0] >> 64)) != p.singletonProvider) {
+        RoleProvider[] memory providers = hooks.getPullProviders();
+        if (providers.length != 1 || providers[0].providerAddress() != p.singletonProvider) {
             revert ProviderConfigurationInvalid();
         }
-        if (ISingletonProviderLike(p.singletonProvider).lender() != predictedManager) {
+        if (ISingletonRoleProvider(p.singletonProvider).lender() != predictedManager) {
             revert SingletonLenderMismatch();
         }
     }

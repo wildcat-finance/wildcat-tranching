@@ -9,9 +9,11 @@ senior and junior claims over the resulting position.
 This records the implementation sequence and the decisions made by the prototype. It is not a
 production-readiness claim.
 
-## Gate 1: Pin the integration surface
+## Gate 1: Pinned integration surface
 
-Pin a V2.5 commit and compile against its interfaces. The implementation relies on:
+The prototype pins `v2-protocol` at
+`49be5432dbc8f268aec84beaada31de406fad875`, the current head of PR #124, and imports its contracts,
+structs and value types directly. The implementation relies on:
 
 - the market factory accepting a predicted manager as the singleton lender;
 - `market.asset()`, `deposit`, `queueWithdrawal`, `executeWithdrawal` and `registeredWrapper()`;
@@ -20,13 +22,20 @@ Pin a V2.5 commit and compile against its interfaces. The implementation relies 
 - the wrapper's ERC-4626 `deposit`, `redeem`, `asset` and `totalAssets` behavior;
 - the sealed singleton role provider and its market-hook verifier.
 
-Do not duplicate these interfaces from memory. Vendor or import the pinned definitions and add a
-fork test that proves selectors and return types against deployed V2.5 contracts.
+`build/test/Fork.t.sol` deploys the pinned V2.5 stack on mainnet block `25,758,381`. It predicts the
+manager, binds that address as the singleton lender, deploys the market and hooks, registers the
+canonical wrapper and initializes the manager. The factory verifies hooks-template provenance via
+`HooksFactory.getHooksTemplateForInstance`, since the stored initcode template and a constructed
+hooks instance cannot share a runtime code hash.
 
 The singleton workstream must first make the small change described in
 [`SINGLETON_WRAPPER_HANDOFF.md`](SINGLETON_WRAPPER_HANDOFF.md): remove the global transfer-disable
 requirement while preserving transfer-hook access checks and exempting only the nonzero canonical
 registered wrapper from the normal recipient-credential check.
+
+The next bounded step is a lifecycle test against this stack: one base-asset deposit through the
+manager followed by one queued and executed exit. It is recorded here and not implemented by the
+deployment integration change.
 
 ## Gate 2: Prototype accounting semantics
 
@@ -59,17 +68,15 @@ src/
   TrancheFactory.sol
   TrancheManager.sol
   TrancheToken.sol
-  interfaces/
-    IWildcatV25.sol
-    ITrancheManager.sol
   libraries/
     WaterfallMath.sol
-    TrancheErrors.sol
 test/
-  unit/
-  invariant/
-  integration/
-  deployment/
+  Tranche.t.sol
+  Fuzz.t.sol
+  Invariant.t.sol
+  Fork.t.sol
+lib/
+  v2-protocol/              pinned at 49be5432dbc8f268aec84beaada31de406fad875
 ```
 
 Keep pure waterfall arithmetic isolated from custody and lifecycle transitions. Prefer custom

@@ -22,8 +22,11 @@ check. Tranche holders never hold the Wildcat market token or the wrapper share.
 
 The contracts under [`build/`](build/) are a runnable prototype, not a deployment candidate. They
 cover deterministic manager deployment, singleton and wrapper binding checks, base-asset custody,
-the waterfall, async redemption and sanctions handling. The protocol interfaces are still local
-mirrors, and the fork test is read-only until a V2.5 market using PR #124 is deployed.
+the waterfall, async redemption and sanctions handling. They compile against
+[`v2-protocol@49be543`](https://github.com/wildcat-finance/v2-protocol/commit/49be5432dbc8f268aec84beaada31de406fad875),
+the current head of PR #124. `Fork.t.sol` deploys that pinned protocol stack on mainnet block
+`25,758,381`, then creates the singleton market, registers its canonical wrapper and deploys the
+predicted manager.
 
 ## Design rules
 
@@ -56,7 +59,7 @@ build/test/
   Fuzz.t.sol                  pure waterfall math properties
   Invariant.t.sol             stateful custody and recovery properties
   ViewProps.t.sol             tranche-token value-view properties
-  Fork.t.sol                  optional mainnet-fork ABI checks
+  Fork.t.sol                  pinned V2.5 market, wrapper and manager deployment
   Mocks.sol                   local test doubles
 
 docs/
@@ -68,6 +71,7 @@ docs/
 ## Run the prototype
 
 ```sh
+git submodule update --init --recursive
 cd build
 forge test --no-match-path test/Fork.t.sol
 ```
@@ -78,6 +82,16 @@ The fork tests require an Ethereum RPC endpoint accepted by the test configurati
 cd build
 forge test --match-path test/Fork.t.sol -vv
 ```
+
+Set `MAINNET_RPC_URL` to override the default endpoint. The fork test is pinned to block
+`25,758,381`; it deploys the V2.5 contracts from the pinned submodule rather than relying on a live
+V2.5 deployment.
+
+## Next step
+
+The next bounded change is a real-stack lifecycle test: deposit the base asset through the manager,
+prove that the manager wraps every market token, then request and execute an async exit. This
+prototype stops at deployment and binding verification.
 
 ## Read before implementing
 

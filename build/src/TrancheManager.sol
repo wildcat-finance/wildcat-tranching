@@ -3,9 +3,13 @@ pragma solidity ^0.8.25;
 
 import {WaterfallMath} from "./libraries/WaterfallMath.sol";
 import {TrancheToken} from "./TrancheToken.sol";
-import {IUnderlying4626, IWildcatMarket, ISentinelLike, IERC20, MarketState} from "./interfaces/IExternal.sol";
-import {ReentrancyGuard} from "solady/utils/ReentrancyGuard.sol";
-import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
+import {IERC20} from "v2-protocol/src/interfaces/IERC20.sol";
+import {IWildcatSanctionsSentinel} from "v2-protocol/src/interfaces/IWildcatSanctionsSentinel.sol";
+import {MarketState} from "v2-protocol/src/libraries/MarketState.sol";
+import {WildcatMarket} from "v2-protocol/src/market/WildcatMarket.sol";
+import {Wildcat4626Wrapper} from "v2-protocol/src/vault/Wildcat4626Wrapper.sol";
+import {ReentrancyGuard} from "../lib/solady/src/utils/ReentrancyGuard.sol";
+import {SafeTransferLib} from "../lib/solady/src/utils/SafeTransferLib.sol";
 
 /// @title TrancheManager
 /// @notice Per-market custody and accounting contract for two Wildcat credit tranches.
@@ -17,10 +21,10 @@ contract TrancheManager is ReentrancyGuard {
     // ----- one-time factory wiring -----
     address public immutable factory;
     bool public initialized;
-    IUnderlying4626 public underlyingVault;
-    IWildcatMarket public market;
+    Wildcat4626Wrapper public underlyingVault;
+    WildcatMarket public market;
     IERC20 public baseAsset;
-    ISentinelLike public sentinel;
+    IWildcatSanctionsSentinel public sentinel;
     TrancheToken public senior;
     TrancheToken public junior;
 
@@ -140,10 +144,10 @@ contract TrancheManager is ReentrancyGuard {
         require(p.minJuniorBips >= 500 && p.minJuniorBips <= 9000, "BAD_SUBORDINATION");
         require(p.defaultPenaltyWindow > 0 && p.defaultPenaltyWindow <= MAX_PENALTY_WINDOW, "BAD_WINDOW");
 
-        underlyingVault = IUnderlying4626(p.underlyingVault);
-        market = IWildcatMarket(IUnderlying4626(p.underlyingVault).market());
+        underlyingVault = Wildcat4626Wrapper(p.underlyingVault);
+        market = WildcatMarket(Wildcat4626Wrapper(p.underlyingVault).market());
         baseAsset = IERC20(market.asset());
-        sentinel = ISentinelLike(p.sentinel);
+        sentinel = IWildcatSanctionsSentinel(p.sentinel);
         governance = p.governance;
         defaultDeclarer = p.defaultDeclarer;
         seniorRateBips = p.seniorRateBips;

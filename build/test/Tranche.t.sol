@@ -10,6 +10,7 @@ import {
     MockMarket,
     MockWrapper,
     MockWrapperFactory,
+    MockHooksFactory,
     MockSingletonProvider,
     MockSingletonHooks,
     MockUnpinnedHooks,
@@ -22,6 +23,7 @@ contract TrancheTest is Test {
     MockMarket market;
     MockWrapper wrapper;
     MockWrapperFactory wrapperFactory;
+    MockHooksFactory hooksFactory;
     MockSingletonProvider provider;
     MockSingletonHooks hooks;
     MockSentinel sentinel;
@@ -37,6 +39,7 @@ contract TrancheTest is Test {
     address jrLP = address(0x10110);
     address borrower;
     bytes32 salt = keccak256("fixture");
+    address hookTemplate;
 
     uint256 constant MIN_JUNIOR_BIPS = 2000;
     uint256 constant SENIOR_RATE_BIPS = 1000;
@@ -47,8 +50,9 @@ contract TrancheTest is Test {
         wrapperFactory = new MockWrapperFactory();
         arch = new MockArch();
         borrower = address(this);
-        MockSingletonHooks hookTemplate = new MockSingletonHooks(address(1));
-        factory = new TrancheFactory(address(arch), address(wrapperFactory), address(hookTemplate));
+        hookTemplate = address(new MockSingletonHooks(address(1)));
+        hooksFactory = new MockHooksFactory();
+        factory = new TrancheFactory(address(arch), address(wrapperFactory), hookTemplate);
 
         address predicted = factory.computeManagerAddress(address(this), salt);
         provider = new MockSingletonProvider(predicted);
@@ -57,6 +61,8 @@ contract TrancheTest is Test {
         market = new MockMarket(address(usdc), address(wrapperFactory), address(hooks), borrower, address(sentinel));
         wrapper = new MockWrapper(address(market));
 
+        market.setFactory(address(hooksFactory));
+        hooksFactory.setTemplate(address(hooks), hookTemplate);
         hooks.setMarket(address(market), false);
         market.setRegisteredWrapper(address(wrapper));
         wrapperFactory.setWrapper(address(market), address(wrapper));
@@ -274,6 +280,8 @@ contract TrancheTest is Test {
         MockMarket otherMarket =
             new MockMarket(address(usdc), address(wrapperFactory), address(otherHooks), borrower, address(sentinel));
         MockWrapper otherWrapper = new MockWrapper(address(otherMarket));
+        otherMarket.setFactory(address(hooksFactory));
+        hooksFactory.setTemplate(address(otherHooks), hookTemplate);
         otherHooks.setMarket(address(otherMarket), true);
         otherMarket.setRegisteredWrapper(address(otherWrapper));
         wrapperFactory.setWrapper(address(otherMarket), address(otherWrapper));
@@ -292,6 +300,8 @@ contract TrancheTest is Test {
         MockMarket otherMarket =
             new MockMarket(address(usdc), address(wrapperFactory), address(otherHooks), borrower, address(sentinel));
         MockWrapper otherWrapper = new MockWrapper(address(otherMarket));
+        otherMarket.setFactory(address(hooksFactory));
+        hooksFactory.setTemplate(address(otherHooks), hookTemplate);
         otherHooks.setMarket(address(otherMarket), false);
         otherMarket.setRegisteredWrapper(address(otherWrapper));
         wrapperFactory.setWrapper(address(otherMarket), address(otherWrapper));
@@ -303,7 +313,7 @@ contract TrancheTest is Test {
         );
     }
 
-    function test_FactoryRejectsUnpinnedHookRuntime() public {
+    function test_FactoryRejectsUnpinnedHookTemplate() public {
         bytes32 otherSalt = keccak256("unpinned-hook");
         address predicted = factory.computeManagerAddress(address(this), otherSalt);
         MockSingletonProvider otherProvider = new MockSingletonProvider(predicted);
@@ -311,12 +321,14 @@ contract TrancheTest is Test {
         MockMarket otherMarket =
             new MockMarket(address(usdc), address(wrapperFactory), address(otherHooks), borrower, address(sentinel));
         MockWrapper otherWrapper = new MockWrapper(address(otherMarket));
+        otherMarket.setFactory(address(hooksFactory));
+        hooksFactory.setTemplate(address(otherHooks), address(otherHooks));
         otherHooks.setMarket(address(otherMarket), false);
         otherMarket.setRegisteredWrapper(address(otherWrapper));
         wrapperFactory.setWrapper(address(otherMarket), address(otherWrapper));
         arch.setRegistered(address(otherMarket), true);
 
-        vm.expectRevert(TrancheFactory.HookCodehashMismatch.selector);
+        vm.expectRevert(TrancheFactory.HookTemplateMismatch.selector);
         factory.deployTranches(
             otherSalt, _params(address(otherMarket), address(otherWrapper), address(otherHooks), address(otherProvider))
         );
