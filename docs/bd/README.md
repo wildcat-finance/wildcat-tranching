@@ -1,75 +1,64 @@
-# Wildcat tranching: BD field kit
+# One loan. Two risk books.
 
-This directory is the source for lender and borrower conversations about the Wildcat tranching
-prototype. It is written for credit teams, treasury teams, allocators, originators and crypto-native
-firms that already understand the borrower exposure and want to discuss how two participation classes
-could sit over one Wildcat market.
+The borrower raises one facility. Junior takes the first loss and keeps the residual return. Senior sits
+above it, earns a fixed accounting target and gets paid first. Same borrower. Same pool of cash. Different
+attachment points.
 
-The material describes `wildcat-finance/wildcat-tranching` at
-`b90a155f257c76f96e50cf2fa29872e1735f8bd8`. It is a prototype, not a live offering, an audit report,
-a credit rating, a legal opinion or a promise of liquidity or repayment.
+That is the pitch. Do not open a meeting by explaining the platform.
 
-## Start here
+This is a prototype, not a live offer, rating, guarantee, legal opinion or promise of liquidity.
 
-Start with the [counterparty primer](PRIMER.md), then use the [meeting brief](MEETING_BRIEF.md) on a
-call. The [parameter discovery guide](PARAMETER_DISCOVERY.md) records what borrowers and lenders would
-accept, while the [FAQ and claims guide](FAQ_AND_CLAIMS.md) keeps the answers inside the prototype's
-actual behaviour.
+## Take into the room
 
-Read the [research report](RESEARCH_REPORT.md) for the contracts, lifecycle, parameter authority,
-constraints and source list. The [delivery runbook](DELIVERY_RUNBOOK.md) records how the material and
-infographics are being assembled and checked.
+- [Meeting brief](MEETING_BRIEF.md): the opening, the questions and the close.
+- [Desk primer](PRIMER.md): the trade, the downside and the cash mechanics.
+- [Parameter worksheet](PARAMETER_DISCOVERY.md): the numbers and controls that need an answer.
+- [Desk FAQ](FAQ_AND_CLAIMS.md): short answers when the room starts kicking the tyres.
+- [Infographics](INFOGRAPHICS.md): six diagrams for a screen or follow-up note.
 
-For the underlying design and test status, use the repository's
-[architecture](../ARCHITECTURE.md), [prototype handoff](../PROTOTYPE_HANDOFF.md) and
-[release evidence](../RELEASE_EVIDENCE.md). The
-[V2.5 compatibility assessment](../V25_AUDIT_BUNDLE_ASSESSMENT.md) explains which additions are needed
-if the trancher is included in that audit bundle. Their absence from a V2.5-only branch is not an error
-in that branch.
+The [research report](RESEARCH_REPORT.md) and [delivery runbook](DELIVERY_RUNBOOK.md) are internal source
+material. Use them to check a claim, not to sell the trade.
 
-## The short answer
+## The trade in numbers
 
-One `TrancheManager` is the sole lender to one Wildcat market. It holds the market's canonical wrapped
-position and issues two claims over the same realised value:
+Assume 300 senior, 100 junior and 315 owed to senior:
 
-- Senior accrues a fixed accounting target and receives first priority in realised value and recovery.
-- Junior receives the residual and absorbs realised loss before senior.
+| Facility value | Senior | Junior | What happened |
+| ---: | ---: | ---: | --- |
+| 420 | 315 | 105 | Both classes are whole; junior keeps the excess |
+| 340 | 315 | 25 | Junior has absorbed the loss |
+| 280 | 280 | 0 | Junior is gone; senior is impaired |
 
-Both classes retain the same underlying borrower risk. Seniority changes ordering; it does not create a
-guarantee. Exits burn tranche shares into the Wildcat withdrawal queue and settle as the market pays.
+Seniority changes the order of payment and loss. It does not make weak credit good.
 
-## Who chooses what
+## Who sets the deal
 
-Yes: the market borrower chooses a bounded set of tranche terms when the manager is attached. Those
-terms are fixed after deployment. The factory does not grant the borrower a continuing control plane.
+The borrower proposes the senior target, junior percentage, extra workout window, eligibility rules and
+final surplus recipient when the facility is formed. The ranges are bounded and the terms do not have
+later manager setters.
 
-| Authority | What it covers | What BD should say |
-| --- | --- | --- |
-| Borrower, once at tranche formation | Senior target rate; minimum junior percentage; additional delinquency window; fixed senior and junior gate contracts; terminal recipient; deployment salt | "The borrower proposes the tranche economics and entry structure within hard bounds, then those manager terms are fixed." |
-| Market borrower | Initial capacity, lender APR, reserve setting, withdrawal timing and delinquency terms; capacity and APR retain Wildcat-authorised update paths | "The underlying market has its own borrower-set operating terms. They are separate from the fixed tranche terms." |
-| Current hook administrator | Upstream market-hook minimum deposit and block or unblock of fresh deposits; the role starts with the registered borrower principal and can be transferred under Wildcat's rules | "The hook administrator can affect new capital entering the market, but cannot rewrite existing tranche claims or the waterfall." |
-| Wildcat protocol or factory | Template fee rate and recipient, any origination fee, registered dependencies, canonical wrapper factory, hook template and exact manager bytecode commitment; the rate can be updated for an open market, while its recipient is fixed | "The tranche borrower does not set protocol charges or replace the verified deployment stack." |
-| Derived or fixed in code | Bound market and asset; market grace period; senior-first recovery; junior-first realised loss; FIFO within class; sanctions routing; objective wind-down; terminal settlement | "These are verified facts or code rules, not commercial dials." |
+The underlying loan still has its own rate, size, liquidity, delinquency and amendment terms. Platform
+fees and operating rails are set separately. The code fixes the waterfall, FIFO inside each class,
+sanctions routing and wind-down mechanics.
 
-The address of each nonzero entry gate is fixed, but the policy inside that external contract may change.
-The manager itself has no economic setter, upgrade route, pause role or discretionary default button.
-The current Wildcat hook administrator can still change the upstream market-hook minimum deposit and
-block or unblock fresh deposits by the manager. That role is transferable under Wildcat's
-administrator-transfer rules. Its holder cannot rewrite existing tranche claims or their exit
-waterfall.
+In plain English: the borrower can price and shape the capital stack at inception. The borrower cannot
+rewrite the waterfall after the money lands.
 
-## Claims boundary
+## What matters to a desk
 
-Use "fixed senior target", "junior first realised loss", "senior-first recovery", "controlled
-transferability" and "asynchronous exit".
+- **Credit:** one named borrower exposure; no diversification trick.
+- **Attachment:** junior absorbs loss first; senior takes loss after junior is exhausted.
+- **Return:** senior has a fixed target; junior owns the residual. Neither is guaranteed.
+- **Liquidity:** exit waits for cash from the underlying loan and may be partial.
+- **Transfer:** interests can move only to eligible, sanctions-cleared recipients. A bid is not promised.
+- **Workout:** arrears stop new money; an observed threshold or loan close puts the facility into one-way
+  wind-down.
+- **Control:** facility economics are fixed at formation; loan-level operating rights remain separate.
 
-Do not use "guaranteed yield", "principal protected", "instant redemption", "freely transferable",
-"maintained collateral cushion", "audited", "production-ready" or a credit-rating analogy. A mechanical
-manager wind-down is not, by itself, a legal declaration of default.
+## Never say
 
-The protocol fee remains at the Wildcat market layer. The manager adds no second fee in the current
-code. The fee rate is a percentage of base lender interest, charged on top to the borrower: a 1,000-bip
-setting on a 10% lender APR gives an 11% running base-interest cost before any origination fee or
-delinquency charge. Accrued fees are reserved ahead of unprocessed market withdrawals; an
-already-processed unclaimed withdrawal is not later displaced by fee collection. Senior and junior
-divide only the manager's position and cash actually recovered.
+Guaranteed yield. Principal protected. Maintained cushion. Instant redemption. Freely transferable.
+Liquid. Rated. Automatic legal default. Audited. Production-ready.
+
+Say what the trade actually is: senior priority, junior first loss, asynchronous cash exit and one
+borrower credit underneath both.

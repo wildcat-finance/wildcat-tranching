@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-labelledby="title desc">
+  <title id="title">Arrears, cure and wind-down</title>
+  <desc id="desc">A timeline shows arrears stopping new money, a cure branch before threshold observation and permanent wind-down once the live threshold is recorded.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#1c5c9e"/></marker>
+    <marker id="greenArrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#238c84"/></marker>
+    <style>
+      .title{font:700 32px Arial,sans-serif;fill:#0b2341}.sub{font:400 16px Arial,sans-serif;fill:#46596f}
+      .h{font:700 18px Arial,sans-serif;fill:#0b2341}.t{font:400 14px Arial,sans-serif;fill:#24384f}.tiny{font:400 13px Arial,sans-serif;fill:#46596f}
+      .box{fill:#fff;stroke:#173b66;stroke-width:2}.warn{fill:#fff0d6;stroke:#d28720;stroke-width:2}.blue{fill:#ddebfa;stroke:#1c5c9e;stroke-width:2}.green{fill:#dff2ec;stroke:#238c84;stroke-width:2}
+      .line{stroke:#1c5c9e;stroke-width:3;fill:none;marker-end:url(#arrow)}.cure{stroke:#238c84;stroke-width:3;fill:none;marker-end:url(#greenArrow)}
+    </style>
+  </defs>
+  <rect width="1200" height="675" fill="#faf8f3"/>
+  <text class="title" x="60" y="58">Arrears: cure it or wind it down.</text>
+  <text class="sub" x="60" y="88">The live threshold must be recorded before cure. A past, unrecorded breach is not recreated later.</text>
+
+  <path class="line" d="M235 235H335M535 235H635M835 235H935"/>
+  <rect class="box" x="55" y="165" width="180" height="140" rx="13"/>
+  <text class="h" x="145" y="202" text-anchor="middle">Performing</text>
+  <text class="t" x="145" y="234" text-anchor="middle">Value updates normally</text>
+  <text class="t" x="145" y="258" text-anchor="middle">New money may enter</text>
+  <text class="tiny" x="145" y="285" text-anchor="middle">Senior target accrues</text>
+
+  <rect class="warn" x="335" y="145" width="200" height="180" rx="13"/>
+  <text class="h" x="435" y="184" text-anchor="middle">Arrears · facility active</text>
+  <text class="t" x="435" y="216" text-anchor="middle">New money stops</text>
+  <text class="t" x="435" y="240" text-anchor="middle">Arrears upside is ignored</text>
+  <text class="t" x="435" y="264" text-anchor="middle">Live losses still count</text>
+  <text class="tiny" x="435" y="296" text-anchor="middle">The live counter can fall on cure</text>
+
+  <rect class="blue" x="635" y="145" width="200" height="180" rx="13"/>
+  <text class="h" x="735" y="184" text-anchor="middle">Threshold reached</text>
+  <text class="t" x="735" y="216" text-anchor="middle">Loan grace</text>
+  <text class="t" x="735" y="240" text-anchor="middle">+ agreed extra window</text>
+  <text class="t" x="735" y="270" text-anchor="middle">Operating checkpoint</text>
+  <text class="h" x="735" y="298" text-anchor="middle">records it</text>
+
+  <rect class="box" x="935" y="145" width="210" height="180" rx="13"/>
+  <text class="h" x="1040" y="184" text-anchor="middle">Permanent wind-down</text>
+  <text class="t" x="1040" y="216" text-anchor="middle">Irreversible once observed</text>
+  <text class="t" x="1040" y="240" text-anchor="middle">Senior accrual stops at cutoff</text>
+  <text class="t" x="1040" y="264" text-anchor="middle">No new deposits</text>
+  <text class="tiny" x="1040" y="296" text-anchor="middle">Exit and recovery continue</text>
+
+  <path class="cure" d="M435 325C435 420 250 420 210 485"/>
+  <rect class="green" x="85" y="485" width="330" height="105" rx="13"/>
+  <text class="h" x="250" y="522" text-anchor="middle">Cure before the trigger is recorded</text>
+  <text class="t" x="250" y="552" text-anchor="middle">Normal valuation and funding can resume</text>
+  <text class="tiny" x="250" y="576" text-anchor="middle">A past threshold breach is not recreated</text>
+
+  <path class="line" d="M1040 325V475"/>
+  <rect class="blue" x="845" y="475" width="310" height="115" rx="13"/>
+  <text class="h" x="1000" y="512" text-anchor="middle">Recovery and settlement</text>
+  <text class="t" x="1000" y="542" text-anchor="middle">Senior requests before junior</text>
+  <text class="tiny" x="1000" y="566" text-anchor="middle">Facility sanction can delay payment</text>
+
+  <rect class="warn" x="465" y="455" width="320" height="135" rx="13"/>
+  <text class="h" x="625" y="492" text-anchor="middle">Operating requirement</text>
+  <text class="t" x="625" y="522" text-anchor="middle">Monitor the live loan</text>
+  <text class="t" x="625" y="546" text-anchor="middle">Record the trigger during arrears</text>
+  <text class="tiny" x="625" y="572" text-anchor="middle">This is not necessarily legal default</text>
+
+  <text class="sub" x="600" y="640" text-anchor="middle">Closing the underlying loan also starts permanent wind-down.</text>
+</svg>
