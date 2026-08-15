@@ -6,10 +6,10 @@ Build a production-shaped prototype in which one `TrancheManager` is the sole ec
 one Wildcat market, holds every share of that market's canonical `Wildcat4626Wrapper`, and issues
 senior and junior claims over the resulting position.
 
-This is an implementation sequence, not a production-readiness claim. Do not start the accounting
-rewrite until the checkpoint decision in Gate 2 is specified well enough to test as an invariant.
+This records the implementation sequence and the decisions made by the prototype. It is not a
+production-readiness claim.
 
-## Gate 1 — Pin the integration surface
+## Gate 1: Pin the integration surface
 
 Pin a V2.5 commit and compile against its interfaces. The implementation relies on:
 
@@ -28,18 +28,19 @@ The singleton workstream must first make the small change described in
 requirement while preserving transfer-hook access checks and exempting only the nonzero canonical
 registered wrapper from the normal recipient-credential check.
 
-## Gate 2 — Freeze accounting semantics
+## Gate 2: Prototype accounting semantics
 
-Resolve these points in a short specification before changing storage:
+The prototype makes these choices:
 
-1. Which exact event or callback checkpoints senior accrual before a market APR change?
-2. How is the last healthy wrapper price captured when a quiet market becomes delinquent?
-3. Is senior owed a time-accruing liability, a share of realized market yield, or the lesser of the
-   two? Define rounding direction at every boundary.
-4. When a user exits, which wrapper shares and market-token face enter the Wildcat withdrawal
-   queue, and how is over- or under-recovery allocated?
-5. Which recovery ordering is contractual: class priority plus FIFO within class, or another rule?
-6. What state ends new deposits and junior exits, and can that transition ever be reversed?
+1. Senior is a time-accruing liability at a fixed manager rate. Rate changes are timelocked and
+   checkpoint the old rate before taking effect.
+2. Manager actions checkpoint accounting. Delinquent valuation is capped at the last healthy price
+   observed by such a checkpoint.
+3. Deposits and exits round tranche shares down. Exits redeem the wrapper shares attributable to
+   the holder's class value and queue the market tokens actually received.
+4. Recovery is senior-first between classes and FIFO within each class.
+5. Default and forced wind-down cannot be reversed. Wind-down stops deposits and senior accrual.
+6. Terminal wrapper-share dust is not swept in this prototype and needs a production rule.
 
 Required conservation statement:
 
@@ -48,8 +49,8 @@ manager wrapper value + idle base asset + base asset already paid
   == active tranche value + queued claim value + explicit rounding dust
 ```
 
-The current sketch uses the current APR over the entire elapsed interval and can retain a stale
-healthy-price watermark. Treat both as unresolved behavior, not as defaults.
+The stale healthy-price case is conservative until cure, but exact transition accounting would
+require a market callback or equivalent protocol integration.
 
 ## Target source layout
 
@@ -86,7 +87,7 @@ Expose:
 
 ```solidity
 function computeManagerAddress(address deployer, bytes32 salt) external view returns (address);
-function deployManager(bytes32 salt, ManagerInit calldata init)
+function deployTranches(bytes32 salt, DeployParams calldata init)
   external returns (address manager);
 ```
 
@@ -96,9 +97,10 @@ market, before the wrapper exists. Achieve this with constant constructor code a
 one-time `initialize`. Initialization must occur in the deployment transaction; this is not a
 proxy and there is no implementation pointer.
 
-`deployManager` must verify before registration:
+`deployTranches` must verify before registration:
 
 - the market is registered with the pinned ArchController;
+- the caller is the market's current borrower and its registered borrower principal is nonzero;
 - the wrapper equals both `market.registeredWrapper()` and
   `wrapperFactory.wrapperForMarket(market)`;
 - the wrapper's asset is the market;
@@ -135,7 +137,8 @@ close initialization permanently.
 Bind at least:
 
 - market, canonical wrapper and base asset;
-- borrower, hooks and singleton provider;
+- the market's registered borrower principal for sanctions and escrow calls;
+- hooks and singleton provider, verified by the factory;
 - sanctions sentinel and escrow destination or resolver;
 - governance and optional default declarer;
 - senior economics, minimum junior subordination and default threshold;
@@ -147,14 +150,9 @@ Emit the complete immutable/bound configuration once. A useful shape is:
 event Initialized(
   address indexed market,
   address indexed wrapper,
-  address indexed borrower,
+  address indexed governance,
   address senior,
-  address junior,
-  address governance,
-  address sentinel,
-  uint256 seniorShareBips,
-  uint256 minJuniorBips,
-  uint256 defaultPenaltyWindow
+  address junior
 );
 ```
 
@@ -177,19 +175,17 @@ For each deposit:
 9. assert or test that the manager holds the new wrapper shares and no unintended idle market
    tokens remain.
 
-Use checks-effects-interactions with a reentrancy guard and balance deltas around external calls.
+Use checks-effects-interactions with Solady's `ReentrancyGuard` and balance deltas around external calls.
 Never trust nominal inputs when the integrated method returns or transfers an observed amount.
 
 Recommended event:
 
 ```solidity
 event Deposited(
+  bool indexed isSenior,
   address indexed caller,
   address indexed receiver,
-  address indexed tranche,
   uint256 baseAssets,
-  uint256 marketTokens,
-  uint256 wrapperShares,
   uint256 trancheShares
 );
 ```
@@ -242,7 +238,7 @@ hard to reconstruct.
 ### 5. Make lifecycle and governance auditable
 
 Represent lifecycle transitions with one event carrying previous state, next state and trigger.
-Wind-down/default entry should be monotonic unless a reversal is explicitly part of the terms.
+Wind-down/default entry should be irreversible unless the terms specify a reversal.
 
 ```solidity
 event StatusChanged(Status indexed previous, Status indexed current, bytes32 indexed trigger);
@@ -270,7 +266,7 @@ because the only admitted lender is an address with no code until the final tran
 2. Create the market and singleton hooks with that predicted address as sole lender. Deposit and
    transfer hooks are enabled/access-required; global transfers are not disabled.
 3. Call `Wildcat4626WrapperFactory.createWrapper(market)`.
-4. Call `TrancheFactory.deployManager(salt, init)`.
+4. Call `TrancheFactory.deployTranches(salt, init)`.
 5. Run the verifier checklist below before funding or publishing the tranche addresses.
 
 The gap is inert, not partially live: no other address has the deposit credential, the manager is
@@ -344,7 +340,7 @@ wrapper total supply == wrapper balance of manager
 - EOA ceremony verifies after its final transaction;
 - Safe batch is atomic and produces the predicted manager.
 
-### Invariant/stateful
+### Stateful properties
 
 - custody and wrapper-supply identities in `ARCHITECTURE.md`;
 - conservation across deposits, transfers, exits, partial recoveries and claims;
@@ -362,16 +358,13 @@ wrapper total supply == wrapper balance of manager
 - actual market-token rounding and queue expiry behavior;
 - Safe MultiSend call semantics if it is part of the supported deployment path.
 
-## Delta from the current sketch
+## Current prototype state
 
-The current `build/` contracts remain useful test scaffolding, but implementation work must replace:
+`build/` now contains ownerless deterministic deployment, a factory-only one-time initializer,
+base-asset deposits followed by market deposit and canonical wrapping, fixed-rate senior accrual,
+and reconstructible custody and recovery events. A small factory-owned deployer holds manager
+creation code so `TrancheFactory` remains well below the EIP-170 runtime limit.
 
-- an owner-gated, parameter-dependent factory deployment with ownerless deterministic deployment;
-- constructor-bound manager state with atomic one-time factory initialization;
-- user deposits of wrapper shares with base-asset deposit, market deposit and canonical wrapping;
-- string reverts with typed custom errors;
-- abbreviated events with the custody and lifecycle events above;
-- implicit APR/watermark behavior with the Gate 2 checkpoint specification.
-
-Preserve the existing pure waterfall and lifecycle tests where they still express the frozen
-semantics. Delete or rewrite tests that merely encode the sketch's old custody path.
+Before deployment work, replace the local interfaces with imports from a pinned V2.5 commit, add
+an integration deployment against the real singleton template, specify terminal dust allocation,
+and convert the remaining manager string reverts to typed errors.

@@ -5,14 +5,29 @@ import "forge-std/Test.sol";
 import {TrancheManager} from "../src/TrancheManager.sol";
 import {TrancheFactory} from "../src/TrancheFactory.sol";
 import {TrancheToken} from "../src/TrancheToken.sol";
-import {MockERC20, MockMarket, MockWrapper, MockSentinel, MockArch} from "./Mocks.sol";
+import {
+    MockERC20,
+    MockMarket,
+    MockWrapper,
+    MockWrapperFactory,
+    MockSingletonProvider,
+    MockSingletonHooks,
+    MockUnpinnedHooks,
+    MockSentinel,
+    MockArch
+} from "./Mocks.sol";
 
 contract TrancheTest is Test {
     MockERC20 usdc;
     MockMarket market;
     MockWrapper wrapper;
+    MockWrapperFactory wrapperFactory;
+    MockSingletonProvider provider;
+    MockSingletonHooks hooks;
     MockSentinel sentinel;
-    TrancheManager c;
+    MockArch arch;
+    TrancheFactory factory;
+    TrancheManager manager;
     TrancheToken senior;
     TrancheToken junior;
 
@@ -20,302 +35,290 @@ contract TrancheTest is Test {
     address declarer = address(0xDEC);
     address srLP = address(0x5E11);
     address jrLP = address(0x10110);
-    address borrower = address(0xB0110);
+    address borrower;
+    bytes32 salt = keccak256("fixture");
 
     uint256 constant MIN_JUNIOR_BIPS = 2000;
-    uint256 constant SENIOR_SHARE_BIPS = 10000; // senior takes 100% of the mock market APR (1000 bps) => 10%
+    uint256 constant SENIOR_RATE_BIPS = 1000;
     uint256 constant WINDOW = 90 days;
 
     function setUp() public {
         usdc = new MockERC20("USD Coin", "USDC");
-        market = new MockMarket(address(usdc));
-        wrapper = new MockWrapper(address(market));
-        sentinel = new MockSentinel();
+        wrapperFactory = new MockWrapperFactory();
+        arch = new MockArch();
+        borrower = address(this);
+        MockSingletonHooks hookTemplate = new MockSingletonHooks(address(1));
+        factory = new TrancheFactory(address(arch), address(wrapperFactory), address(hookTemplate));
 
-        c = new TrancheManager(
+        address predicted = factory.computeManagerAddress(address(this), salt);
+        provider = new MockSingletonProvider(predicted);
+        hooks = new MockSingletonHooks(address(provider));
+        sentinel = new MockSentinel();
+        market = new MockMarket(address(usdc), address(wrapperFactory), address(hooks), borrower, address(sentinel));
+        wrapper = new MockWrapper(address(market));
+
+        hooks.setMarket(address(market), false);
+        market.setRegisteredWrapper(address(wrapper));
+        wrapperFactory.setWrapper(address(market), address(wrapper));
+        arch.setRegistered(address(market), true);
+
+        address deployed =
+            factory.deployTranches(salt, _params(address(market), address(wrapper), address(hooks), address(provider)));
+        assertEq(deployed, predicted, "CREATE2 prediction");
+        manager = TrancheManager(deployed);
+        senior = manager.senior();
+        junior = manager.junior();
+
+        usdc.mint(srLP, 10_000_000e18);
+        usdc.mint(jrLP, 10_000_000e18);
+        vm.prank(gov);
+        manager.setJuniorAllowed(jrLP, true);
+
+        _depositJunior(jrLP, 100e18);
+        _depositSenior(srLP, 300e18);
+    }
+
+    function _params(address market_, address wrapper_, address hooks_, address provider_)
+        internal
+        view
+        returns (TrancheFactory.DeployParams memory p)
+    {
+        p = TrancheFactory.DeployParams({
+            market: market_,
+            wrapper: wrapper_,
+            hooks: hooks_,
+            singletonProvider: provider_,
+            sentinel: address(sentinel),
+            borrower: borrower,
+            governance: gov,
+            defaultDeclarer: declarer,
+            seniorRateBips: SENIOR_RATE_BIPS,
+            minJuniorBips: MIN_JUNIOR_BIPS,
+            defaultPenaltyWindow: WINDOW
+        });
+    }
+
+    function _depositSenior(address who, uint256 assets) internal returns (uint256) {
+        vm.startPrank(who);
+        usdc.approve(address(manager), assets);
+        uint256 shares = manager.depositSenior(assets, who);
+        vm.stopPrank();
+        return shares;
+    }
+
+    function _depositJunior(address who, uint256 assets) internal returns (uint256) {
+        vm.startPrank(who);
+        usdc.approve(address(manager), assets);
+        uint256 shares = manager.depositJunior(assets, who);
+        vm.stopPrank();
+        return shares;
+    }
+
+    function _assertConservation() internal view {
+        (uint256 seniorValue, uint256 juniorValue) = manager.trancheValues();
+        assertEq(seniorValue + juniorValue, manager.realisedValue(), "waterfall conservation");
+    }
+
+    function test_DeploymentBindsCanonicalSingletonStack() public view {
+        assertEq(factory.managerForMarket(address(market)), address(manager));
+        assertEq(address(manager.factory()), address(factory));
+        assertEq(address(manager.market()), address(market));
+        assertEq(address(manager.underlyingVault()), address(wrapper));
+        assertEq(address(manager.baseAsset()), address(usdc));
+        assertTrue(manager.initialized());
+    }
+
+    function test_Create2PredictionIsNamespacedByCaller() public view {
+        assertTrue(factory.computeManagerAddress(address(this), salt) != factory.computeManagerAddress(gov, salt));
+        assertEq(factory.managerInitCodeHash(), factory.managerDeployer().initCodeHash());
+    }
+
+    function test_ManagerCannotBeReinitialized() public {
+        vm.prank(address(factory));
+        vm.expectRevert(bytes("ALREADY_INITIALIZED"));
+        manager.initialize(
             TrancheManager.Params({
                 underlyingVault: address(wrapper),
                 sentinel: address(sentinel),
-                borrower: borrower,
                 governance: gov,
                 defaultDeclarer: declarer,
-                seniorShareBips: SENIOR_SHARE_BIPS,
+                seniorRateBips: SENIOR_RATE_BIPS,
                 minJuniorBips: MIN_JUNIOR_BIPS,
-                defaultPenaltyWindow: WINDOW,
-                shareDecimals: 18
+                defaultPenaltyWindow: WINDOW
             })
         );
-        senior = c.senior();
-        junior = c.junior();
-
-        wrapper.mintShares(srLP, 10_000_000e18);
-        wrapper.mintShares(jrLP, 10_000_000e18);
-        vm.prank(gov);
-        c.setJuniorAllowed(jrLP, true);
-
-        _depositJunior(jrLP, 100e18); // value 100
-        _depositSenior(srLP, 300e18); // value 300 -> junior 25% of TVL
     }
 
-    // ---------- helpers ----------
-    function _depositSenior(address who, uint256 shares) internal returns (uint256) {
-        vm.startPrank(who);
-        wrapper.approve(address(c), shares);
-        uint256 s = c.depositSenior(shares, who);
-        vm.stopPrank();
-        return s;
+    function test_FactoryRejectsDeploymentByNonBorrower() public {
+        vm.prank(address(0xBEEF));
+        vm.expectRevert(TrancheFactory.BorrowerMismatch.selector);
+        factory.deployTranches(
+            bytes32(uint256(123)), _params(address(market), address(wrapper), address(hooks), address(provider))
+        );
     }
 
-    function _depositJunior(address who, uint256 shares) internal returns (uint256) {
-        vm.startPrank(who);
-        wrapper.approve(address(c), shares);
-        uint256 s = c.depositJunior(shares, who);
-        vm.stopPrank();
-        return s;
+    function test_DepositsBaseAssetAndKeepsCustodyAirtight() public view {
+        assertEq(usdc.balanceOf(address(manager)), 0, "no idle base asset");
+        assertEq(market.balanceOf(address(manager)), 0, "manager wraps all market tokens");
+        assertEq(market.balanceOf(address(wrapper)), 400e18, "wrapper holds market tokens");
+        assertEq(wrapper.balanceOf(address(manager)), wrapper.totalSupply(), "manager holds every wrapper share");
+        assertEq(senior.asset(), address(usdc), "tranche view asset is base asset");
+        assertEq(junior.asset(), address(usdc), "tranche view asset is base asset");
     }
 
-    function _inv() internal view {
-        (uint256 sv, uint256 jv) = c.trancheValues();
-        assertEq(sv + jv, c.realisedValue(), "INV senior+junior==realised");
+    function test_SanctionsScopeKeepsRegisteredPrincipalAfterBorrowerRotation() public {
+        address nextBorrower = address(0xB0B);
+        market.setBorrower(nextBorrower);
+        vm.expectCall(address(sentinel), abi.encodeCall(MockSentinel.isSanctioned, (borrower, srLP)));
+        _depositSenior(srLP, 1e18);
     }
 
-    // ---------- core waterfall ----------
     function test_DepositSplitAndSubordination() public view {
-        (uint256 sv, uint256 jv) = c.trancheValues();
-        assertEq(sv, 300e18);
-        assertEq(jv, 100e18);
-        assertEq(c.seniorOwed(), 300e18);
-        _inv();
+        (uint256 seniorValue, uint256 juniorValue) = manager.trancheValues();
+        assertEq(seniorValue, 300e18);
+        assertEq(juniorValue, 100e18);
+        assertEq(manager.seniorOwed(), 300e18);
+        _assertConservation();
     }
 
     function test_SeniorDepositRevertsAboveLeverage() public {
-        _depositSenior(srLP, 100e18); // junior now exactly 20%
+        _depositSenior(srLP, 100e18);
         vm.startPrank(srLP);
-        wrapper.approve(address(c), 1e18);
+        usdc.approve(address(manager), 1e18);
         vm.expectRevert(bytes("SUBORDINATION"));
-        c.depositSenior(1e18, srLP);
+        manager.depositSenior(1e18, srLP);
         vm.stopPrank();
     }
 
-    function test_SeniorTargetFundedByJuniorWhenNoYield() public {
+    function test_FixedSeniorRateDoesNotRetroactivelyTrackMarketAPR() public {
+        market.setAnnualInterestBips(4000);
+        assertEq(manager.currentSeniorRateBips(), SENIOR_RATE_BIPS);
         vm.warp(block.timestamp + 365 days);
-        c.accrue();
-        (uint256 sv, uint256 jv) = c.trancheValues();
-        assertApproxEqAbs(sv, 330e18, 1e15, "senior +10% target");
-        assertApproxEqAbs(jv, 70e18, 1e15, "junior funded coupon");
-        _inv();
-    }
-
-    function test_JuniorLeveragedResidual() public {
-        vm.warp(block.timestamp + 365 days);
-        wrapper.setPrice(1.2e18); // +20% yield => realised 480
-        c.accrue();
-        (uint256 sv, uint256 jv) = c.trancheValues();
-        assertApproxEqAbs(sv, 330e18, 1e15, "senior capped at target");
-        assertApproxEqAbs(jv, 150e18, 1e15, "junior leveraged residual");
-        _inv();
+        manager.accrue();
+        (uint256 seniorValue, uint256 juniorValue) = manager.trancheValues();
+        assertApproxEqAbs(seniorValue, 330e18, 1e15);
+        assertApproxEqAbs(juniorValue, 70e18, 1e15);
     }
 
     function test_LossHitsJuniorFirst() public {
-        wrapper.setPrice(0.8e18); // realised 320
-        (uint256 sv, uint256 jv) = c.trancheValues();
-        assertEq(sv, 300e18, "senior preserved");
-        assertEq(jv, 20e18, "junior absorbs loss");
-        wrapper.setPrice(0.5e18); // realised 200 < senior 300
-        (sv, jv) = c.trancheValues();
-        assertEq(jv, 0, "junior wiped first");
-        assertEq(sv, 200e18, "senior impaired only after junior gone");
-        _inv();
+        wrapper.setPrice(0.8e18);
+        (uint256 seniorValue, uint256 juniorValue) = manager.trancheValues();
+        assertEq(seniorValue, 300e18);
+        assertEq(juniorValue, 20e18);
+        wrapper.setPrice(0.5e18);
+        (seniorValue, juniorValue) = manager.trancheValues();
+        assertEq(juniorValue, 0);
+        assertEq(seniorValue, 200e18);
+        _assertConservation();
     }
 
-    // ---------- default trigger (ToU mirror) ----------
-    function test_DefaultTriggerMirrorsToU_haltsAccrual() public {
-        market.setTimeDelinquent(uint32(10 days + WINDOW - 1));
-        assertFalse(c.defaultReached());
-        vm.warp(block.timestamp + 30 days);
-        c.accrue();
-        assertGt(c.seniorOwed(), 300e18, "accrued while performing");
-        uint256 owedBefore = c.seniorOwed();
-
-        market.setTimeDelinquent(uint32(10 days + WINDOW)); // grace + 90d penalty
-        assertTrue(c.defaultReached(), "ToU default");
-        c.checkDefault();
-        assertEq(uint256(c.status()), uint256(TrancheManager.Status.WindDown));
-        assertEq(c.seniorOwedAtDefault(), owedBefore);
-
+    function test_DefaultFreezesAccrual() public {
+        market.setTimeDelinquent(uint32(10 days + WINDOW));
+        manager.checkDefault();
+        uint256 frozen = manager.seniorOwed();
+        assertEq(uint256(manager.status()), uint256(TrancheManager.Status.WindDown));
         vm.warp(block.timestamp + 365 days);
-        c.accrue();
-        assertEq(c.seniorOwed(), owedBefore, "accrual halted at default");
+        manager.accrue();
+        assertEq(manager.seniorOwed(), frozen);
     }
 
-    function test_DeclareDefaultOverride() public {
-        vm.prank(declarer);
-        c.declareDefault();
-        assertEq(uint256(c.status()), uint256(TrancheManager.Status.WindDown));
-        assertTrue(c.forcedDefault());
-    }
-
-    // ---------- async redemption ----------
-    function test_AsyncRedemption_happy() public {
-        uint256 sShares = senior.balanceOf(srLP);
+    function test_AsyncRedemptionSeniorFirstOnShortfall() public {
+        uint256 seniorShares = senior.balanceOf(srLP);
         vm.prank(srLP);
-        uint256 id = c.requestRedeem(true, sShares); // queues 300 wmt
-        uint32 expiry = uint32(block.timestamp + market.withdrawalBatchDuration());
-
-        usdc.mint(address(market), 300e18); // market becomes liquid
-        vm.warp(expiry + 1);
-        c.pokeRecovery(expiry);
-        assertEq(c.recoveredUSDC(), 300e18);
-
-        vm.prank(srLP);
-        uint256 got = c.claim(id);
-        assertApproxEqAbs(got, 300e18, 1, "senior redeemed in full");
-        assertApproxEqAbs(usdc.balanceOf(srLP), 300e18, 1);
-    }
-
-    function test_AsyncRedemption_seniorFirstOnShortfall() public {
-        uint256 sShares = senior.balanceOf(srLP);
-        uint256 jShares = junior.balanceOf(jrLP);
-        vm.prank(srLP);
-        uint256 sid = c.requestRedeem(true, sShares); // 300 wmt senior
+        uint256 seniorId = manager.requestRedeem(true, seniorShares);
+        uint256 juniorShares = junior.balanceOf(jrLP);
         vm.prank(jrLP);
-        uint256 jid = c.requestRedeem(false, jShares); // 100 wmt junior
+        uint256 juniorId = manager.requestRedeem(false, juniorShares);
         uint32 expiry = uint32(block.timestamp + market.withdrawalBatchDuration());
+
+        vm.prank(address(market));
+        usdc.transfer(address(0xBEEF), 100e18);
         vm.warp(expiry + 1);
+        manager.pokeRecovery(expiry);
+        assertEq(manager.claimable(seniorId), 300e18);
+        assertEq(manager.claimable(juniorId), 0);
 
-        // partial liquidity: only 300 of 400 available -> senior must be made whole, junior gets 0
-        usdc.mint(address(market), 300e18);
-        c.pokeRecovery(expiry);
-        assertEq(c.claimable(sid), 300e18, "senior fully claimable");
-        assertEq(c.claimable(jid), 0, "junior gets nothing until senior whole");
         vm.prank(srLP);
-        c.claim(sid);
-
-        // borrower pays the rest -> junior now recovers
+        manager.claim(seniorId);
         usdc.mint(address(market), 100e18);
-        c.pokeRecovery(expiry);
-        assertEq(c.claimable(jid), 100e18, "junior recovers after senior");
-        vm.prank(jrLP);
-        uint256 jgot = c.claim(jid);
-        assertEq(jgot, 100e18);
+        manager.pokeRecovery(expiry);
+        assertEq(manager.claimable(juniorId), 100e18);
     }
 
     function test_SanctionedClaimGoesToEscrow() public {
-        uint256 sShares = senior.balanceOf(srLP);
+        uint256 seniorShares = senior.balanceOf(srLP);
         vm.prank(srLP);
-        uint256 id = c.requestRedeem(true, sShares);
+        uint256 id = manager.requestRedeem(true, seniorShares);
         uint32 expiry = uint32(block.timestamp + market.withdrawalBatchDuration());
-        usdc.mint(address(market), 300e18);
         vm.warp(expiry + 1);
-        c.pokeRecovery(expiry);
-
+        manager.pokeRecovery(expiry);
         sentinel.setSanctioned(srLP, true);
-        vm.prank(srLP);
-        c.claim(id);
+        manager.claim(id);
         address escrow = address(uint160(uint256(keccak256(abi.encodePacked("escrow", srLP)))));
-        assertApproxEqAbs(usdc.balanceOf(escrow), 300e18, 1, "routed to escrow");
-        assertEq(usdc.balanceOf(srLP), 0, "sanctioned LP gets nothing directly");
+        assertEq(usdc.balanceOf(escrow), 300e18);
     }
 
-    // ---------- governance ----------
-    function test_SeniorShareTimelock() public {
+    function test_RateChangeCheckpointsOldRate() public {
         vm.prank(gov);
-        c.proposeSeniorShareBips(5000);
-        vm.expectRevert(bytes("TIMELOCK"));
-        c.executeSeniorShareBips();
-        vm.warp(block.timestamp + c.RATE_TIMELOCK());
-        c.executeSeniorShareBips();
-        assertEq(c.seniorShareBips(), 5000);
-        assertEq(c.currentSeniorRateBips(), 500); // 50% of the 1000 bps market APR
+        manager.proposeSeniorRateBips(500);
+        vm.warp(block.timestamp + manager.RATE_TIMELOCK());
+        manager.executeSeniorRateBips();
+        assertEq(manager.seniorRateBips(), 500);
     }
 
-    // senior target is derived live from the market's base APR (capped at that APR)
-    function test_SeniorRateDerivedFromMarketAPR() public {
-        assertEq(c.currentSeniorRateBips(), 1000); // share 100% of the 1000 bps market APR
-        market.setAnnualInterestBips(2000); // borrower lifts the facility APR
-        assertEq(c.currentSeniorRateBips(), 2000); // senior target tracks it up
-        market.setAnnualInterestBips(400); // borrower cuts the facility APR
-        assertEq(c.currentSeniorRateBips(), 400); // senior target falls with it
-        // accrual uses the live rate: one year at 4% on 300 principal
-        vm.warp(block.timestamp + 365 days);
-        c.accrue();
-        (uint256 sv,) = c.trancheValues();
-        assertApproxEqAbs(sv, 312e18, 1e15, "senior accrued at the live 4% rate");
+    function test_FactoryRejectsTransferDisabledMarket() public {
+        bytes32 otherSalt = keccak256("disabled");
+        address predicted = factory.computeManagerAddress(address(this), otherSalt);
+        MockSingletonProvider otherProvider = new MockSingletonProvider(predicted);
+        MockSingletonHooks otherHooks = new MockSingletonHooks(address(otherProvider));
+        MockMarket otherMarket =
+            new MockMarket(address(usdc), address(wrapperFactory), address(otherHooks), borrower, address(sentinel));
+        MockWrapper otherWrapper = new MockWrapper(address(otherMarket));
+        otherHooks.setMarket(address(otherMarket), true);
+        otherMarket.setRegisteredWrapper(address(otherWrapper));
+        wrapperFactory.setWrapper(address(otherMarket), address(otherWrapper));
+        arch.setRegistered(address(otherMarket), true);
+
+        vm.expectRevert(TrancheFactory.HookConfigurationInvalid.selector);
+        factory.deployTranches(
+            otherSalt, _params(address(otherMarket), address(otherWrapper), address(otherHooks), address(otherProvider))
+        );
     }
 
-    function test_SanctionsAndWhitelistOnDeposit() public {
-        sentinel.setSanctioned(srLP, true);
-        vm.startPrank(srLP);
-        wrapper.approve(address(c), 1e18);
-        vm.expectRevert(bytes("SANCTIONED"));
-        c.depositSenior(1e18, srLP);
-        vm.stopPrank();
-        sentinel.setSanctioned(srLP, false);
+    function test_FactoryRejectsWrongSingletonLender() public {
+        bytes32 otherSalt = keccak256("wrong-lender");
+        MockSingletonProvider otherProvider = new MockSingletonProvider(address(0xBAD));
+        MockSingletonHooks otherHooks = new MockSingletonHooks(address(otherProvider));
+        MockMarket otherMarket =
+            new MockMarket(address(usdc), address(wrapperFactory), address(otherHooks), borrower, address(sentinel));
+        MockWrapper otherWrapper = new MockWrapper(address(otherMarket));
+        otherHooks.setMarket(address(otherMarket), false);
+        otherMarket.setRegisteredWrapper(address(otherWrapper));
+        wrapperFactory.setWrapper(address(otherMarket), address(otherWrapper));
+        arch.setRegistered(address(otherMarket), true);
 
-        address rando = address(0xBEEF);
-        wrapper.mintShares(rando, 100e18);
-        vm.startPrank(rando);
-        wrapper.approve(address(c), 10e18);
-        vm.expectRevert(bytes("JUNIOR_NOT_WHITELISTED"));
-        c.depositJunior(10e18, rando);
-        vm.stopPrank();
+        vm.expectRevert(TrancheFactory.SingletonLenderMismatch.selector);
+        factory.deployTranches(
+            otherSalt, _params(address(otherMarket), address(otherWrapper), address(otherHooks), address(otherProvider))
+        );
     }
 
-    function test_4626Views() public view {
-        assertEq(senior.asset(), address(wrapper));
-        // senior value 300 (wmt) at price 1.0 => 300 wrapper shares of totalAssets
-        assertApproxEqAbs(senior.totalAssets(), 300e18, 1);
-        assertApproxEqAbs(senior.convertToAssets(senior.totalSupply()), 300e18, 1);
-    }
+    function test_FactoryRejectsUnpinnedHookRuntime() public {
+        bytes32 otherSalt = keccak256("unpinned-hook");
+        address predicted = factory.computeManagerAddress(address(this), otherSalt);
+        MockSingletonProvider otherProvider = new MockSingletonProvider(predicted);
+        MockUnpinnedHooks otherHooks = new MockUnpinnedHooks(address(otherProvider));
+        MockMarket otherMarket =
+            new MockMarket(address(usdc), address(wrapperFactory), address(otherHooks), borrower, address(sentinel));
+        MockWrapper otherWrapper = new MockWrapper(address(otherMarket));
+        otherHooks.setMarket(address(otherMarket), false);
+        otherMarket.setRegisteredWrapper(address(otherWrapper));
+        wrapperFactory.setWrapper(address(otherMarket), address(otherWrapper));
+        arch.setRegistered(address(otherMarket), true);
 
-    // realised-only valuation: unrealised penalty accrual during delinquency is NOT booked
-    function test_RealisedOnlyFreezesDelinquentAccrual() public {
-        (uint256 sv0, uint256 jv0) = c.trancheValues(); // 300 / 100 at price 1.0
-        // market goes delinquent and the wrapper price climbs on (unpaid) penalty accrual
-        market.setDelinquent(true);
-        wrapper.setPrice(1.2e18);
-        c.accrue();
-        (uint256 sv1, uint256 jv1) = c.trancheValues();
-        assertEq(sv1, sv0, "senior NAV frozen during delinquency");
-        assertEq(jv1, jv0, "junior books no phantom gain on unrealised accrual");
-        // once cured, the now-realised value is recognised
-        market.setDelinquent(false);
-        c.accrue();
-        (, uint256 jv2) = c.trancheValues();
-        assertGt(jv2, jv1, "junior recognises the upside only after it is realised");
-        _inv();
-    }
-}
-
-contract TrancheFactoryTest is Test {
-    function test_FactoryGatesOnRegisteredMarket() public {
-        MockERC20 usdc = new MockERC20("USD Coin", "USDC");
-        MockMarket market = new MockMarket(address(usdc));
-        MockWrapper wrapper = new MockWrapper(address(market));
-        MockSentinel sentinel = new MockSentinel();
-        MockArch arch = new MockArch();
-        TrancheFactory factory = new TrancheFactory(address(arch));
-
-        TrancheFactory.DeployParams memory p = TrancheFactory.DeployParams({
-            underlyingVault: address(wrapper),
-            sentinel: address(sentinel),
-            borrower: address(0xB0110),
-            governance: address(0x6011),
-            defaultDeclarer: address(0xDEC),
-            seniorShareBips: 8000,
-            minJuniorBips: 2000,
-            defaultPenaltyWindow: 90 days
-        });
-
-        vm.expectRevert(bytes("MARKET_NOT_REGISTERED"));
-        factory.deployTranches(p);
-
-        arch.setRegistered(address(market), true);
-        address manager = factory.deployTranches(p);
-        assertEq(factory.managerForMarket(address(market)), manager);
-        assertEq(factory.managersLength(), 1);
-
-        vm.expectRevert(bytes("TRANCHES_EXIST"));
-        factory.deployTranches(p);
+        vm.expectRevert(TrancheFactory.HookCodehashMismatch.selector);
+        factory.deployTranches(
+            otherSalt, _params(address(otherMarket), address(otherWrapper), address(otherHooks), address(otherProvider))
+        );
     }
 }

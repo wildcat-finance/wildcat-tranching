@@ -5,7 +5,7 @@ import {ERC20} from "solady/tokens/ERC20.sol";
 
 interface ITrancheManagerView {
     function beforeTrancheTransfer(address token, address from, address to, uint256 amount) external view;
-    function trancheTotalAssets(bool isSenior) external view returns (uint256); // in underlying (v-wmtUSDC) share terms
+    function trancheTotalAssets(bool isSenior) external view returns (uint256); // base-asset terms
     function underlying() external view returns (address);
 }
 
@@ -63,7 +63,7 @@ contract TrancheToken is ERC20 {
         }
     }
 
-    // ---- ERC4626 view surface (asset = the underlying v-wmtUSDC) ----
+    // ---- ERC4626 view surface (asset = the Wildcat market's base asset) ----
     function asset() external view returns (address) {
         return ITrancheManagerView(manager).underlying();
     }

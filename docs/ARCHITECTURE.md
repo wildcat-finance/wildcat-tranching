@@ -2,9 +2,10 @@
 
 ## Status
 
-This document defines the intended prototype boundary. The contracts in `build/src` are an
-accounting sketch and do not yet implement every boundary below. In particular, the current
-singleton hooks and canonical wrapper cannot be composed without a wrapper recipient exception.
+This document defines the prototype boundary implemented under `build/src`. The contracts use
+local interface mirrors and test doubles rather than imported V2.5 sources, so they remain an
+engineering prototype. The singleton and wrapper composition depends on the recipient exception in
+PR #124.
 
 The prototype targets Wildcat V2.5 and the sealed singleton role-provider hooks proposed in
 [`v2-protocol#124`](https://github.com/wildcat-finance/v2-protocol/pull/124). Supporting an earlier
@@ -12,14 +13,14 @@ V2 market without an equivalent immutable admission primitive is a separate desi
 
 ## Terms
 
-- **Market** — one registered Wildcat market and its rebasing market token.
-- **Wrapper** — the canonical `Wildcat4626Wrapper` registered by
-  `Wildcat4626WrapperFactory`; its shares are non-rebasing claims on market tokens.
-- **Manager** — one `TrancheManager` bound to one market and its canonical wrapper.
-- **Senior / junior** — the two manager-issued tranche tokens.
-- **Singleton provider** — the immutable pull role provider whose lender is the manager.
-- **Wrapper-aware singleton hooks** — the strict hook configuration that admits only the manager
-  to deposit and lets only the canonical registered wrapper bypass the recipient-credential check.
+| Term | Meaning |
+|---|---|
+| Market | One registered Wildcat market and its rebasing market token. |
+| Wrapper | The canonical `Wildcat4626Wrapper` registered by `Wildcat4626WrapperFactory`; its shares are non-rebasing claims on market tokens. |
+| Manager | One `TrancheManager` bound to one market and its canonical wrapper. |
+| Senior / junior | The two manager-issued tranche tokens. |
+| Singleton provider | The immutable pull role provider whose lender is the manager. |
+| Wrapper-aware singleton hooks | The hook configuration that admits only the manager to deposit and lets only the canonical registered wrapper bypass the recipient-credential check. |
 
 ## Target topology
 
@@ -45,9 +46,9 @@ The wrapper is a custody adapter, not a second economic lender. The manager owns
 share. The wrapper holds the corresponding market-token backing. No tranche holder touches either
 asset.
 
-## Why the existing singleton invariant must change
+## Why the `SingletonOpenTermHooks` supply identity must change
 
-The unwrapped singleton design disables all market-token transfers and proves:
+The unwrapped `SingletonOpenTermHooks` design disables all market-token transfers and proves:
 
 ```text
 scaledTotalSupply == scaledBalanceOf(singletonLender) + scaledPendingWithdrawals
@@ -61,7 +62,7 @@ That is incompatible with the canonical ERC-4626 wrapper:
 3. Unwrapping calls `market.transfer(wrapper, manager, amount)`.
 4. The wrapper, not the manager, holds the active market-token balance after wrapping.
 
-The wrapped singleton invariant should instead be:
+The wrapped `SingletonOpenTermHooks` supply identity should instead be:
 
 ```text
 market.scaledTotalSupply
@@ -122,7 +123,8 @@ path.
 
 Target behavior:
 
-- binds one market, canonical wrapper, base asset, borrower identity, hooks instance, provider and
+- binds one market, canonical wrapper and base asset; sanctions calls resolve the market's registered
+  borrower principal at execution time; the factory verifies the hooks instance, provider and
   sanctions sentinel;
 - deploys or receives the two tranche-token addresses during initialization;
 - accepts the base asset from an eligible user;
@@ -196,24 +198,18 @@ The implementation and tests should state these directly:
 14. A sanctioned claim changes the destination to escrow, not the amount or queue position.
 15. A manager cannot be initialized twice or rebound to another market.
 
-## Accounting decisions that must be resolved before implementation
+## Prototype accounting choice
 
-The current sketch applies the market's current APR to all time since the previous manager accrual.
-An APR change between checkpoints therefore affects the interval retroactively. Its delinquency
-watermark also advances only when the manager is called while the market is healthy; a quiet market
-can enter delinquency with a stale mark.
+Senior accrues at a fixed annual rate stored by the manager. A timelocked rate change calls
+`accrue()` before setting the new rate, so a borrower change to the Wildcat market APR cannot
+retroactively reprice the senior claim. Deposits, exits, recovery execution and configuration
+changes also checkpoint first.
 
-Neither behavior should be inherited accidentally. Before coding the production-shaped prototype,
-choose and specify one checkpoint model that can prove:
-
-- APR changes apply from their actual effective block;
-- healthy appreciation before delinquency is not discarded;
-- penalty appreciation during delinquency is not withdrawable as realized profit;
-- a full exit cannot leave economically attributable wrapper shares stranded in the manager.
-
-A tranching-specific hook callback may be needed to checkpoint before borrower-driven APR or state
-changes. If exact on-chain reconstruction is not available, simplify the economic promise rather
-than relying on a keeper being present at the right block.
+While the market reports delinquency, valuation is capped at the last healthy wrapper price seen by
+the manager. If no account called the manager immediately before delinquency, healthy appreciation
+since the previous checkpoint is excluded until cure. This is conservative for both classes, but a
+protocol-integrated callback would be needed to capture the exact transition. Full-exit rounding
+dust also needs an explicit terminal allocation rule before production use.
 
 ## Explicit non-goals for the first prototype
 

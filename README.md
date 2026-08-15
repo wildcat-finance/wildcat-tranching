@@ -1,4 +1,4 @@
-# Wildcat Tranching Prototype
+# Wildcat tranching prototype
 
 This repository is an implementation sketch for issuing senior and junior claims over one Wildcat
 market. The target architecture is deliberately narrow:
@@ -20,10 +20,10 @@ singleton-admission Wildcat market
 manager, while the canonical wrapper is the sole exception to the normal recipient-credential
 check. Tranche holders never hold the Wildcat market token or the wrapper share.
 
-The contracts under [`build/`](build/) are a runnable accounting prototype, not a deployment
-candidate. They demonstrate the waterfall, subordination checks, async redemption and sanctions
-handling. They predate the complete singleton-plus-wrapper deployment flow and therefore must not
-be deployed without the changes in the implementation runbook.
+The contracts under [`build/`](build/) are a runnable prototype, not a deployment candidate. They
+cover deterministic manager deployment, singleton and wrapper binding checks, base-asset custody,
+the waterfall, async redemption and sanctions handling. The protocol interfaces are still local
+mirrors, and the fork test is read-only until a V2.5 market using PR #124 is deployed.
 
 ## Design rules
 
@@ -46,14 +46,15 @@ be deployed without the changes in the implementation runbook.
 
 ```text
 build/src/
-  TrancheFactory.sol          current deployment sketch
-  TrancheManager.sol          per-market accounting and settlement sketch
+  TrancheFactory.sol          deterministic deployment and binding verifier
+  TrancheManager.sol          per-market custody, accounting and settlement
   TrancheToken.sol            senior/junior share token
   libraries/WaterfallMath.sol pure waterfall helpers
 
 build/test/
   Tranche.t.sol               behavior and lifecycle tests
-  Fuzz.t.sol                  math properties and stateful invariants
+  Fuzz.t.sol                  pure waterfall math properties
+  Invariant.t.sol             stateful custody and recovery properties
   ViewProps.t.sol             tranche-token value-view properties
   Fork.t.sol                  optional mainnet-fork ABI checks
   Mocks.sol                   local test doubles
@@ -64,7 +65,7 @@ docs/
   SINGLETON_WRAPPER_HANDOFF.md handoff for the singleton-role-provider implementation
 ```
 
-## Run the current sketch
+## Run the prototype
 
 ```sh
 cd build
