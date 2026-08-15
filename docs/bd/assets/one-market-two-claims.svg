@@ -52,7 +52,6 @@
   <path class="line" d="M850 310C900 310 895 437 935 437"/>
 
   <text class="small" x="288" y="276" text-anchor="middle">raises</text>
-  <text class="small" x="590" y="276" text-anchor="middle">one cash flow</text>
   <text class="small" x="892" y="215" text-anchor="middle">issues</text>
 
   <rect class="neutral" x="300" y="525" width="600" height="75" rx="12"/>

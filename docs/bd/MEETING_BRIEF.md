@@ -23,13 +23,13 @@ Then stop talking and ask about the deal.
 - senior target: 0% to 100% per year, simple accrual;
 - junior percentage at entry: 5% to 90%;
 - extra workout window after loan grace: more than 0 and no more than 90 days;
-- senior and junior eligibility: open or controlled;
+- senior and junior eligibility providers: open or controlled;
 - loan rate, size, reserve, arrears charge and withdrawal period;
 - Wildcat protocol and origination charges; and
 - final recipient for genuine surplus after everyone is paid.
 
-The borrower proposes the facility terms at formation. Manager economics and gate addresses are fixed;
-policy inside an external gate may change. None of this is a standing right to reprice the deal.
+The borrower proposes the facility terms at formation. Manager economics and eligibility providers are
+fixed; a provider's policy may change. None of this is a standing right to reprice the deal.
 
 ## If they are senior
 
@@ -43,7 +43,7 @@ policy inside an external gate may change. None of this is a standing right to r
 
 - Show the residual after senior accrual in the base case.
 - Show how fast the residual disappears in the downside.
-- Explain that junior waits behind senior for recovery cash.
+- Explain that junior exit requests wait behind senior exit requests.
 - Test whether the exit constraint fits their treasury needs.
 - Be explicit about which decisions neither class controls.
 

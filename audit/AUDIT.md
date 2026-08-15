@@ -94,3 +94,17 @@ The minimum credited first-deposit amount and separate loan minimum-deposit ques
 worksheet from an audit lead. Direct official links were not added to the outward pages: the repository's
 internal research report remains the source ledger, while the meeting pack is designed to travel with its
 plain prototype qualification.
+
+## Step 3, round 2 -- 15 August 2026
+
+| id | severity | file | finding | status |
+| --- | --- | --- | --- | --- |
+| S3-R2-01 | medium | `PRIMER.md`, `MEETING_BRIEF.md`, `parameter-authority.svg` | Four remnants still described cash as senior-first rather than saying senior exit requests clear before junior exit requests. | fixed in this audit branch |
+| S3-R2-02 | medium | `PARAMETER_DISCOVERY.md` | The `1e6` raw-unit opening dust floor looked like a commercial one-million-token minimum and omitted its post-conversion basis and rounding qualification. | fixed in this audit branch |
+| S3-R2-03 | medium | `parameter-authority.svg` | Exact contract-role and propagation names leaked platform plumbing back into the outward authority graphic. | fixed in this audit branch |
+| S3-R2-04 | low | outward BD pack and `parameter-authority.svg` | "Gate address" was needlessly implementation-shaped in the external copy; the commercial fact is a fixed eligibility provider whose policy may change. | fixed in this audit branch |
+| S3-R2-05 | low | `PRIMER.md`, `PARAMETER_DISCOVERY.md`, `FAQ_AND_CLAIMS.md` | Capitalised `Active` exposed an internal enum where "before permanent wind-down" states the commercial condition. | fixed in this audit branch |
+| S3-R2-06 | low | outward fee copy and `priority-waterfall.svg` | The protocol-fee naming cleanup and current-prototype qualification were incomplete. | fixed in this audit branch |
+| S3-R2-07 | low | `one-market-two-claims.svg` | "One cash flow" could imply one payment rather than shared value and cash; the replacement label then crowded both boxes, so the redundant edge label was removed. | fixed in this audit branch |
+
+Leads not pursued: none.

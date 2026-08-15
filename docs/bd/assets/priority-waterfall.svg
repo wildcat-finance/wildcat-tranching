@@ -56,7 +56,7 @@
   <text class="t" x="330" y="558" text-anchor="middle">Junior reaches zero first; senior then takes the remaining loss.</text>
   <text class="tiny" x="330" y="582" text-anchor="middle">Scenario numbers are illustrations, not a quote or forecast.</text>
   <rect class="amber" x="630" y="495" width="480" height="105" rx="12"/>
-  <text class="h" x="870" y="530" text-anchor="middle">No second facility fee</text>
+  <text class="h" x="870" y="530" text-anchor="middle">Current prototype: no second facility fee</text>
   <text class="t" x="870" y="558" text-anchor="middle">The waterfall divides only value and cash actually recovered.</text>
   <text class="tiny" x="870" y="582" text-anchor="middle">Loan charge, senior target and junior residual are different numbers.</text>
 </svg>

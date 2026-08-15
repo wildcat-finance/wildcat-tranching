@@ -23,14 +23,15 @@ hand-waving.
 | Junior share at entry | 500 to 9,000 bips |  |  |  |  |
 | Senior amount or proportion | Constrained by junior share |  |  |  |  |
 | Junior amount or proportion | Funds first |  |  |  |  |
-| First credited amount in an empty class | At least 1,000,000 base-asset units |  |  |  |  |
+| Post-conversion opening dust floor | 1,000,000 smallest-denomination units; human amount depends on asset decimals and the tender may need to be larger after rounding |  |  |  |  |
 | Additional workout window | More than 0; no more than 90 days |  |  |  |  |
 | Senior eligibility | Open or controlled |  |  |  |  |
 | Junior eligibility | Open or controlled |  |  |  |  |
 
 Make both sides defend their number. The senior target prices the senior ticket; it is not the borrower
-coupon. The junior share is checked when senior enters and when junior exits while the manager remains
-Active, then left to take the loss. The extra window should match a workout someone will actually run.
+coupon. The junior share is checked when senior enters and when junior exits before permanent wind-down
+is recorded, then left to take the loss. The extra window should match a workout someone will actually
+run.
 
 ## Loan economics: what the borrower pays, when cash comes back
 

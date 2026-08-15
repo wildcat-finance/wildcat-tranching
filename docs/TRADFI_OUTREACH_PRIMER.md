@@ -27,7 +27,7 @@ cash and may settle in pieces.
 3. What return does senior need for the credit and expected time to cash?
 4. What can change after closing, and who can say no?
 5. Who may hold each class, and who owns monitoring and workout?
-6. What are the full borrower charges, including platform, origination and arrears costs?
+6. What are the full borrower charges, including Wildcat protocol, origination and arrears costs?
 
 ## What not to pretend
 

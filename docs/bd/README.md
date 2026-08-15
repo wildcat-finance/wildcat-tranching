@@ -33,12 +33,12 @@ Seniority changes the order of payment and loss. It does not make weak credit go
 
 ## Who sets the deal
 
-The borrower proposes the senior target, junior percentage, extra workout window, fixed eligibility-gate
-addresses and final surplus recipient when the facility is formed. The ranges are bounded and the manager
-terms do not have later setters. A gate's external eligibility policy may still change.
+The borrower proposes the senior target, junior percentage, extra workout window, fixed eligibility
+providers and final surplus recipient when the facility is formed. The ranges are bounded and the manager
+terms do not have later setters. An eligibility provider's policy may still change.
 
-The underlying loan still has its own rate, size, liquidity, delinquency and amendment terms. Platform
-fees and operating rails are set separately. The code fixes the waterfall, FIFO inside each class,
+The underlying loan still has its own rate, size, liquidity, delinquency and amendment terms. Wildcat
+protocol fees and operating rails are set separately. The code fixes the waterfall, FIFO inside each class,
 sanctions routing and wind-down mechanics.
 
 In plain English: the borrower can price and shape the capital stack at inception. The borrower cannot

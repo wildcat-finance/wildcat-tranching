@@ -12,7 +12,7 @@ No pool. No diversification. No alchemy. Both classes own the same borrower risk
 | --- | --- | --- |
 | Return | Annual simple accounting target | Everything left after senior |
 | Loss | After junior is exhausted | First loss |
-| Recovery cash | First across classes; FIFO within senior | After senior; FIFO within junior |
+| Recovery cash | Senior exit requests first; FIFO within senior | After senior exit requests; FIFO within junior |
 | Exit | Waits for cash from the loan | Waits for cash from the loan |
 | Transfer | Eligible, sanctions-cleared recipients only | Eligible, sanctions-cleared recipients only |
 
@@ -27,8 +27,8 @@ borrower proposes the capital stack once, inside fixed limits.
 **Senior desk:** defined priority, visible first-loss capital and a fixed return target without taking the
 residual position.
 
-**Junior desk:** the residual economics in exchange for taking the first hit and waiting behind senior for
-recovery cash.
+**Junior desk:** the residual economics in exchange for taking the first hit and having junior exit
+requests wait behind senior exit requests.
 
 That is the commercial bargain. Whether it is a good trade still comes down to the borrower, the price,
 the junior thickness and the time to cash.
@@ -43,9 +43,9 @@ Assume 300 senior, 100 junior and 315 owed to senior:
 | 340 | 315 | 25 | Facility value is down 60; another 15 has accrued to senior |
 | 280 | 280 | 0 | Junior is wiped; senior is 35 short of target and 20 below principal |
 
-The junior percentage is checked when senior money comes in and when junior leaves while the manager
-remains Active. It is not topped back up after a loss. If the credit deteriorates, the cushion can shrink
-to zero.
+The junior percentage is checked when senior money comes in and when junior leaves before permanent
+wind-down is recorded. It is not topped back up after a loss. If the credit deteriorates, the cushion can
+shrink to zero.
 
 ## Cash in, cash out
 

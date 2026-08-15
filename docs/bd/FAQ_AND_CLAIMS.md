@@ -20,7 +20,7 @@ No. Priority is not protection from a loss large enough to wipe out junior.
 
 ## Is the junior cushion maintained?
 
-No. It is checked when senior enters and when junior exits while the manager remains Active. It can
+No. It is checked when senior enters and when junior exits before permanent wind-down is recorded. It can
 shrink or disappear after a loss.
 
 ## Is the senior target the loan coupon?
@@ -58,9 +58,9 @@ principal.
 
 ## Who chooses the terms?
 
-The borrower proposes the senior target, junior percentage, extra workout window, fixed class-gate
-addresses and final surplus recipient inside fixed ranges. Manager economics and gate addresses are set
-once. Policy inside an external gate may change; loan and platform authorities sit elsewhere.
+The borrower proposes the senior target, junior percentage, extra workout window, fixed class-eligibility
+providers and final surplus recipient inside fixed ranges. Manager economics and eligibility providers
+are set once. A provider's policy may change; loan and platform authorities sit elsewhere.
 
 ## Can the deal be repriced later?
 
@@ -85,7 +85,7 @@ No. It is a tested prototype. It is not rated, audited or in production.
 ## Say this
 
 One borrower exposure. Senior priority. Junior first loss. Annual simple senior target. Asynchronous cash
-exit. Controlled transferability. Manager economics and gate addresses fixed at formation.
+exit. Controlled transferability. Manager economics and eligibility providers fixed at formation.
 
 ## Never say this
 
