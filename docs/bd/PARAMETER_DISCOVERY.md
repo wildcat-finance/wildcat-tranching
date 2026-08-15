@@ -74,13 +74,14 @@ Questions to settle:
 | Market-token transfers | Borrower supplies `transfersDisabled` at creation | No setter in the pinned hook | It must be false for the trancher; is that understood? |
 | Fresh-deposit access | Current hook administrator | Can block or unblock manager deposits | Who holds this role, and what operating policy governs it? |
 | Hook administrator | Initially registered borrower principal | Transferable under Wildcat's two-step rules | Who may receive the role later? |
-| Protocol-fee rate | Wildcat hook-template configuration | Protocol factory can push a changed rate to an open market, capped at 1,000 bips of base lender interest | What rate should cost analysis assume, and how is change disclosed? |
-| Protocol-fee recipient | Wildcat hook-template configuration | Fixed for an existing market | Which address is recorded? |
-| Origination fee | Wildcat hook-template asset and amount | Paid at market creation | Is it included in the borrower's all-in economics? |
+| Protocol-fee rate | ArchController owner chooses the Wildcat hook-template rate | ArchController owner can update the template; HooksFactory can then propagate the configured rate to an open market, capped at 1,000 bips of base lender interest | What rate should cost analysis assume, and how is change disclosed? |
+| Protocol-fee recipient | ArchController owner chooses the hook-template recipient for new markets | Fixed for an existing market | Which address is recorded? |
+| Origination fee | ArchController owner chooses the hook-template asset and amount | Paid at market creation | Is it included in the borrower's all-in economics? |
 
 The 1,000-bip protocol-fee cap means no more than 10% of the base lender rate, not 10% of principal. At
-a 10% lender APR, the maximum setting adds 1% of running base-interest cost before origination or
-delinquency charges. The manager adds no separate fee in the current code.
+a 10% lender APR, the maximum setting adds one percentage point: 10% lender APR plus 1% protocol APR
+gives 11% running base-interest cost before origination or delinquency charges. The manager adds no
+separate fee in the current code.
 
 ## D. Code-set and derived rules
 
@@ -91,8 +92,9 @@ These are not negotiation fields in the current prototype:
 | Waterfall | Senior receives the lesser of realised value and senior owed; junior gets the remainder | Is that priority acceptable in the proposed scenarios? |
 | Recovery | Senior first across classes; FIFO within a class | What reporting and liquidity planning does each side need? |
 | Delinquency mark | Upside capped at last healthy mark; live losses still count | What mark and market-state reporting should be supplied? |
-| Wind-down | One-way at market close or grace plus tranche window | Does the legal documentation need a separate event or remedy? |
-| Sanctions | Acquisition checks; sanctioned holder can exit through canonical escrow | Who handles escalation and proof of release? |
+| Wind-down | One-way at market close, or when a manager checkpoint observes the current delinquency counter at grace plus tranche window | Who calls permissionless `checkDefault` during delinquency, and does legal documentation need a separate event or remedy? |
+| Holder sanctions | Acquisition checks; sanctioned holder can exit through canonical escrow | Who handles escalation and proof of release? |
+| Manager sanctions | Withdrawal execution reverts before batch execution is recorded, deferring recovery for everyone until clearance and retry | Who monitors manager status and retries the batch? |
 | Terminal settlement | Fixed recipient after supply, custody, reserves and requests clear | Is the recipient acceptable and operationally controlled? |
 | First class deposit | Credited value at least `1e6` base-asset units | Does rounding or asset precision create a practical ticket issue? |
 
@@ -136,11 +138,14 @@ Ask:
 
 The market becomes delinquent before the objective threshold. Deposits stop and recognised upside is
 held at the last healthy mark, but live losses count. The borrower cures before grace plus the tranche
-window, so the mark can refresh and entry can reopen.
+window, so the mark can refresh and entry can reopen. If the current counter reaches the threshold,
+someone must call the permissionless `checkDefault` before cure for irreversible wind-down to be
+recorded; historical crossings are not reconstructed.
 
 Ask:
 
 - Is the chosen extra window long enough to permit a credible cure?
+- Who is responsible for checkpointing the current counter during delinquency?
 - What status update should each class receive during the window?
 - Should offchain documents use the same threshold, or keep a separate legal concept?
 
@@ -148,7 +153,8 @@ Ask:
 
 Before turning discussion into implementation, record:
 
-- the exact market address, asset, borrower principal, hook template and canonical wrapper;
+- the exact market address, asset, manager's stored borrower principal, market's current borrower
+  principal, any difference between the two, hook template and canonical wrapper;
 - each tranche term, its bound, chosen value and approving owner;
 - the live market APR, capacity, reserve behaviour, batch duration, fee, grace and protocol charges;
 - gate addresses, administrators, eligibility policy and change process;

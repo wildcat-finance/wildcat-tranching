@@ -34,13 +34,16 @@ mutable policy. These choices do not let the borrower change the deployed waterf
 ## Ask the borrower
 
 - Who is the named credit exposure, and what market capacity and lender APR are contemplated?
-- What senior target and junior thickness make the all-in cost and capital mix workable?
+- What market APR and charges make the all-in borrowing cost workable?
+- What senior target and junior thickness make the capital mix workable?
 - How long after the market grace period should the facility wait before irreversible wind-down?
 - Should either class be open, allowlisted, credential-based or restricted to named entities?
 - Who controls each gate contract, and can its policy change?
 - What withdrawal-batch duration, reserve behaviour and repayment plan should lenders model?
 - Are the current protocol-fee basis, update authority and any origination charge understood?
 - Who should receive genuine surplus after every holder claim and custody position has cleared?
+- Who will call the permissionless `checkDefault` while delinquency remains observable?
+- What is the operating response if the manager itself is sanctioned and batch execution is deferred?
 
 ## Ask senior lenders
 
@@ -74,12 +77,14 @@ Do not say:
 - maintained junior cushion;
 - instant redemption or liquid market;
 - immutable allowlist;
-- legal default, rating or securitisation conclusion; or
+- automatic or legal default, rating or securitisation conclusion; or
 - audited, production-ready or live V2.5 product.
 
 ## Close with the next piece of work
 
 Agree a range rather than a term sheet: senior target, junior percentage, extra delinquency window,
 market APR and capacity, withdrawal timing, gate model and operator, protocol charges, reporting needs
-and two stress cases. Record who controls each answer. Anything legal, tax, regulatory, sanctions-policy
-or credit-underwriting specific goes to the relevant owner before it becomes external language.
+and two stress cases. Record who controls each answer. The current delinquency counter must be observed
+by a manager checkpoint before cure for threshold wind-down to occur; the permissionless
+`checkDefault` call is part of the operating plan. Anything legal, tax, regulatory, sanctions-policy or
+credit-underwriting specific goes to the relevant owner before it becomes external language.

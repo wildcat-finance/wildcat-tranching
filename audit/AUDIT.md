@@ -45,3 +45,28 @@ Leads not pursued: none.
 | none | none | none | No finding. | clean |
 
 Leads not pursued: none.
+
+## Step 2, round 1 -- 15 August 2026
+
+| id | severity | file | finding | status |
+| --- | --- | --- | --- | --- |
+| S2-R1-01 | high | `docs/bd/PRIMER.md`, `docs/bd/MEETING_BRIEF.md`, `docs/bd/PARAMETER_DISCOVERY.md`, `docs/bd/FAQ_AND_CLAIMS.md` | The pack described grace-plus-window as an automatic timer. A state-changing manager checkpoint must observe the current delinquency counter before cure; historical crossings are not reconstructed. | fixed in `ddf88e3` |
+| S2-R1-02 | medium | `docs/bd/PRIMER.md`, `docs/bd/MEETING_BRIEF.md`, `docs/bd/PARAMETER_DISCOVERY.md`, `docs/bd/FAQ_AND_CLAIMS.md` | Holder sanctions were covered, but the separate sanctioned-manager path and its batch-wide deferral were omitted. | fixed in `ddf88e3` |
+| S2-R1-03 | medium | `docs/bd/PRIMER.md` | "Market loss or price movement" implied an oracle or market-price input that the manager does not use. | fixed in `ddf88e3` |
+| S2-R1-04 | medium | `docs/bd/MEETING_BRIEF.md` | One borrower question conflated market-level borrowing cost with the manager's allocation between tranches. | fixed in `ddf88e3` |
+| S2-R1-05 | medium | `docs/bd/FAQ_AND_CLAIMS.md` | V2.5 reconciliation wording could be read as a fault in the pinned working prototype rather than work specific to a trancher-inclusive audit bundle. | fixed in `ddf88e3` |
+| S2-R1-06 | medium | `docs/bd/PRIMER.md`, `docs/bd/PARAMETER_DISCOVERY.md`, `docs/bd/FAQ_AND_CLAIMS.md` | Fee-setting authority was blurred with permissionless propagation of the already-configured template rate. | fixed in `ddf88e3` |
+| S2-R1-07 | medium | `docs/bd/PARAMETER_DISCOVERY.md`, `docs/bd/FAQ_AND_CLAIMS.md` | The 10% APR fee example used wording that could mean 0.1 percentage points rather than the actual one-percentage-point addition. | fixed in `ddf88e3` |
+| S2-R1-08 | low | `docs/bd/PRIMER.md` | "Facility agent" implied an unsupported legal agency role. | fixed in `ddf88e3` |
+| S2-R1-09 | low | `docs/bd/PARAMETER_DISCOVERY.md` | The decision record asked for one borrower principal even though sanctions checks can use both the manager's stored principal and the market's live principal. | fixed in `ddf88e3` |
+| S2-R1-10 | low | `docs/bd/FAQ_AND_CLAIMS.md` | The replacement for "immutable allowlist" implied governance that an external gate need not have. | fixed in `ddf88e3` |
+
+Leads not pursued: none.
+
+## Step 2, round 2 -- 15 August 2026
+
+| id | severity | file | finding | status |
+| --- | --- | --- | --- | --- |
+| none | none | none | No finding. | clean |
+
+Leads not pursued: none.
