@@ -119,3 +119,11 @@ Leads not pursued: none.
 | S3-R3-04 | low | `PARAMETER_DISCOVERY.md` | "Post-conversion opening dust floor" was crypto jargon and still made the raw-unit amount hard to price. | fixed in this audit branch |
 
 Leads not pursued: none.
+
+## Step 3, round 4 -- 15 August 2026
+
+| id | severity | file | finding | status |
+| --- | --- | --- | --- | --- |
+| none | none | none | No finding. | clean |
+
+Leads not pursued: none.
