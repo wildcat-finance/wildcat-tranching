@@ -62,3 +62,11 @@ Leads not pursued: none.
 | S2-R1-10 | low | `docs/bd/FAQ_AND_CLAIMS.md` | The replacement for "immutable allowlist" implied governance that an external gate need not have. | fixed in `ddf88e3` |
 
 Leads not pursued: none.
+
+## Step 2, round 2 -- 15 August 2026
+
+| id | severity | file | finding | status |
+| --- | --- | --- | --- | --- |
+| none | none | none | No finding. | clean |
+
+Leads not pursued: none.
