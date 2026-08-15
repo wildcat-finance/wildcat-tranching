@@ -290,17 +290,20 @@ The implementation and tests should state these directly:
 
 The economic shape is fixed. The remaining questions are narrower:
 
+- time-deterministic senior accrual, including fractional carry and the exact terminal timestamp;
+- one cumulative distress reserve across queued and live senior claims;
+- request face measured in the same units the market can recover;
 - whether exact delinquency marking deserves a protocol callback;
 - the final allocation of wrapper, market-token and base-asset dust;
 - unique senior and junior token metadata;
-- whether either tranche needs an external entry gate for the first facility;
+- which class gates, if any, the first facility should select at deployment;
 - protocol-fee recovery tests at zero, deployment and maximum permitted rates;
 - whether `claimMany` is worth adding;
 - whether the request surface should advertise an ERC-7540 interface.
 
-The current Solidity prototype still contains a manager governance address, mutable senior rate,
-deposit pause, local junior allowlist and discretionary default path. Those do not belong in this
-design and should be removed before the lifecycle work is treated as representative.
+The Solidity manager matches the fixed-term shape: no owner, rate setter, pause switch or
+discretionary default path. Each class has one initialisation-time entry-gate address. A zero gate
+is open; a nonzero gate may control acquisition but cannot enter the exit path.
 
 The implementation sequence is in
 [`TRANCHER_LOGIC_RUNBOOK.md`](TRANCHER_LOGIC_RUNBOOK.md).

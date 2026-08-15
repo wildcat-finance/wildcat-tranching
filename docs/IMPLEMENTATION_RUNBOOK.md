@@ -34,21 +34,20 @@ requirement while preserving transfer-hook access checks and exempting only the 
 registered wrapper from the normal recipient-credential check.
 
 The next bounded step is a lifecycle test against this stack: one base-asset deposit through the
-manager followed by one queued and executed exit. It is recorded here and not implemented by the
-deployment integration change.
+manager followed by one queued and executed exit.
 
 ## Gate 2: Prototype accounting semantics
 
 The prototype makes these choices:
 
-1. Senior is a time-accruing liability at a fixed manager rate. Rate changes are timelocked and
-   checkpoint the old rate before taking effect.
+1. Senior is a time-accruing liability at the fixed manager rate selected during initialisation.
 2. Manager actions checkpoint accounting. Delinquent valuation is capped at the last healthy price
    observed by such a checkpoint.
 3. Deposits and exits round tranche shares down. Exits redeem the wrapper shares attributable to
    the holder's class value and queue the market tokens actually received.
 4. Recovery is senior-first between classes and FIFO within each class.
-5. Default and forced wind-down cannot be reversed. Wind-down stops deposits and senior accrual.
+5. Market closure or the fixed delinquency threshold triggers irreversible wind-down. Wind-down
+   stops deposits and senior accrual.
 6. Terminal wrapper-share dust is not swept in this prototype and needs a production rule.
 
 Required conservation statement:
@@ -147,7 +146,7 @@ Bind at least:
 - the market's registered borrower principal for sanctions and escrow calls;
 - hooks and singleton provider, verified by the factory;
 - sanctions sentinel and escrow destination or resolver;
-- governance and optional default declarer;
+- immutable senior and junior entry-gate addresses;
 - senior economics, minimum junior subordination and default threshold;
 - senior and junior token metadata.
 
@@ -157,9 +156,10 @@ Emit the complete immutable/bound configuration once. A useful shape is:
 event Initialized(
   address indexed market,
   address indexed wrapper,
-  address indexed governance,
   address senior,
-  address junior
+  address junior,
+  address seniorGate,
+  address juniorGate
 );
 ```
 
@@ -171,7 +171,7 @@ tokens or wrapper shares.
 For each deposit:
 
 1. checkpoint accounting and lifecycle state;
-2. reject a zero receiver, zero amount, inactive status, paused deposits or ineligible parties;
+2. reject a zero receiver, zero amount, inactive or delinquent status, sanctions or failed entry;
 3. calculate tranche shares using pre-deposit class values and explicit downward rounding;
 4. transfer base assets from the caller to the manager;
 5. approve the market for the exact amount and call `market.deposit`;
@@ -242,13 +242,13 @@ event Claimed(
 Do not emit a second copy of ERC-20 `Transfer` data. Emit only protocol state that is otherwise
 hard to reconstruct.
 
-### 5. Make lifecycle and governance auditable
+### 5. Make lifecycle and entry policy auditable
 
-Represent lifecycle transitions with one event carrying previous state, next state and trigger.
-Wind-down/default entry should be irreversible unless the terms specify a reversal.
+Represent lifecycle transitions with one event carrying previous and next state. Wind-down is
+irreversible and follows only market closure or the fixed delinquency threshold.
 
 ```solidity
-event StatusChanged(Status indexed previous, Status indexed current, bytes32 indexed trigger);
+event StatusChanged(Status indexed previous, Status indexed current);
 event AccountingCheckpoint(
   uint256 timestamp,
   uint256 seniorOwed,
@@ -257,10 +257,10 @@ event AccountingCheckpoint(
 );
 ```
 
-For each mutable setting, use bounded values, a delay where economic impact warrants it, two-step
-role rotation, and events containing previous and new values. Governance may pause entry; it must
-not block burns, withdrawal execution or claims. Entry restrictions on tranche transfers must
-ignore mint and burn and must not create a claim veto.
+The manager has no mutable economic setting or control role. Each class gate is selected during
+initialisation; zero means open entry, while a nonzero address must contain code. The manager calls
+the gate for a deposit receiver and ordinary-transfer recipient. Mint, burn, withdrawal request,
+batch execution and claim never call it.
 
 ## Deployment ceremonies
 
@@ -330,11 +330,11 @@ wrapper total supply == wrapper balance of manager
 - every initialization field and invalid combination;
 - CREATE2 prediction for EOA and Safe callers;
 - deposit share math, rounding and minimum subordination;
-- healthy, delinquent, closed and forced wind-down transitions;
+- healthy, delinquent and closed transitions into objective wind-down;
 - partial, excess and zero recovery;
 - FIFO within each class and senior priority between classes;
 - sanctions escrow without amount or queue-position changes;
-- every governance bound, delay and two-step transfer.
+- zero, accepting, denying and reverting entry gates.
 
 ### Integration
 
@@ -356,7 +356,7 @@ wrapper total supply == wrapper balance of manager
 - junior receives no distressed recovery while senior remains uncovered;
 - claims never exceed recovery or a request's FIFO entitlement;
 - no user action can strand wrapper shares after the last tranche share exits;
-- no entry policy or governance action can prevent burn and claim.
+- no entry policy can prevent burn and claim.
 
 ### Fork
 
@@ -367,11 +367,12 @@ wrapper total supply == wrapper balance of manager
 
 ## Current prototype state
 
-`build/` now contains ownerless deterministic deployment, a factory-only one-time initializer,
+`build/` contains ownerless deterministic deployment, a factory-only one-time initializer,
 base-asset deposits followed by market deposit and canonical wrapping, fixed-rate senior accrual,
-and reconstructible custody and recovery events. A small factory-owned deployer holds manager
-creation code so `TrancheFactory` remains well below the EIP-170 runtime limit.
+objective wind-down, class entry gates and reconstructible custody and recovery events. A small
+factory-owned deployer holds manager creation code so `TrancheFactory` remains below the EIP-170
+runtime limit.
 
-Before deployment work, replace the local interfaces with imports from a pinned V2.5 commit, add
-an integration deployment against the real singleton template, specify terminal dust allocation,
-and convert the remaining manager string reverts to typed errors.
+The pinned V2.5 deployment path is covered in `build/test/Fork.t.sol`. The next work is a full
+real-stack deposit and exit lifecycle, followed by terminal dust allocation and replacement of the
+remaining manager string reverts with typed errors.

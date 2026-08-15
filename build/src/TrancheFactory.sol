@@ -93,8 +93,8 @@ contract TrancheFactory {
         address singletonProvider;
         address sentinel;
         address borrower;
-        address governance;
-        address defaultDeclarer;
+        address seniorGate;
+        address juniorGate;
         uint256 seniorRateBips;
         uint256 minJuniorBips;
         uint256 defaultPenaltyWindow;
@@ -117,8 +117,8 @@ contract TrancheFactory {
             TrancheManager.Params({
                 underlyingVault: p.wrapper,
                 sentinel: p.sentinel,
-                governance: p.governance,
-                defaultDeclarer: p.defaultDeclarer,
+                seniorGate: p.seniorGate,
+                juniorGate: p.juniorGate,
                 seniorRateBips: p.seniorRateBips,
                 minJuniorBips: p.minJuniorBips,
                 defaultPenaltyWindow: p.defaultPenaltyWindow

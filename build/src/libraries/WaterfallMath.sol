@@ -75,13 +75,10 @@ library WaterfallMath {
         return (lhsJ - rhs) / den;
     }
 
-    /// @notice Mirror of Wildcat Terms-of-Use §6.2: a market is "considered in default" once it
-    ///         has incurred the penalty rate (i.e. exhausted its grace period) for a continuous
-    ///         `penaltyWindow`. On-chain proxy off the grace tracker:
+    /// @notice Mirror of Wildcat Terms-of-Use §6.2 using the market's on-chain delinquency counter:
     ///             timeDelinquent >= delinquencyGracePeriod + penaltyWindow.
-    /// @dev This is NOT the 90-day cap on the grace period itself; default requires grace to be
-    ///      exhausted AND then lapped by `penaltyWindow` (default 90 days). A bilateral Loan
-    ///      Agreement may supersede this; the manager exposes a per-market override path.
+    /// @dev V2.5 reduces `timeDelinquent` during cure rather than reconstructing separate episodes.
+    ///      The manager reads that counter as supplied. The penalty window is fixed at deployment.
     function defaultReached(uint256 timeDelinquent, uint256 gracePeriod, uint256 penaltyWindow)
         internal
         pure

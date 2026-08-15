@@ -3,6 +3,7 @@ pragma solidity ^0.8.25;
 
 import {WaterfallMath} from "./libraries/WaterfallMath.sol";
 import {TrancheToken} from "./TrancheToken.sol";
+import {IEnterGate} from "./interfaces/IEnterGate.sol";
 import {IERC20} from "v2-protocol/src/interfaces/IERC20.sol";
 import {IWildcatSanctionsSentinel} from "v2-protocol/src/interfaces/IWildcatSanctionsSentinel.sol";
 import {MarketState} from "v2-protocol/src/libraries/MarketState.sol";
@@ -27,20 +28,13 @@ contract TrancheManager is ReentrancyGuard {
     IWildcatSanctionsSentinel public sentinel;
     TrancheToken public senior;
     TrancheToken public junior;
+    IEnterGate public seniorGate;
+    IEnterGate public juniorGate;
 
     uint256 public minJuniorBips;
     uint256 public defaultPenaltyWindow;
-
-    // ----- governance (bounded; senior share behind a timelock) -----
-    address public governance;
-    address public pendingGovernance;
-    address public defaultDeclarer;
-    /// @notice Fixed annual senior target. Changes checkpoint the old rate before taking effect.
+    /// @notice Fixed annual senior target, set once during factory initialisation.
     uint256 public seniorRateBips;
-    uint256 public pendingSeniorRateBips;
-    uint256 public seniorRateEta;
-    bool public depositsPaused;
-    mapping(address => bool) public juniorAllowed;
 
     // ----- accounting (in asset terms) -----
     uint256 public seniorOwed;
@@ -57,7 +51,6 @@ contract TrancheManager is ReentrancyGuard {
 
     Status public status;
     uint256 public seniorOwedAtDefault;
-    bool public forcedDefault;
 
     // ----- async redemption queue -----
     struct Request {
@@ -85,10 +78,14 @@ contract TrancheManager is ReentrancyGuard {
     uint256 internal constant MAX_PENALTY_WINDOW = 90 days;
     uint256 internal constant MIN_INITIAL = 1e6;
     uint256 internal constant PPS_UNIT = 1e18;
-    uint256 public constant RATE_TIMELOCK = 2 days;
 
     event Initialized(
-        address indexed market, address indexed wrapper, address indexed governance, address senior, address junior
+        address indexed market,
+        address indexed wrapper,
+        address senior,
+        address junior,
+        address seniorGate,
+        address juniorGate
     );
     event Deposited(
         bool indexed isSenior,
@@ -109,22 +106,14 @@ contract TrancheManager is ReentrancyGuard {
     event WithdrawalExecuted(uint32 indexed expiry, uint256 baseAssetsReceived, uint256 totalRecovered);
     event RecoveryAllocated(uint256 seniorDelta, uint256 juniorDelta, uint256 seniorTotal, uint256 juniorTotal);
     event Claimed(uint256 indexed id, address indexed owner, address indexed recipient, uint256 usdc, bool toEscrow);
-    event StatusChanged(Status indexed previousStatus, Status indexed newStatus, bool forced);
-    event SeniorRateProposed(uint256 rateBips, uint256 eta);
-    event SeniorRateSet(uint256 previousRateBips, uint256 newRateBips);
-    event SeniorRateProposalCancelled();
+    event StatusChanged(Status indexed previousStatus, Status indexed newStatus);
     event AccountingCheckpoint(uint256 timestamp, uint256 seniorOwed, uint256 realisedValue);
-    event JuniorAllowed(address indexed account, bool allowed);
-    event DepositsPaused(bool paused);
-    event DefaultDeclarerSet(address indexed declarer);
-    event GovernanceProposed(address indexed pending);
-    event GovernanceTransferred(address indexed from, address indexed to);
 
     struct Params {
         address underlyingVault;
         address sentinel;
-        address governance;
-        address defaultDeclarer;
+        address seniorGate;
+        address juniorGate;
         uint256 seniorRateBips;
         uint256 minJuniorBips;
         uint256 defaultPenaltyWindow;
@@ -139,7 +128,8 @@ contract TrancheManager is ReentrancyGuard {
         require(msg.sender == factory, "ONLY_FACTORY");
         require(!initialized, "ALREADY_INITIALIZED");
         require(p.underlyingVault != address(0), "ZERO_ADDR");
-        require(p.governance != address(0), "ZERO_GOV");
+        require(p.seniorGate == address(0) || p.seniorGate.code.length != 0, "BAD_SENIOR_GATE");
+        require(p.juniorGate == address(0) || p.juniorGate.code.length != 0, "BAD_JUNIOR_GATE");
         require(p.seniorRateBips <= MAX_SENIOR_RATE_BIPS, "BAD_RATE");
         require(p.minJuniorBips >= 500 && p.minJuniorBips <= 9000, "BAD_SUBORDINATION");
         require(p.defaultPenaltyWindow > 0 && p.defaultPenaltyWindow <= MAX_PENALTY_WINDOW, "BAD_WINDOW");
@@ -148,8 +138,8 @@ contract TrancheManager is ReentrancyGuard {
         market = WildcatMarket(Wildcat4626Wrapper(p.underlyingVault).market());
         baseAsset = IERC20(market.asset());
         sentinel = IWildcatSanctionsSentinel(p.sentinel);
-        governance = p.governance;
-        defaultDeclarer = p.defaultDeclarer;
+        seniorGate = IEnterGate(p.seniorGate);
+        juniorGate = IEnterGate(p.juniorGate);
         seniorRateBips = p.seniorRateBips;
         minJuniorBips = p.minJuniorBips;
         defaultPenaltyWindow = p.defaultPenaltyWindow;
@@ -162,12 +152,14 @@ contract TrancheManager is ReentrancyGuard {
         status = Status.Active;
         markPps = _curPps();
         initialized = true;
-        emit Initialized(address(market), address(underlyingVault), governance, address(senior), address(junior));
-    }
-
-    modifier onlyGovernance() {
-        require(msg.sender == governance, "ONLY_GOV");
-        _;
+        emit Initialized(
+            address(market),
+            address(underlyingVault),
+            address(senior),
+            address(junior),
+            address(seniorGate),
+            address(juniorGate)
+        );
     }
 
     // ============================================================ valuation (realised-only)
@@ -231,7 +223,6 @@ contract TrancheManager is ReentrancyGuard {
     }
 
     function defaultReached() public view returns (bool) {
-        if (forcedDefault) return true;
         MarketState memory s = market.currentState();
         if (s.isClosed) return true;
         return WaterfallMath.defaultReached(s.timeDelinquent, market.delinquencyGracePeriod(), defaultPenaltyWindow);
@@ -271,14 +262,8 @@ contract TrancheManager is ReentrancyGuard {
             Status previous = status;
             status = Status.WindDown;
             seniorOwedAtDefault = seniorOwed;
-            emit StatusChanged(previous, status, forcedDefault);
+            emit StatusChanged(previous, status);
         }
-    }
-
-    function declareDefault() external {
-        require(msg.sender == governance || msg.sender == defaultDeclarer, "NOT_AUTH");
-        forcedDefault = true;
-        accrue(); // books interest up to the forced-default instant, then freezes seniorOwedAtDefault
     }
 
     // ============================================================ deposits
@@ -293,10 +278,10 @@ contract TrancheManager is ReentrancyGuard {
     function _deposit(bool isSenior, uint256 baseAssets, address receiver) internal returns (uint256 shares) {
         accrue();
         require(status == Status.Active, "NOT_ACTIVE");
-        require(!depositsPaused, "DEPOSITS_PAUSED");
+        require(!_delinquent(), "DELINQUENT");
         require(receiver != address(0), "ZERO_RECEIVER");
         require(!_isSanctioned(receiver) && !_isSanctioned(msg.sender), "SANCTIONED");
-        if (!isSenior) require(juniorAllowed[receiver], "JUNIOR_NOT_WHITELISTED");
+        _checkEntry(isSenior, receiver);
 
         (uint256 sv, uint256 jv) = trancheValues();
         TrancheToken token = isSenior ? senior : junior;
@@ -484,69 +469,16 @@ contract TrancheManager is ReentrancyGuard {
     function beforeTrancheTransfer(address token, address from, address to, uint256) external view {
         require(msg.sender == token && (token == address(senior) || token == address(junior)), "ONLY_TRANCHE_TOKEN");
         require(!_isSanctioned(from) && !_isSanctioned(to), "SANCTIONED");
-        if (token == address(junior)) require(juniorAllowed[to], "JUNIOR_NOT_WHITELISTED");
+        _checkEntry(token == address(senior), to);
+    }
+
+    function _checkEntry(bool isSenior, address account) internal view {
+        IEnterGate gate = isSenior ? seniorGate : juniorGate;
+        if (address(gate) != address(0)) require(gate.canIncreaseCredit(account), "ENTRY_NOT_ALLOWED");
     }
 
     function _isSanctioned(address account) internal view returns (bool) {
         if (address(sentinel) == address(0)) return false;
         return sentinel.isSanctioned(market.borrowerPrincipal(), account);
-    }
-
-    // ============================================================ governance
-    function proposeSeniorRateBips(uint256 rateBips) external onlyGovernance {
-        require(rateBips <= MAX_SENIOR_RATE_BIPS, "BAD_RATE");
-        pendingSeniorRateBips = rateBips;
-        seniorRateEta = block.timestamp + RATE_TIMELOCK;
-        emit SeniorRateProposed(rateBips, seniorRateEta);
-    }
-
-    function executeSeniorRateBips() external {
-        require(seniorRateEta != 0 && block.timestamp >= seniorRateEta, "TIMELOCK");
-        accrue();
-        uint256 previous = seniorRateBips;
-        seniorRateBips = pendingSeniorRateBips;
-        seniorRateEta = 0;
-        emit SeniorRateSet(previous, seniorRateBips);
-    }
-
-    /// @notice Cancel a pending senior-share proposal before it executes. Execution is permissionless
-    ///         once the timelock elapses, so without this a mis-entered proposal could only be
-    ///         overwritten (resetting the clock); cancelling lets governance abort it outright.
-    function cancelSeniorRateProposal() external onlyGovernance {
-        pendingSeniorRateBips = 0;
-        seniorRateEta = 0;
-        emit SeniorRateProposalCancelled();
-    }
-
-    function setJuniorAllowed(address account, bool allowed) external onlyGovernance {
-        juniorAllowed[account] = allowed;
-        emit JuniorAllowed(account, allowed);
-    }
-
-    function setDepositsPaused(bool paused) external onlyGovernance {
-        depositsPaused = paused;
-        emit DepositsPaused(paused);
-    }
-
-    function setDefaultDeclarer(address d) external onlyGovernance {
-        require(d != address(0), "ZERO_DECLARER");
-        defaultDeclarer = d;
-        emit DefaultDeclarerSet(d);
-    }
-
-    /// @notice Two-step governance transfer so a lost or rotated key is recoverable. The current
-    ///         governance proposes a successor; the successor must accept, which prevents handing
-    ///         control to an address that cannot use it.
-    function proposeGovernance(address next) external onlyGovernance {
-        require(next != address(0), "ZERO_GOV");
-        pendingGovernance = next;
-        emit GovernanceProposed(next);
-    }
-
-    function acceptGovernance() external {
-        require(msg.sender == pendingGovernance, "NOT_PENDING");
-        emit GovernanceTransferred(governance, pendingGovernance);
-        governance = pendingGovernance;
-        pendingGovernance = address(0);
     }
 }

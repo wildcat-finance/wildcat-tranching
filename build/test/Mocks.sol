@@ -2,6 +2,7 @@
 pragma solidity ^0.8.25;
 
 import {HookedMarket} from "v2-protocol/src/access/OpenTermHooks.sol";
+import {IEnterGate} from "../src/interfaces/IEnterGate.sol";
 import {IERC20} from "v2-protocol/src/interfaces/IERC20.sol";
 import {MarketState} from "v2-protocol/src/libraries/MarketState.sol";
 import {RoleProvider} from "v2-protocol/src/types/RoleProvider.sol";
@@ -75,9 +76,7 @@ contract MockMarket {
         borrower = borrower_;
         borrowerPrincipal = borrower_;
         sentinel = sentinel_;
-        hooks = HooksConfig.wrap(
-            (uint256(uint160(hooks_)) << 96) | (uint256(1) << 95) | (uint256(1) << 92)
-        );
+        hooks = HooksConfig.wrap((uint256(uint160(hooks_)) << 96) | (uint256(1) << 95) | (uint256(1) << 92));
     }
 
     function setRegisteredWrapper(address wrapper) external {
@@ -306,6 +305,24 @@ contract MockSentinel {
 
     function createEscrow(address, address account, address) external pure returns (address) {
         return address(uint160(uint256(keccak256(abi.encodePacked("escrow", account)))));
+    }
+}
+
+contract MockEnterGate is IEnterGate {
+    mapping(address => bool) public allowed;
+    bool public shouldRevert;
+
+    function setAllowed(address account, bool value) external {
+        allowed[account] = value;
+    }
+
+    function setShouldRevert(bool value) external {
+        shouldRevert = value;
+    }
+
+    function canIncreaseCredit(address account) external view returns (bool) {
+        require(!shouldRevert, "GATE_REVERT");
+        return allowed[account];
     }
 }
 

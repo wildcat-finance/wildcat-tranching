@@ -52,6 +52,7 @@ build/src/
   TrancheFactory.sol          deterministic deployment and binding verifier
   TrancheManager.sol          per-market custody, accounting and settlement
   TrancheToken.sol            senior/junior share token
+  interfaces/IEnterGate.sol   class-specific acquisition policy
   libraries/WaterfallMath.sol pure waterfall helpers
 
 build/test/
@@ -87,11 +88,15 @@ Set `MAINNET_RPC_URL` to override the default endpoint. The fork test is pinned 
 `25,758,381`; it deploys the V2.5 contracts from the pinned submodule rather than relying on a live
 V2.5 deployment.
 
-## Next step
+## Current edge
+
+The manager has fixed economics, objective wind-down and one immutable entry-gate address per
+class. A zero gate leaves that class open. A nonzero gate is consulted only when an account acquires
+exposure: on deposit and on the receiving side of an ordinary transfer. It cannot block a burn,
+withdrawal request, recovery execution or claim.
 
 The next bounded change is a real-stack lifecycle test: deposit the base asset through the manager,
-prove that the manager wraps every market token, then request and execute an async exit. This
-prototype stops at deployment and binding verification.
+prove that every market token is wrapped, then request and execute an async exit.
 
 ## Read before implementing
 

@@ -86,8 +86,8 @@ contract TrancheInvariantTest is Test {
             TrancheManager.Params({
                 underlyingVault: address(wrapper),
                 sentinel: address(sentinel),
-                governance: address(this),
-                defaultDeclarer: address(this),
+                seniorGate: address(0),
+                juniorGate: address(0),
                 seniorRateBips: 1000,
                 minJuniorBips: 2000,
                 defaultPenaltyWindow: 90 days
@@ -95,7 +95,6 @@ contract TrancheInvariantTest is Test {
         );
 
         handler = new TrancheInvariantHandler(manager, base, market, wrapper);
-        manager.setJuniorAllowed(address(handler), true);
         base.mint(address(handler), 1_000_000_000e18);
 
         handler.depositJunior(200e18);

@@ -120,8 +120,8 @@ contract ForkTest is Test {
                 singletonProvider: singletonProvider,
                 sentinel: address(sentinel),
                 borrower: address(this),
-                governance: address(this),
-                defaultDeclarer: address(0),
+                seniorGate: address(0),
+                juniorGate: address(0),
                 seniorRateBips: 800,
                 minJuniorBips: 2000,
                 defaultPenaltyWindow: 28 days
@@ -142,8 +142,8 @@ contract ForkTest is Test {
         assertEq(address(manager.underlyingVault()), wrapperAddress, "manager wrapper");
         assertEq(address(manager.baseAsset()), address(asset), "manager base asset");
         assertTrue(manager.initialized(), "manager initialised");
-        assertEq(manager.governance(), address(this), "manager governance");
-        assertEq(manager.defaultDeclarer(), address(0), "default declarer");
+        assertEq(address(manager.seniorGate()), address(0), "senior entry gate");
+        assertEq(address(manager.juniorGate()), address(0), "junior entry gate");
         assertEq(manager.seniorRateBips(), 800, "senior rate");
         assertEq(manager.minJuniorBips(), 2000, "minimum junior share");
         assertEq(manager.defaultPenaltyWindow(), 28 days, "default penalty window");

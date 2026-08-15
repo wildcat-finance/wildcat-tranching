@@ -12,7 +12,7 @@ interface ITrancheManagerView {
 /// @notice Tranche share token, built on Solady's ERC20 (incl. EIP-2612 permit). Mint/burn
 ///         and the canonical deposit / requestRedeem entrypoints live on the manager (which
 ///         holds the accounting logic); this token exposes an ERC-4626 *view* surface so integrators
-///         read it as a standard vault. Transfers are gated by the manager (sanctions + junior whitelist).
+///         read it as a standard vault. Transfers are gated by the manager (sanctions + class entry policy).
 /// @dev Redemption is async (ERC-7540 style) on the manager, so withdraw/redeem are not exposed
 ///      synchronously here; deposit + valuation views follow ERC-4626.
 contract TrancheToken is ERC20 {
@@ -56,7 +56,7 @@ contract TrancheToken is ERC20 {
         _burn(from, amount);
     }
 
-    /// @dev Gate real transfers (not mint/burn) through the manager's sanctions + whitelist checks.
+    /// @dev Gate real transfers (not mint/burn) through the manager's sanctions and entry checks.
     function _beforeTokenTransfer(address from, address to, uint256 amount) internal view override {
         if (from != address(0) && to != address(0)) {
             ITrancheManagerView(manager).beforeTrancheTransfer(address(this), from, to, amount);

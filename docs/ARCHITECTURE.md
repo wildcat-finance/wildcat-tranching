@@ -118,7 +118,7 @@ Target behavior:
 - verifies through the market's `HooksFactory` that the hooks instance came from the pinned
   singleton template;
 - records one current manager per market and an append-only deployment history;
-- permits replacement only after an explicit supersession policy is implemented and tested.
+- permanently rejects a second manager for the same market.
 
 Address prediction must not depend on a wrapper address that does not exist yet. The simplest
 non-proxy construction is a manager with constant constructor code and a factory-only, one-time
@@ -177,9 +177,7 @@ provider primitive. It must:
 | Actor | Powers | Must not be able to do |
 |---|---|---|
 | Borrower wallet | create the market; select immutable tranche terms; borrow/repay under Wildcat rules | admit another market lender or redirect manager custody |
-| Manager governance | pause new deposits; manage bounded/timelocked economic settings; rotate through two-step acceptance | transfer custody, rewrite priority, block redemption or upgrade code |
 | Entry gate owner | change who may acquire a tranche, if a mutable gate is selected | block burns or claims |
-| Default declarer | irreversibly enter wind-down if the legal terms require discretion | withdraw assets or reverse wind-down |
 | Keeper / any account | checkpoint, execute expired withdrawals, synchronize recovery and claim for an owner | select the claim recipient or alter allocation |
 | Wrapper factory | deploy and register the canonical wrapper | choose a manager or tranche terms |
 
@@ -200,17 +198,16 @@ The implementation and tests should state these directly:
 10. Allocated recovery never exceeds recovered base assets.
 11. A request can never claim more than its class FIFO entitlement.
 12. During distress, junior cannot receive assets while the senior obligation is uncovered.
-13. No entry gate, governance action or sanctions path can prevent a holder from burning shares and
-    creating an exit request.
+13. No entry gate or sanctions path can prevent a holder from burning shares and creating an exit
+    request.
 14. A sanctioned claim changes the destination to escrow, not the amount or queue position.
 15. A manager cannot be initialized twice or rebound to another market.
 
 ## Prototype accounting choice
 
-Senior accrues at a fixed annual rate stored by the manager. A timelocked rate change calls
-`accrue()` before setting the new rate, so a borrower change to the Wildcat market APR cannot
-retroactively reprice the senior claim. Deposits, exits, recovery execution and configuration
-changes also checkpoint first.
+Senior accrues at the fixed annual rate stored during initialisation. The manager never reads the
+market's mutable APR for tranche accounting, so a market-rate change cannot reprice the senior
+claim. Deposits, exits and recovery execution checkpoint first. The fixed rate has no setter.
 
 While the market reports delinquency, valuation is capped at the last healthy wrapper price seen by
 the manager. If no account called the manager immediately before delinquency, healthy appreciation

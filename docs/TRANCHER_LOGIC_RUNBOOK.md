@@ -20,13 +20,14 @@ wrapper custody cycle, queued exit and claim with the waterfall intact throughou
 8. Every accounting change lands with the property or scenario test which justifies it.
 9. The protocol fee remains a market-level claim; the manager does not recreate or net it.
 
-## Stage 1: remove the control plane
+## Stage 1: immutable manager
 
-Align `build/src/TrancheManager.sol` with the immutable facility before extending its lifecycle.
+`build/src/TrancheManager.sol` now matches the fixed-term facility. This is the base for the later
+lifecycle stages.
 
 ### Parameters and state
 
-Keep only one-time economic and policy inputs:
+The one-time economic and policy inputs are:
 
 ```solidity
 struct Params {
@@ -40,26 +41,13 @@ struct Params {
 }
 ```
 
-The exact gate interface should be selected before implementation. Zero may mean unrestricted; if
-junior must always be restricted, reject a zero junior gate during initialisation.
-
-Remove:
-
-- `governance` and `pendingGovernance`;
-- `pendingSeniorRateBips`, `seniorRateEta` and `RATE_TIMELOCK`;
-- `depositsPaused`;
-- the manager-local `juniorAllowed` mapping;
-- `defaultDeclarer` and `forcedDefault`;
-- every setter, proposal, execution, cancellation, declaration and rotation function attached to
-  those fields;
-- their events and modifiers.
-
-`seniorRateBips`, `minJuniorBips`, `defaultPenaltyWindow` and gate addresses are written once by the
-factory during atomic initialisation and have no setters.
+`IEnterGate.canIncreaseCredit(account)` is the class policy. A zero gate means open entry. A nonzero
+gate must contain code. `seniorRateBips`, `minJuniorBips`, `defaultPenaltyWindow` and both gate
+addresses are written by the factory during atomic initialisation and have no setters.
 
 ### Lifecycle
 
-`defaultReached()` should depend only on market closure or:
+`defaultReached()` depends only on market closure or:
 
 ```text
 timeDelinquent >= delinquencyGracePeriod + defaultPenaltyWindow
@@ -72,7 +60,7 @@ Deposits are available only when active and healthy. There is no separate pause 
 
 ### Entry policy
 
-Replace `juniorAllowed` checks with immutable class-gate calls on exposure increases:
+The manager calls the relevant immutable class gate only on exposure increases:
 
 - receiver on deposit;
 - recipient on ordinary transfer;
@@ -83,8 +71,7 @@ A reverting gate blocks entry but cannot reach the exit path.
 
 ### Tests
 
-Delete tests for manager role rotation, rate proposals, pause and discretionary default. Add tests
-which prove:
+The local suite proves:
 
 - no manager function can change the fixed terms;
 - the only wind-down conditions are objective market state;
@@ -92,10 +79,67 @@ which prove:
 - gate failure blocks acquisition but never exit;
 - public checkpointing cannot alter terms or direct assets.
 
-Exit condition: the manager ABI has no general control role or mutable economic function, and the
-local suite states that absence directly.
+Stage status: complete. The manager ABI has no general control role or mutable economic function.
+The suite covers open, denying and reverting gates; delinquent deposit refusal; objective closure;
+and exit after gate access is revoked.
 
-## Stage 2: pin the deployment ceremony
+## Stage 2: make accounting independent of call timing
+
+The manager must produce the same class entitlement for the same market history regardless of who
+calls a permissionless checkpoint, or how often.
+
+### Senior accrual
+
+Replace per-call integer compounding with one time-deterministic calculation. The implementation
+must preserve fractional accrual and use an absolute time basis: either a fixed-point index or
+principal plus cumulative simple interest.
+
+Accrual stops at the objective terminal instant. For market closure, use the market state timestamp
+recorded by the closing update. For delinquency wind-down, cap the interval at the point where the
+market's `timeDelinquent` counter crossed:
+
+```text
+delinquencyGracePeriod + defaultPenaltyWindow
+```
+
+A delayed manager call may discover that instant; it cannot accrue beyond it.
+
+### Split senior ledger
+
+During distress, cumulative recovery must cover both senior components before junior receives cash:
+
+```text
+cumulativeSeniorPriority = seniorWmtQueued + seniorOwed
+```
+
+Queued senior face includes amounts already allocated or claimed because `recoveredUSDC` is also
+cumulative. Healthy allocation continues to reserve only senior face already queued.
+
+### Exit units and empty classes
+
+The request face must use the same economic units the market can recover after wrapper and market
+rounding. A rounded normalised transfer label must not give an earlier FIFO request a claim on cash
+backing a later request.
+
+If a class has zero token supply but nonzero value, deposits into that class remain closed. A later
+terminal-accounting stage will assign the residual; a first depositor cannot take it.
+
+### Tests
+
+Prove:
+
+- one annual checkpoint and many smaller checkpoints produce the same senior entitlement;
+- fractional senior accrual survives repeated calls;
+- a delayed call stops at closure or delinquency wind-down rather than call time;
+- partial senior exit plus distress never releases junior cash before queued and live senior are
+  both covered;
+- small-unit wrapper and market rounding cannot move FIFO recovery between requests;
+- zero supply plus residual class value cannot be captured by a new depositor.
+
+Exit condition: call timing, ledger placement and normalised/scaled rounding cannot change which
+class owns a unit of value.
+
+## Stage 3: pin the deployment ceremony
 
 The CREATE2 deployment shape is already close to the target. Keep it small.
 
@@ -145,7 +189,7 @@ The whole batch either creates a valid facility or creates nothing.
 Exit condition: EOA and Safe deployment tests produce the predicted address and prove every binding.
 The factory permanently rejects a second manager for the same market.
 
-## Stage 3: prove the real deposit path
+## Stage 4: prove the real deposit path
 
 Extend `build/test/Fork.t.sol` against the pinned V2.5 contracts.
 
@@ -198,7 +242,7 @@ Test:
 Exit condition: one junior and one senior base-asset deposit pass against the real stack, and every
 unit of rounding has a named recipient.
 
-## Stage 4: prove the real exit path
+## Stage 5: prove the real exit path
 
 Add one complete async exit against the same deployed stack:
 
@@ -225,7 +269,7 @@ Required assertions:
 Exit condition: deposit, custody, burn, queue, execute, allocate and claim pass as one real-contract
 lifecycle.
 
-## Stage 5: exercise delinquency and loss
+## Stage 6: exercise delinquency and loss
 
 ### Marking
 
@@ -255,7 +299,7 @@ lifecycle.
 Exit condition: no account can choose the default outcome, and the transition cannot leak the final
 senior accrual interval to junior.
 
-## Stage 6: stress recovery ordering
+## Stage 7: stress recovery ordering
 
 Exercise many requests and recoveries rather than one friendly batch.
 
@@ -321,7 +365,7 @@ Exit condition: unit and fuzz tests plus `TrancheInvariantTest` cover live-price
 balance-derived recovery, late-request ordering, full senior distress reserve and accrual before
 wind-down.
 
-## Stage 7: settle terminal accounting
+## Stage 8: settle terminal accounting
 
 Write the terminal rule before adding a sweep.
 
@@ -339,7 +383,7 @@ not choose an arbitrary destination.
 Exit condition: no attributable wrapper share, market token or base asset can be stranded, and no
 caller can take value owed to an active request.
 
-## Stage 8: finish entry, sanctions and metadata
+## Stage 9: finish entry, sanctions and metadata
 
 ### Gates
 
@@ -368,7 +412,7 @@ ERC-7540 after the lifecycle is stable. Add `claimMany` only if it earns its ext
 Exit condition: on-chain data identifies the facility and entry policy, while no policy call can
 veto exit.
 
-## Stage 9: review and release evidence
+## Stage 10: review and release evidence
 
 Run, in order:
 
@@ -393,10 +437,12 @@ Release evidence should name:
 ## Suggested PR sequence
 
 1. **Immutable manager:** delete the control plane and install immutable class gates.
-2. **Real deposit lifecycle:** base asset through market and wrapper into tranche shares.
-3. **Real exit lifecycle:** burn through queue, recovery allocation and claim.
-4. **Delinquency and recovery:** frozen mark, objective wind-down and stateful distress cases.
-5. **Terminal accounting:** final request and dust rules.
-6. **Entry surface:** gate integration, real sanctions path and unique metadata.
+2. **Accounting determinism:** accrual timing, complete distress reserve, request units and
+   zero-supply residual guard.
+3. **Real deposit lifecycle:** base asset through market and wrapper into tranche shares.
+4. **Real exit lifecycle:** burn through queue, recovery allocation and claim.
+5. **Delinquency and recovery:** frozen mark, objective wind-down and stateful distress cases.
+6. **Terminal accounting:** final request and dust rules.
+7. **Entry surface:** gate integration, real sanctions path and unique metadata.
 
 Each PR changes one accounting proposition at a time and carries the test which states it.

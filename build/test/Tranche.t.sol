@@ -15,6 +15,7 @@ import {
     MockSingletonHooks,
     MockUnpinnedHooks,
     MockSentinel,
+    MockEnterGate,
     MockArch
 } from "./Mocks.sol";
 
@@ -27,14 +28,14 @@ contract TrancheTest is Test {
     MockSingletonProvider provider;
     MockSingletonHooks hooks;
     MockSentinel sentinel;
+    MockEnterGate seniorGate;
+    MockEnterGate juniorGate;
     MockArch arch;
     TrancheFactory factory;
     TrancheManager manager;
     TrancheToken senior;
     TrancheToken junior;
 
-    address gov = address(0x6011);
-    address declarer = address(0xDEC);
     address srLP = address(0x5E11);
     address jrLP = address(0x10110);
     address borrower;
@@ -58,6 +59,8 @@ contract TrancheTest is Test {
         provider = new MockSingletonProvider(predicted);
         hooks = new MockSingletonHooks(address(provider));
         sentinel = new MockSentinel();
+        seniorGate = new MockEnterGate();
+        juniorGate = new MockEnterGate();
         market = new MockMarket(address(usdc), address(wrapperFactory), address(hooks), borrower, address(sentinel));
         wrapper = new MockWrapper(address(market));
 
@@ -67,6 +70,8 @@ contract TrancheTest is Test {
         market.setRegisteredWrapper(address(wrapper));
         wrapperFactory.setWrapper(address(market), address(wrapper));
         arch.setRegistered(address(market), true);
+        seniorGate.setAllowed(srLP, true);
+        juniorGate.setAllowed(jrLP, true);
 
         address deployed =
             factory.deployTranches(salt, _params(address(market), address(wrapper), address(hooks), address(provider)));
@@ -77,8 +82,6 @@ contract TrancheTest is Test {
 
         usdc.mint(srLP, 10_000_000e18);
         usdc.mint(jrLP, 10_000_000e18);
-        vm.prank(gov);
-        manager.setJuniorAllowed(jrLP, true);
 
         _depositJunior(jrLP, 100e18);
         _depositSenior(srLP, 300e18);
@@ -96,8 +99,8 @@ contract TrancheTest is Test {
             singletonProvider: provider_,
             sentinel: address(sentinel),
             borrower: borrower,
-            governance: gov,
-            defaultDeclarer: declarer,
+            seniorGate: address(seniorGate),
+            juniorGate: address(juniorGate),
             seniorRateBips: SENIOR_RATE_BIPS,
             minJuniorBips: MIN_JUNIOR_BIPS,
             defaultPenaltyWindow: WINDOW
@@ -135,7 +138,7 @@ contract TrancheTest is Test {
     }
 
     function test_Create2PredictionIsNamespacedByCaller() public view {
-        assertTrue(factory.computeManagerAddress(address(this), salt) != factory.computeManagerAddress(gov, salt));
+        assertTrue(factory.computeManagerAddress(address(this), salt) != factory.computeManagerAddress(srLP, salt));
         assertEq(factory.managerInitCodeHash(), factory.managerDeployer().initCodeHash());
     }
 
@@ -146,8 +149,8 @@ contract TrancheTest is Test {
             TrancheManager.Params({
                 underlyingVault: address(wrapper),
                 sentinel: address(sentinel),
-                governance: gov,
-                defaultDeclarer: declarer,
+                seniorGate: address(seniorGate),
+                juniorGate: address(juniorGate),
                 seniorRateBips: SENIOR_RATE_BIPS,
                 minJuniorBips: MIN_JUNIOR_BIPS,
                 defaultPenaltyWindow: WINDOW
@@ -228,6 +231,106 @@ contract TrancheTest is Test {
         assertEq(manager.seniorOwed(), frozen);
     }
 
+    function test_ClosedMarketTriggersObjectiveWindDown() public {
+        market.setClosed(true);
+        manager.accrue();
+        assertEq(uint256(manager.status()), uint256(TrancheManager.Status.WindDown));
+        assertEq(manager.seniorOwedAtDefault(), manager.seniorOwed());
+    }
+
+    function test_DelinquencyRejectsDepositsAndCureReopensEntry() public {
+        market.setDelinquent(true);
+        vm.startPrank(srLP);
+        usdc.approve(address(manager), 1e18);
+        vm.expectRevert(bytes("DELINQUENT"));
+        manager.depositSenior(1e18, srLP);
+        vm.stopPrank();
+
+        market.setDelinquent(false);
+        _depositSenior(srLP, 1e18);
+    }
+
+    function test_EntryGateControlsAcquisitionButCannotBlockExit() public {
+        address denied = address(0xD3111ED);
+        usdc.mint(denied, 1e18);
+
+        vm.startPrank(denied);
+        usdc.approve(address(manager), 1e18);
+        vm.expectRevert(bytes("ENTRY_NOT_ALLOWED"));
+        manager.depositSenior(1e18, denied);
+        vm.stopPrank();
+
+        vm.prank(srLP);
+        vm.expectRevert(bytes("ENTRY_NOT_ALLOWED"));
+        senior.transfer(denied, 1e18);
+
+        seniorGate.setAllowed(srLP, false);
+        seniorGate.setShouldRevert(true);
+        uint256 balanceBefore = usdc.balanceOf(srLP);
+        vm.prank(srLP);
+        uint256 id = manager.requestRedeem(true, 1e18);
+        (,, uint128 face,, uint32 expiry) = manager.requests(id);
+        vm.warp(uint256(expiry) + 1);
+        manager.pokeRecovery(expiry);
+        manager.claim(id);
+        assertEq(usdc.balanceOf(srLP), balanceBefore + uint256(face));
+    }
+
+    function test_RevertingEntryGateFailsClosed() public {
+        seniorGate.setShouldRevert(true);
+        vm.startPrank(srLP);
+        usdc.approve(address(manager), 1e18);
+        vm.expectRevert(bytes("GATE_REVERT"));
+        manager.depositSenior(1e18, srLP);
+        vm.stopPrank();
+    }
+
+    function test_ZeroEntryGatesAreOpen() public {
+        TrancheManager openManager = new TrancheManager(address(this));
+        openManager.initialize(
+            TrancheManager.Params({
+                underlyingVault: address(wrapper),
+                sentinel: address(sentinel),
+                seniorGate: address(0),
+                juniorGate: address(0),
+                seniorRateBips: SENIOR_RATE_BIPS,
+                minJuniorBips: MIN_JUNIOR_BIPS,
+                defaultPenaltyWindow: WINDOW
+            })
+        );
+        assertEq(address(openManager.seniorGate()), address(0));
+        assertEq(address(openManager.juniorGate()), address(0));
+    }
+
+    function test_EntryGateMustBeAContract() public {
+        TrancheManager badManager = new TrancheManager(address(this));
+        vm.expectRevert(bytes("BAD_SENIOR_GATE"));
+        badManager.initialize(
+            TrancheManager.Params({
+                underlyingVault: address(wrapper),
+                sentinel: address(sentinel),
+                seniorGate: address(0xBEEF),
+                juniorGate: address(0),
+                seniorRateBips: SENIOR_RATE_BIPS,
+                minJuniorBips: MIN_JUNIOR_BIPS,
+                defaultPenaltyWindow: WINDOW
+            })
+        );
+    }
+
+    function test_ManagerHasNoControlPlaneSelectors() public {
+        bytes[4] memory calls = [
+            abi.encodeWithSignature("setDepositsPaused(bool)", true),
+            abi.encodeWithSignature("proposeSeniorRateBips(uint256)", 500),
+            abi.encodeWithSignature("declareDefault()"),
+            abi.encodeWithSignature("proposeGovernance(address)", address(this))
+        ];
+        for (uint256 i; i < calls.length; ++i) {
+            (bool ok,) = address(manager).call(calls[i]);
+            assertFalse(ok);
+        }
+    }
+
     function test_AsyncRedemptionSeniorFirstOnShortfall() public {
         uint256 seniorShares = senior.balanceOf(srLP);
         vm.prank(srLP);
@@ -262,14 +365,6 @@ contract TrancheTest is Test {
         manager.claim(id);
         address escrow = address(uint160(uint256(keccak256(abi.encodePacked("escrow", srLP)))));
         assertEq(usdc.balanceOf(escrow), 300e18);
-    }
-
-    function test_RateChangeCheckpointsOldRate() public {
-        vm.prank(gov);
-        manager.proposeSeniorRateBips(500);
-        vm.warp(block.timestamp + manager.RATE_TIMELOCK());
-        manager.executeSeniorRateBips();
-        assertEq(manager.seniorRateBips(), 500);
     }
 
     function test_FactoryRejectsTransferDisabledMarket() public {
