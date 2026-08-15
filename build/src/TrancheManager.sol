@@ -133,7 +133,9 @@ contract TrancheManager is ReentrancyGuard {
     event RecoveryAllocated(uint256 seniorDelta, uint256 juniorDelta, uint256 seniorTotal, uint256 juniorTotal);
     event Claimed(uint256 indexed id, address indexed owner, address indexed recipient, uint256 usdc, bool toEscrow);
     event TerminalCustodyQueued(uint256 wrapperShares, uint256 marketTokens, uint32 expiry);
-    event TerminalSurplusSettled(address indexed terminalRecipient, address indexed recipient, uint256 usdc, bool toEscrow);
+    event TerminalSurplusSettled(
+        address indexed terminalRecipient, address indexed recipient, uint256 usdc, bool toEscrow
+    );
     event StatusChanged(Status indexed previousStatus, Status indexed newStatus);
     event AccountingCheckpoint(uint256 timestamp, uint256 seniorOwed, uint256 realisedValue);
 
@@ -313,9 +315,7 @@ contract TrancheManager is ReentrancyGuard {
         uint32 expiry,
         uint128 normalizedAmount,
         MarketState calldata state
-    )
-        external
-    {
+    ) external {
         require(msg.sender == marketHooks, "ONLY_MARKET_HOOKS");
         require(executedMarket == address(market), "WRONG_MARKET");
         // A sanctioned manager would receive this withdrawal through the market escrow, which has
@@ -663,8 +663,7 @@ contract TrancheManager is ReentrancyGuard {
             // `seniorDebtReserveUSDC` is segregated cash already covering unqueued live senior
             // debt. Deduct only the uncovered remainder from queued-face recovery; otherwise that
             // same senior protection would block a junior request whose own cash is fully backed.
-            uint256 uncoveredSeniorOwed =
-                seniorOwed > seniorDebtReserveUSDC ? seniorOwed - seniorDebtReserveUSDC : 0;
+            uint256 uncoveredSeniorOwed = seniorOwed > seniorDebtReserveUSDC ? seniorOwed - seniorDebtReserveUSDC : 0;
             uint256 seniorReserve = distressed ? seniorWmtQueued + uncoveredSeniorOwed : seniorWmtQueued;
             uint256 juniorCeil = allocatableUSDC > seniorReserve ? allocatableUSDC - seniorReserve : 0;
             if (juniorCeil > juniorWmtQueued) juniorCeil = juniorWmtQueued;

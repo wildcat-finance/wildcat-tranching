@@ -160,7 +160,8 @@ contract ForkTest is Test {
                 minJuniorBips: 2000,
                 defaultPenaltyWindow: 28 days,
                 terminalRecipient: address(this)
-            })
+            }),
+            _managerInitCode()
         );
         TrancheManager manager = TrancheManager(managerAddress);
 
@@ -192,9 +193,13 @@ contract ForkTest is Test {
         assertEq(manager.junior().manager(), managerAddress, "junior manager");
         assertFalse(manager.junior().isSenior(), "junior class");
         string memory marketId = LibString.toHexStringNoPrefix(marketAddress);
-        assertEq(manager.senior().name(), string.concat("Wildcat Senior Tranche WCFORK ", marketId), "senior facility name");
+        assertEq(
+            manager.senior().name(), string.concat("Wildcat Senior Tranche WCFORK ", marketId), "senior facility name"
+        );
         assertEq(manager.senior().symbol(), string.concat("sr-WCFORK-", marketId), "senior facility symbol");
-        assertEq(manager.junior().name(), string.concat("Wildcat Junior Tranche WCFORK ", marketId), "junior facility name");
+        assertEq(
+            manager.junior().name(), string.concat("Wildcat Junior Tranche WCFORK ", marketId), "junior facility name"
+        );
         assertEq(manager.junior().symbol(), string.concat("jr-WCFORK-", marketId), "junior facility symbol");
 
         _exerciseExitLifecycle(manager, market, asset, managerAddress, wrapperAddress);
@@ -216,9 +221,8 @@ contract ForkTest is Test {
         assertTrue(facility.market.currentState().isDelinquent, "unpaid batch makes market delinquent");
 
         vm.warp(block.timestamp + 1 days);
-        uint256 live = Wildcat4626Wrapper(facility.wrapperAddress).convertToAssets(
-            Wildcat4626Wrapper(facility.wrapperAddress).balanceOf(facility.managerAddress)
-        );
+        uint256 live = Wildcat4626Wrapper(facility.wrapperAddress)
+            .convertToAssets(Wildcat4626Wrapper(facility.wrapperAddress).balanceOf(facility.managerAddress));
         assertGt(live, mark, "retained wrapper position accrues live value");
         facility.manager.accrue();
         assertEq(facility.manager.markedAssets(), mark, "delinquent checkpoint preserves healthy mark");
@@ -232,7 +236,6 @@ contract ForkTest is Test {
         facility.manager.accrue();
         assertEq(facility.manager.markedAssets(), facility.manager.realisedValue(), "cure refreshes the live mark");
         assertGt(facility.manager.markedAssets(), mark, "cure recognises retained live value");
-
     }
 
     function test_fork_delinquencyThresholdWindDown() public {
@@ -248,14 +251,20 @@ contract ForkTest is Test {
 
         vm.warp(block.timestamp + facility.manager.delinquencyGracePeriod() + facility.manager.defaultPenaltyWindow());
         facility.manager.accrue();
-        assertEq(uint256(facility.manager.status()), uint256(TrancheManager.Status.WindDown), "threshold enters wind-down");
+        assertEq(
+            uint256(facility.manager.status()), uint256(TrancheManager.Status.WindDown), "threshold enters wind-down"
+        );
         uint256 frozenOwed = facility.manager.seniorOwedAtDefault();
 
         asset.approve(facility.marketAddress, 300e18);
         facility.market.repay(300e18);
         assertFalse(facility.market.currentState().isDelinquent, "repayment cures market after wind-down");
         facility.manager.accrue();
-        assertEq(uint256(facility.manager.status()), uint256(TrancheManager.Status.WindDown), "cure cannot reactivate manager");
+        assertEq(
+            uint256(facility.manager.status()),
+            uint256(TrancheManager.Status.WindDown),
+            "cure cannot reactivate manager"
+        );
         assertEq(facility.manager.seniorOwed(), frozenOwed, "cure cannot restart senior accrual");
         vm.warp(block.timestamp + 365 days);
         facility.manager.accrue();
@@ -392,7 +401,8 @@ contract ForkTest is Test {
                 minJuniorBips: 2000,
                 defaultPenaltyWindow: 28 days,
                 terminalRecipient: address(this)
-            })
+            }),
+            _managerInitCode()
         );
         facility.market = WildcatMarket(facility.marketAddress);
         facility.manager = TrancheManager(facility.managerAddress);
@@ -445,7 +455,11 @@ contract ForkTest is Test {
         address keeper = address(0xBEEF);
         vm.warp(uint256(requests.expiry) + 1);
         assertTrue(market.currentState().isDelinquent, "shortfall makes the market delinquent");
-        assertEq(market.getAvailableWithdrawalAmount(managerAddress, requests.expiry), 300e18, "market pays available liquidity");
+        assertEq(
+            market.getAvailableWithdrawalAmount(managerAddress, requests.expiry),
+            300e18,
+            "market pays available liquidity"
+        );
         vm.prank(keeper);
         manager.pokeRecovery(requests.expiry);
 
@@ -467,7 +481,11 @@ contract ForkTest is Test {
 
         asset.approve(address(market), 100e18);
         market.repayAndProcessUnpaidWithdrawalBatches(100e18, 1);
-        assertEq(market.getAvailableWithdrawalAmount(managerAddress, requests.expiry), 100e18, "repaid liquidity is reserved for the batch");
+        assertEq(
+            market.getAvailableWithdrawalAmount(managerAddress, requests.expiry),
+            100e18,
+            "repaid liquidity is reserved for the batch"
+        );
         vm.prank(keeper);
         manager.pokeRecovery(requests.expiry);
 
@@ -552,6 +570,10 @@ contract ForkTest is Test {
         accessInputs.newProviderInputs[0] =
             CreateProviderInputs({timeToLive: 0, providerFactoryCalldata: abi.encode(providerInputs)});
         return abi.encode(SingletonOpenTermHooksInputs({accessControlInputs: accessInputs, lender: predictedManager}));
+    }
+
+    function _managerInitCode() internal view returns (bytes memory) {
+        return abi.encodePacked(type(TrancheManager).creationCode, abi.encode(address(trancheFactory)));
     }
 
     function _marketInputs() internal view returns (DeployMarketInputs memory inputs) {

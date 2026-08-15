@@ -13,8 +13,9 @@ import {HooksConfig} from "v2-protocol/src/types/HooksConfig.sol";
 import {Wildcat4626Wrapper} from "v2-protocol/src/vault/Wildcat4626Wrapper.sol";
 import {Wildcat4626WrapperFactory} from "v2-protocol/src/vault/Wildcat4626WrapperFactory.sol";
 
-/// @dev Keeps the manager creation code out of TrancheFactory's runtime bytecode. Only its parent
-///      factory can consume a salt; the manager itself still records that parent as `factory`.
+/// @dev Keeps the manager creation code out of both deployment contracts' runtime bytecode. The
+///      factory authenticates the calldata against its immutable init-code hash before it reaches
+///      this contract, and only its parent factory can consume a salt.
 contract TrancheManagerDeployer {
     address public immutable factory;
 
@@ -24,18 +25,23 @@ contract TrancheManagerDeployer {
         factory = factory_;
     }
 
-    function deploy(bytes32 salt) external returns (TrancheManager manager) {
+    function deploy(bytes32 salt, bytes calldata managerInitCode) external returns (TrancheManager manager) {
         if (msg.sender != factory) revert OnlyFactory();
-        manager = new TrancheManager{salt: salt}(factory);
+        bytes memory initCode = managerInitCode;
+        address deployed;
+        assembly ("memory-safe") {
+            deployed := create2(0, add(initCode, 0x20), mload(initCode), salt)
+            if iszero(deployed) {
+                returndatacopy(0, 0, returndatasize())
+                revert(0, returndatasize())
+            }
+        }
+        manager = TrancheManager(deployed);
     }
 
-    function computeAddress(bytes32 salt) external view returns (address predicted) {
-        bytes32 digest = keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, initCodeHash()));
+    function computeAddress(bytes32 salt, bytes32 initCodeHash) external view returns (address predicted) {
+        bytes32 digest = keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, initCodeHash));
         predicted = address(uint160(uint256(digest)));
-    }
-
-    function initCodeHash() public view returns (bytes32) {
-        return keccak256(abi.encodePacked(type(TrancheManager).creationCode, abi.encode(factory)));
     }
 }
 
@@ -47,6 +53,7 @@ contract TrancheFactory {
     Wildcat4626WrapperFactory public immutable wrapperFactory;
     TrancheManagerDeployer public immutable managerDeployer;
     address public immutable singletonHooksTemplate;
+    bytes32 public immutable managerInitCodeHash;
 
     mapping(address => address) public managerForMarket;
     address[] public allManagers;
@@ -76,6 +83,7 @@ contract TrancheFactory {
     error SentinelMismatch();
     error ZeroDelinquencyFee();
     error TerminalRecipientInvalid();
+    error ManagerInitCodeHashMismatch();
 
     constructor(address archController_, address wrapperFactory_, address singletonHooksTemplate_) {
         if (archController_ == address(0) || wrapperFactory_ == address(0) || singletonHooksTemplate_ == address(0)) {
@@ -85,6 +93,7 @@ contract TrancheFactory {
         wrapperFactory = Wildcat4626WrapperFactory(wrapperFactory_);
         if (singletonHooksTemplate_.code.length == 0) revert HookTemplateMismatch();
         singletonHooksTemplate = singletonHooksTemplate_;
+        managerInitCodeHash = keccak256(abi.encodePacked(type(TrancheManager).creationCode, abi.encode(address(this))));
         managerDeployer = new TrancheManagerDeployer(address(this));
     }
 
@@ -103,9 +112,13 @@ contract TrancheFactory {
         address terminalRecipient;
     }
 
-    function deployTranches(bytes32 salt, DeployParams calldata p) external returns (address managerAddr) {
+    function deployTranches(bytes32 salt, DeployParams calldata p, bytes calldata managerInitCode)
+        external
+        returns (address managerAddr)
+    {
         if (p.market == address(0) || p.wrapper == address(0) || p.hooks == address(0)) revert ZeroAddress();
         if (msg.sender != p.borrower) revert BorrowerMismatch();
+        if (keccak256(managerInitCode) != managerInitCodeHash) revert ManagerInitCodeHashMismatch();
         if (!archController.isRegisteredMarket(p.market)) revert MarketNotRegistered();
 
         managerAddr = computeManagerAddress(msg.sender, salt);
@@ -114,7 +127,7 @@ contract TrancheFactory {
         _validateBindings(managerAddr, p);
 
         bytes32 effectiveSalt = _effectiveSalt(msg.sender, salt);
-        TrancheManager manager = managerDeployer.deploy(effectiveSalt);
+        TrancheManager manager = managerDeployer.deploy(effectiveSalt, managerInitCode);
         if (address(manager) != managerAddr) revert SingletonLenderMismatch();
 
         manager.initialize(
@@ -138,11 +151,7 @@ contract TrancheFactory {
     }
 
     function computeManagerAddress(address deployer, bytes32 salt) public view returns (address predicted) {
-        predicted = managerDeployer.computeAddress(_effectiveSalt(deployer, salt));
-    }
-
-    function managerInitCodeHash() public view returns (bytes32) {
-        return managerDeployer.initCodeHash();
+        predicted = managerDeployer.computeAddress(_effectiveSalt(deployer, salt), managerInitCodeHash);
     }
 
     function managersLength() external view returns (uint256) {

@@ -121,7 +121,7 @@ Expose:
 
 ```solidity
 function computeManagerAddress(address deployer, bytes32 salt) external view returns (address);
-function deployTranches(bytes32 salt, DeployParams calldata init)
+function deployTranches(bytes32 salt, DeployParams calldata init, bytes calldata managerInitCode)
   external returns (address manager);
 ```
 
@@ -129,7 +129,11 @@ Namespace the CREATE2 salt by `msg.sender`. Address prediction must not depend o
 wrapper or tranche parameters because the predicted manager must be supplied while creating the
 market, before the wrapper exists. Achieve this with constant constructor code and a factory-only,
 one-time `initialize`. Initialization must occur in the deployment transaction; this is not a
-proxy and there is no implementation pointer.
+proxy and there is no implementation pointer. `managerInitCode` is the compiled
+`TrancheManager` creation code with the factory address ABI-encoded as its constructor argument.
+The factory commits its hash at construction and rejects any other bytes. This keeps manager
+creation code out of every deployed factory runtime contract while preserving a fixed CREATE2
+address and fixed manager runtime.
 
 `deployTranches` must verify before registration:
 
@@ -303,7 +307,8 @@ because the only admitted lender is an address with no code until the final tran
 2. Create the market and singleton hooks with that predicted address as sole lender. Deposit and
    transfer hooks are enabled/access-required; global transfers are not disabled.
 3. Call `Wildcat4626WrapperFactory.createWrapper(market)`.
-4. Call `TrancheFactory.deployTranches(salt, init)`.
+4. Call `TrancheFactory.deployTranches(salt, init, managerInitCode)` using the artefact whose hash
+   matches `managerInitCodeHash()`.
 5. Run the verifier checklist below before funding or publishing the tranche addresses.
 
 The gap is inert, not partially live: no other address has the deposit credential, the manager is
@@ -400,9 +405,10 @@ wrapper total supply == wrapper balance of manager
 `build/` contains ownerless deterministic deployment, a factory-only one-time initializer,
 base-asset deposits followed by market deposit and canonical wrapping, time-deterministic fixed-rate
 senior accrual, exact market-close checkpointing, complete distress reserve, class entry gates and
-reconstructible custody and recovery events. A small factory-owned deployer holds manager creation
-code so `TrancheFactory` remains below the EIP-170 runtime limit.
+reconstructible custody and recovery events. The manager creation code is supplied only at
+deployment, checked against the factory's immutable hash, then consumed by a small factory-owned
+CREATE2 deployer. The production Foundry profile uses one optimizer run and has an executable
+EIP-170/EIP-3860 size gate; these settings are part of the artefact identity.
 
-The pinned V2.5 deployment and deposit path is covered in `build/test/Fork.t.sol`. The next work is
-the remaining entry, sanctions and release-evidence work, followed by replacement of the remaining
-manager string reverts with typed errors.
+The pinned V2.5 deployment, entry, sanctions and recovery paths are covered in
+`build/test/Fork.t.sol`. Release checks and command sequence live in `docs/RELEASE_EVIDENCE.md`.

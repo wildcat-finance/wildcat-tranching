@@ -188,8 +188,12 @@ The CREATE2 deployment shape is already close to the target. Keep it small.
 - global transfers are not disabled;
 - provider configuration is sealed;
 - the provider has one lender and it is the predicted manager.
+- the submitted manager creation code hashes to the immutable `managerInitCodeHash`.
 
 Initialisation happens in the deployment transaction. There is no proxy or implementation pointer.
+The caller supplies the compiled manager creation code only for that transaction. The factory has
+already committed its exact hash, so the generic CREATE2 deployer cannot be used to substitute a
+different manager runtime.
 The deployment verifier should also record the market's current `protocolFeeBips`, fee recipient and
 maximum fee permitted by the pinned hooks factory. These are disclosed protocol terms, not manager
 initialisation parameters.

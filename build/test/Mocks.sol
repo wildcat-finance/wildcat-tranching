@@ -9,8 +9,12 @@ import {RoleProvider} from "v2-protocol/src/types/RoleProvider.sol";
 import {HooksConfig} from "v2-protocol/src/types/HooksConfig.sol";
 
 interface IMockExecuteWithdrawalHook {
-    function onExecuteWithdrawal(address lender, uint32 expiry, uint128 normalizedAmountWithdrawn, MarketState calldata state)
-        external;
+    function onExecuteWithdrawal(
+        address lender,
+        uint32 expiry,
+        uint128 normalizedAmountWithdrawn,
+        MarketState calldata state
+    ) external;
 }
 
 interface IMockManagerRecoveryCallback {
@@ -19,8 +23,7 @@ interface IMockManagerRecoveryCallback {
         uint32 expiry,
         uint128 normalizedAmount,
         MarketState calldata state
-    )
-        external;
+    ) external;
 }
 
 contract MockERC20 {
@@ -370,12 +373,16 @@ contract MockSingletonHooks {
         return _markets[market];
     }
 
-    function onExecuteWithdrawal(address lender, uint32 expiry, uint128 normalizedAmountWithdrawn, MarketState calldata state)
-        external
-    {
+    function onExecuteWithdrawal(
+        address lender,
+        uint32 expiry,
+        uint128 normalizedAmountWithdrawn,
+        MarketState calldata state
+    ) external {
         require(_markets[msg.sender].isHooked, "NOT_HOOKED");
         if (lender == MockSingletonProvider(provider).lender()) {
-            IMockManagerRecoveryCallback(lender).onMarketWithdrawalExecuted(msg.sender, expiry, normalizedAmountWithdrawn, state);
+            IMockManagerRecoveryCallback(lender)
+                .onMarketWithdrawalExecuted(msg.sender, expiry, normalizedAmountWithdrawn, state);
         }
     }
 }

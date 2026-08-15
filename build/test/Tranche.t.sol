@@ -75,8 +75,9 @@ contract TrancheTest is Test {
         seniorGate.setAllowed(srLP, true);
         juniorGate.setAllowed(jrLP, true);
 
-        address deployed =
-            factory.deployTranches(salt, _params(address(market), address(wrapper), address(hooks), address(provider)));
+        address deployed = factory.deployTranches(
+            salt, _params(address(market), address(wrapper), address(hooks), address(provider)), _managerInitCode()
+        );
         assertEq(deployed, predicted, "CREATE2 prediction");
         manager = TrancheManager(deployed);
         senior = manager.senior();
@@ -108,6 +109,10 @@ contract TrancheTest is Test {
             defaultPenaltyWindow: WINDOW,
             terminalRecipient: borrower
         });
+    }
+
+    function _managerInitCode() internal view returns (bytes memory) {
+        return abi.encodePacked(type(TrancheManager).creationCode, abi.encode(address(factory)));
     }
 
     function _depositSenior(address who, uint256 assets) internal returns (uint256) {
@@ -147,7 +152,7 @@ contract TrancheTest is Test {
 
     function test_Create2PredictionIsNamespacedByCaller() public view {
         assertTrue(factory.computeManagerAddress(address(this), salt) != factory.computeManagerAddress(srLP, salt));
-        assertEq(factory.managerInitCodeHash(), factory.managerDeployer().initCodeHash());
+        assertEq(factory.managerInitCodeHash(), keccak256(_managerInitCode()));
     }
 
     function test_ManagerCannotBeReinitialized() public {
@@ -189,7 +194,18 @@ contract TrancheTest is Test {
         vm.prank(address(0xBEEF));
         vm.expectRevert(TrancheFactory.BorrowerMismatch.selector);
         factory.deployTranches(
-            bytes32(uint256(123)), _params(address(market), address(wrapper), address(hooks), address(provider))
+            bytes32(uint256(123)),
+            _params(address(market), address(wrapper), address(hooks), address(provider)),
+            _managerInitCode()
+        );
+    }
+
+    function test_FactoryRejectsWrongManagerInitCode() public {
+        vm.expectRevert(TrancheFactory.ManagerInitCodeHashMismatch.selector);
+        factory.deployTranches(
+            bytes32(uint256(456)),
+            _params(address(market), address(wrapper), address(hooks), address(provider)),
+            hex"00"
         );
     }
 
@@ -331,9 +347,7 @@ contract TrancheTest is Test {
         usdc.mint(address(manager), secondFace);
         manager.sync();
         assertEq(manager.claimable(secondId), 0, "unattributed cash remains surplus");
-        assertEq(
-            manager.recoverySurplus(), uint256(firstFace) + 10e18 + secondFace, "surplus remains terminal"
-        );
+        assertEq(manager.recoverySurplus(), uint256(firstFace) + 10e18 + secondFace, "surplus remains terminal");
     }
 
     function test_UnattributedCashCannotDoubleAdmitAnExecutedBatch() public {
@@ -885,13 +899,17 @@ contract TrancheTest is Test {
         otherMarket.setDelinquencyFeeBips(0);
         vm.expectRevert(TrancheFactory.ZeroDelinquencyFee.selector);
         factory.deployTranches(
-            otherSalt, _params(address(otherMarket), address(otherWrapper), address(otherHooks), address(otherProvider))
+            otherSalt,
+            _params(address(otherMarket), address(otherWrapper), address(otherHooks), address(otherProvider)),
+            _managerInitCode()
         );
 
         otherMarket.setDelinquencyFeeBips(1);
         vm.expectRevert(TrancheFactory.HookConfigurationInvalid.selector);
         factory.deployTranches(
-            otherSalt, _params(address(otherMarket), address(otherWrapper), address(otherHooks), address(otherProvider))
+            otherSalt,
+            _params(address(otherMarket), address(otherWrapper), address(otherHooks), address(otherProvider)),
+            _managerInitCode()
         );
     }
 
@@ -902,11 +920,11 @@ contract TrancheTest is Test {
 
         p.terminalRecipient = address(0);
         vm.expectRevert(TrancheFactory.TerminalRecipientInvalid.selector);
-        factory.deployTranches(otherSalt, p);
+        factory.deployTranches(otherSalt, p, _managerInitCode());
 
         p.terminalRecipient = factory.computeManagerAddress(address(this), otherSalt);
         vm.expectRevert(TrancheFactory.TerminalRecipientInvalid.selector);
-        factory.deployTranches(otherSalt, p);
+        factory.deployTranches(otherSalt, p, _managerInitCode());
     }
 
     function test_FactoryRejectsWrongSingletonLender() public {
@@ -925,7 +943,9 @@ contract TrancheTest is Test {
 
         vm.expectRevert(TrancheFactory.SingletonLenderMismatch.selector);
         factory.deployTranches(
-            otherSalt, _params(address(otherMarket), address(otherWrapper), address(otherHooks), address(otherProvider))
+            otherSalt,
+            _params(address(otherMarket), address(otherWrapper), address(otherHooks), address(otherProvider)),
+            _managerInitCode()
         );
     }
 
@@ -946,7 +966,9 @@ contract TrancheTest is Test {
 
         vm.expectRevert(TrancheFactory.HookTemplateMismatch.selector);
         factory.deployTranches(
-            otherSalt, _params(address(otherMarket), address(otherWrapper), address(otherHooks), address(otherProvider))
+            otherSalt,
+            _params(address(otherMarket), address(otherWrapper), address(otherHooks), address(otherProvider)),
+            _managerInitCode()
         );
     }
 }

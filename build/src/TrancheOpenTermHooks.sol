@@ -62,9 +62,8 @@ contract TrancheOpenTermHooks is SingletonOpenTermHooks {
         HookedMarket storage hookedMarket = _hookedMarkets[msg.sender];
         if (!hookedMarket.isHooked) revert NotHookedMarket();
         if (lender == trancheManager && trancheManager.code.length != 0) {
-            ITrancheManagerCloseCallback(trancheManager).onMarketWithdrawalExecuted(
-                msg.sender, expiry, normalizedAmountWithdrawn, state
-            );
+            ITrancheManagerCloseCallback(trancheManager)
+                .onMarketWithdrawalExecuted(msg.sender, expiry, normalizedAmountWithdrawn, state);
         }
     }
 }
