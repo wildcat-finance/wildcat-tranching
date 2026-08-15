@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-labelledby="title desc">
   <title id="title">Cash priority and loss priority</title>
-  <desc id="desc">Cash recovered from the underlying loan pays senior before junior. Facility value loss reduces junior before senior.</desc>
+  <desc id="desc">Cash recovered from the underlying loan fills senior exit requests before junior exit requests. Facility value loss reduces junior before senior.</desc>
   <defs>
     <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#1c5c9e"/></marker>
     <style>
@@ -12,7 +12,7 @@
   </defs>
   <rect width="1200" height="675" fill="#faf8f3"/>
   <text class="title" x="60" y="58">Cash goes one way. Loss goes the other.</text>
-  <text class="sub" x="60" y="88">Cash recovered from the loan pays senior first. Loss burns junior first.</text>
+  <text class="sub" x="60" y="88">Cash fills senior exit requests before junior requests. Loss burns junior first.</text>
 
   <text class="h" x="245" y="140" text-anchor="middle">1 · Cash from the loan</text>
   <rect class="box" x="60" y="165" width="370" height="250" rx="14"/>
@@ -22,7 +22,7 @@
   <rect class="green" x="90" y="302" width="310" height="78" rx="10"/>
   <text class="h" x="245" y="332" text-anchor="middle">Cash actually collected</text>
   <text class="t" x="245" y="357" text-anchor="middle">Enters the participation waterfall</text>
-  <text class="tiny" x="245" y="402" text-anchor="middle">Platform charges apply before unprocessed exits.</text>
+  <text class="tiny" x="245" y="402" text-anchor="middle">Accrued protocol fees precede unprocessed exits.</text>
 
   <path class="line" d="M430 290H535"/>
   <text class="tiny" x="482" y="276" text-anchor="middle">cash recovered</text>
@@ -41,13 +41,13 @@
   <text class="h" x="1025" y="140" text-anchor="middle">Illustrative values</text>
   <rect class="box" x="910" y="165" width="230" height="250" rx="14"/>
   <text class="tiny" x="1025" y="192" text-anchor="middle">Senior owed = 315</text>
-  <rect class="blue" x="940" y="214" width="62" height="120"/>
-  <rect class="amber" x="940" y="334" width="62" height="40"/>
-  <text class="tiny" x="971" y="395" text-anchor="middle">420</text>
-  <rect class="blue" x="1010" y="244" width="62" height="90"/>
-  <rect class="amber" x="1010" y="334" width="62" height="7"/>
-  <text class="tiny" x="1041" y="395" text-anchor="middle">340</text>
-  <rect class="blue" x="1080" y="254" width="30" height="80"/>
+  <rect class="blue" x="940" y="214" width="50" height="120"/>
+  <rect class="amber" x="940" y="334" width="50" height="40"/>
+  <text class="tiny" x="965" y="395" text-anchor="middle">420</text>
+  <rect class="blue" x="1005" y="244" width="50" height="120"/>
+  <rect class="amber" x="1005" y="364" width="50" height="10"/>
+  <text class="tiny" x="1030" y="395" text-anchor="middle">340</text>
+  <rect class="blue" x="1070" y="267" width="50" height="107"/>
   <text class="tiny" x="1095" y="395" text-anchor="middle">280</text>
   <text class="tiny" x="1025" y="433" text-anchor="middle">Facility value</text>
 
@@ -56,7 +56,7 @@
   <text class="t" x="330" y="558" text-anchor="middle">Junior reaches zero first; senior then takes the remaining loss.</text>
   <text class="tiny" x="330" y="582" text-anchor="middle">Scenario numbers are illustrations, not a quote or forecast.</text>
   <rect class="amber" x="630" y="495" width="480" height="105" rx="12"/>
-  <text class="h" x="870" y="530" text-anchor="middle">No second facility fee</text>
+  <text class="h" x="870" y="530" text-anchor="middle">Current prototype: no second facility fee</text>
   <text class="t" x="870" y="558" text-anchor="middle">The waterfall divides only value and cash actually recovered.</text>
   <text class="tiny" x="870" y="582" text-anchor="middle">Loan charge, senior target and junior residual are different numbers.</text>
 </svg>

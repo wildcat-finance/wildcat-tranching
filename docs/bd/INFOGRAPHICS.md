@@ -7,11 +7,12 @@ transferability as liquidity.
 
 ![One borrower facility supports senior and junior participation classes.](assets/one-market-two-claims.svg)
 
-Same credit. Senior gets paid first. Junior takes the first loss and keeps the residual.
+Same credit. Senior has first claim on value and senior exit requests clear before junior requests.
+Junior takes the first loss and keeps the residual.
 
 ## Where the money goes
 
-![Cash is allocated to senior before junior, while junior absorbs loss before senior.](assets/priority-waterfall.svg)
+![Cash fills senior exit requests before junior requests, while junior absorbs loss before senior.](assets/priority-waterfall.svg)
 
 Use this for the three cases that matter: whole, junior impaired and senior impaired.
 
@@ -35,9 +36,9 @@ Use this to agree who watches the credit, who records the trigger and who runs t
 
 ## Borrower cost versus holder return
 
-![Borrower cost combines lender interest and platform charges, while the facility separately divides value between senior and junior.](assets/cost-and-yield-bridge.svg)
+![Borrower cost combines lender interest and the Wildcat protocol fee, while the facility separately divides value between senior and junior.](assets/cost-and-yield-bridge.svg)
 
-The borrower rate, platform charge and senior target are three different numbers. Keep them that way.
+The borrower rate, Wildcat protocol fee and senior target are three different numbers. Keep them that way.
 
 ## Reuse rules
 
@@ -46,19 +47,7 @@ The borrower rate, platform charge and senior target are three different numbers
 - Never promise repayment, liquidity, rating or legal treatment.
 - Send implementation questions to the [internal research report](RESEARCH_REPORT.md).
 
-## Verification record
+## Source note
 
-- Six of six SVG files parse as XML, contain a title and description, contain no script or external
-  resource link, and render successfully at 1200 by 675.
-- The full contact sheet was inspected after the credit-desk rewrite; no clipped or overlapping copy
-  remains.
-- All local links in the outward BD pack resolve.
-- Proscribed and Imprimatur report zero defects across the outward BD pack.
-- `forge fmt --check` passed.
-- The selected local suites passed: 52 unit tests, five fuzz tests at 256 runs each, one view-property
-  test and one release-evidence test. Foundry printed the pinned SphereX `locals` diagnostic but returned
-  success for every suite.
-- Seven of seven pinned fork tests passed. The same non-fatal SphereX diagnostic appeared.
-- Four stateful properties passed their configured 256 runs and 128,000 calls each. The full-depth
-  claims property was terminated by this host before a verdict; it passed 256 runs and 25,600 calls at
-  depth 100. This is recorded as a reduced-depth result, not a full configured invariant pass.
+These diagrams describe the current prototype. They are not a rating, audit opinion or product approval.
+The internal [delivery runbook](DELIVERY_RUNBOOK.md) records the render and repository checks.

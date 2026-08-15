@@ -6,9 +6,9 @@ For a full meeting pack, use the [BD field kit](bd/README.md).
 
 One borrower. One facility. Two risk books.
 
-Junior funds the first-loss piece and keeps the residual return. Senior funds above it for a fixed
-accounting target and gets first claim on value and recovery cash. If junior is exhausted, senior loses
-money. Both classes live or die on the same borrower.
+Junior funds the first-loss piece and keeps the residual return. Senior funds above it for an annual
+simple accounting target and has first claim on realised value. Senior exit requests clear before junior
+requests. If junior is exhausted, senior loses money. Both classes live or die on the same borrower.
 
 This is not a claim that private credit has become liquid. Exit waits for the underlying loan to produce
 cash and may settle in pieces.
@@ -27,7 +27,7 @@ cash and may settle in pieces.
 3. What return does senior need for the credit and expected time to cash?
 4. What can change after closing, and who can say no?
 5. Who may hold each class, and who owns monitoring and workout?
-6. What are the full borrower charges, including platform, origination and arrears costs?
+6. What are the full borrower charges, including Wildcat protocol, origination and arrears costs?
 
 ## What not to pretend
 
@@ -38,12 +38,12 @@ cash and may settle in pieces.
 - Operating wind-down is not automatically legal default.
 - The current implementation is a tested prototype, not a rated, audited or production product.
 
-## Platform charge
+## Protocol fee
 
-The borrower pays the loan rate plus the platform charge. The current participation facility adds no
-second fee. The platform charge is a percentage of lender interest, not principal, and it affects the
-cash available before unprocessed exits. Cash already processed for withdrawal is not displaced by a
-later fee collection.
+The borrower pays the loan rate plus the Wildcat protocol fee, a platform charge calculated as a
+percentage of lender interest. The current participation facility adds no second fee. The protocol fee
+affects cash available before unprocessed exits; cash already processed for withdrawal is not displaced
+by a later fee collection.
 
 ## Next meeting
 

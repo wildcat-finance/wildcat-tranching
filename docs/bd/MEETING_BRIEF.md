@@ -4,9 +4,9 @@
 
 One borrower. One facility. Two tickets.
 
-Junior takes the first loss and owns the residual. Senior sits above it, earns a fixed accounting target
-and gets the first cash back. The structure gives the borrower access to two risk books without pretending
-the underlying credit changed.
+Junior takes the first loss and owns the residual. Senior sits above it, accrues an annual simple
+accounting target and has first claim on realised value. Senior exit requests clear before junior
+requests. The structure reaches two risk books without pretending the underlying credit changed.
 
 Then stop talking and ask about the deal.
 
@@ -20,15 +20,17 @@ Then stop talking and ask about the deal.
 
 ## Numbers to leave with
 
-- senior target: 0% to 100%;
+- senior target: 0% to 100% per year, simple accrual;
 - junior percentage at entry: 5% to 90%;
 - extra workout window after loan grace: more than 0 and no more than 90 days;
-- senior and junior eligibility: open or controlled;
+- senior and junior eligibility: open or a fixed provider;
 - loan rate, size, reserve, arrears charge and withdrawal period;
-- platform and origination charges; and
+- Wildcat protocol and origination charges; and
 - final recipient for genuine surplus after everyone is paid.
 
-The borrower proposes the facility terms at formation. They are not a standing right to reprice the deal.
+The borrower proposes the facility terms at formation. Manager economics and each class's open-or-provider
+setting are fixed; a selected provider's policy may change. None of this is a standing right to reprice
+the deal.
 
 ## If they are senior
 
@@ -42,7 +44,7 @@ The borrower proposes the facility terms at formation. They are not a standing r
 
 - Show the residual after senior accrual in the base case.
 - Show how fast the residual disappears in the downside.
-- Explain that junior waits behind senior for recovery cash.
+- Explain that junior exit requests wait behind senior exit requests.
 - Test whether the exit constraint fits their treasury needs.
 - Be explicit about which decisions neither class controls.
 

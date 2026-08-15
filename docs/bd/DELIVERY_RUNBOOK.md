@@ -69,3 +69,20 @@ inspection, and validate internal Markdown links. Run the prose lint over all fi
 `build/`, run `forge fmt --check`, the conventional/fuzz/view/release suites, the configured stateful
 suite, the seven pinned fork paths and the release-evidence test. Report every command that ran and any
 environmental failure without upgrading it into a successful result.
+
+## Step 3 verification record
+
+- Six of six SVG files parsed as XML, contained a title and description, contained no script or external
+  resource link, and rendered successfully at 1200 by 675.
+- The full contact sheet was inspected after the credit-desk rewrite and audit fixes.
+- All local links in the outward BD pack resolved.
+- Proscribed and Imprimatur reported zero defects across the outward BD pack before audit; the same checks
+  are rerun after every prose fix.
+- `forge fmt --check` passed.
+- The selected local suites passed: 52 unit tests, five fuzz tests at 256 runs each, one view-property test
+  and one release-evidence test. Foundry printed the pinned SphereX `locals` diagnostic but returned success
+  for every suite.
+- Seven of seven pinned fork tests passed. The same non-fatal SphereX diagnostic appeared.
+- Four stateful properties passed their configured 256 runs and 128,000 calls each. The full-depth claims
+  property was terminated by this host before a verdict; it passed 256 runs and 25,600 calls at depth 100.
+  This is a reduced-depth result, not a full configured invariant pass.

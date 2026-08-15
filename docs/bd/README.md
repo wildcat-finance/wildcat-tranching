@@ -1,8 +1,8 @@
 # One loan. Two risk books.
 
 The borrower raises one facility. Junior takes the first loss and keeps the residual return. Senior sits
-above it, earns a fixed accounting target and gets paid first. Same borrower. Same pool of cash. Different
-attachment points.
+above it, accrues an annual simple accounting target and has first claim on realised value. Senior exit
+requests clear before junior requests. Same borrower. Same pool of cash. Different attachment points.
 
 That is the pitch. Do not open a meeting by explaining the platform.
 
@@ -33,12 +33,12 @@ Seniority changes the order of payment and loss. It does not make weak credit go
 
 ## Who sets the deal
 
-The borrower proposes the senior target, junior percentage, extra workout window, eligibility rules and
-final surplus recipient when the facility is formed. The ranges are bounded and the terms do not have
-later manager setters.
+The borrower proposes the senior target, junior percentage, extra workout window, each class's eligibility
+setting and final surplus recipient when the facility is formed. Entry can be open or use a fixed provider.
+The manager terms do not have later setters; a selected provider's policy may still change.
 
-The underlying loan still has its own rate, size, liquidity, delinquency and amendment terms. Platform
-fees and operating rails are set separately. The code fixes the waterfall, FIFO inside each class,
+The underlying loan still has its own rate, size, liquidity, delinquency and amendment terms. Wildcat
+protocol fees and operating rails are set separately. The code fixes the waterfall, FIFO inside each class,
 sanctions routing and wind-down mechanics.
 
 In plain English: the borrower can price and shape the capital stack at inception. The borrower cannot
@@ -48,7 +48,7 @@ rewrite the waterfall after the money lands.
 
 - **Credit:** one named borrower exposure; no diversification trick.
 - **Attachment:** junior absorbs loss first; senior takes loss after junior is exhausted.
-- **Return:** senior has a fixed target; junior owns the residual. Neither is guaranteed.
+- **Return:** senior has an annual simple target; junior owns the residual. Neither is guaranteed.
 - **Liquidity:** exit waits for cash from the underlying loan and may be partial.
 - **Transfer:** interests can move only to eligible, sanctions-cleared recipients. A bid is not promised.
 - **Workout:** arrears stop new money; an observed threshold or loan close puts the facility into one-way

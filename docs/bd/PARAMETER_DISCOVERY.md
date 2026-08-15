@@ -19,17 +19,19 @@ hand-waving.
 
 | Term | System range | Borrower range | Senior range | Junior range | Discussion range |
 | --- | --- | --- | --- | --- | --- |
-| Senior target | 0 to 10,000 bips |  |  |  |  |
+| Senior target | 0 to 10,000 annual bips; simple accrual |  |  |  |  |
 | Junior share at entry | 500 to 9,000 bips |  |  |  |  |
 | Senior amount or proportion | Constrained by junior share |  |  |  |  |
 | Junior amount or proportion | Funds first |  |  |  |  |
+| Minimum opening credited value | At least `1e6` smallest units after conversion: 1.00 for a six-decimal asset; confirm the human amount and rounding for the chosen asset |  |  |  |  |
 | Additional workout window | More than 0; no more than 90 days |  |  |  |  |
 | Senior eligibility | Open or controlled |  |  |  |  |
 | Junior eligibility | Open or controlled |  |  |  |  |
 
 Make both sides defend their number. The senior target prices the senior ticket; it is not the borrower
-coupon. The junior share is checked at entry and normal junior exit, then left to take the loss. The extra
-window should match a workout someone is actually prepared to run.
+coupon. The junior share is checked when senior enters and when junior exits before permanent wind-down
+is recorded, then left to take the loss. The extra window should match a workout someone will actually
+run.
 
 ## Loan economics: what the borrower pays, when cash comes back
 
@@ -40,14 +42,15 @@ window should match a workout someone is actually prepared to run.
 | Reserve or liquidity requirement |  |  |
 | Withdrawal period |  |  |
 | Delinquency charge and grace |  |  |
-| Platform-fee rate |  |  |
+| Loan minimum deposit |  |  |
+| Wildcat protocol-fee rate |  |  |
 | Origination fee |  |  |
 | Expected normal time to cash |  |  |
 | Expected stressed time to cash |  |  |
 
-Borrower running cost is lender interest plus the platform charge, before origination or arrears costs.
-The current facility adds no second fee. For every term, write down who can change it, who gets notice and
-who can say no.
+Borrower running cost is lender interest plus the Wildcat protocol fee, before origination or arrears
+costs. The current facility adds no second fee. For every term, write down who can change it, who gets
+notice and who can say no.
 
 ## Operations: who can hold it, who has to move when it goes wrong
 
@@ -64,8 +67,8 @@ who can say no.
 | Who receives genuine surplus after final settlement? |  |
 
 Eligibility constrains acquisition, not an existing holder's right to request exit. Exit can still be
-slow or partial. A sanctioned holder's proceeds use escrow; a sanctioned facility account can defer
-settlement for everyone until cleared.
+slow or partial. A sanctioned holder's proceeds use escrow; a sanctioned facility account can defer new
+withdrawal-batch execution and recovery for everyone until cleared.
 
 ## Scenario record
 
@@ -83,7 +86,7 @@ assumed borrower action.
 ## Internal implementation record
 
 BD does not need this for the pitch, but implementation owners must record the exact loan address,
-asset, borrower identity, eligibility contracts, current platform fee, withdrawal period, delinquency
+asset, borrower identity, eligibility contracts, current protocol fee, withdrawal period, delinquency
 terms, fixed residual recipient and the accounts responsible for monitoring and settlement.
 
 This worksheet does not amend a live facility. It tells the deal team whether there is a trade worth
