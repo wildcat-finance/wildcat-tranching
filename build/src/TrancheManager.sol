@@ -12,6 +12,7 @@ import {HooksConfig} from "v2-protocol/src/types/HooksConfig.sol";
 import {Wildcat4626Wrapper} from "v2-protocol/src/vault/Wildcat4626Wrapper.sol";
 import {ReentrancyGuard} from "../lib/solady/src/utils/ReentrancyGuard.sol";
 import {SafeTransferLib} from "../lib/solady/src/utils/SafeTransferLib.sol";
+import {LibString} from "../lib/solady/src/utils/LibString.sol";
 
 /// @title TrancheManager
 /// @notice Per-market custody and accounting contract for two Wildcat credit tranches.
@@ -179,8 +180,20 @@ contract TrancheManager is ReentrancyGuard {
 
         uint8 shareDecimals = market.decimals();
         require(shareDecimals >= 6, "BAD_DECIMALS");
-        senior = new TrancheToken("Wildcat Senior Tranche", "sr-wmt", shareDecimals, true);
-        junior = new TrancheToken("Wildcat Junior Tranche", "jr-wmt", shareDecimals, false);
+        string memory marketSymbol = market.symbol();
+        string memory marketId = LibString.toHexStringNoPrefix(address(market));
+        senior = new TrancheToken(
+            string.concat("Wildcat Senior Tranche ", marketSymbol, " ", marketId),
+            string.concat("sr-", marketSymbol, "-", marketId),
+            shareDecimals,
+            true
+        );
+        junior = new TrancheToken(
+            string.concat("Wildcat Junior Tranche ", marketSymbol, " ", marketId),
+            string.concat("jr-", marketSymbol, "-", marketId),
+            shareDecimals,
+            false
+        );
 
         lastAccrual = block.timestamp;
         status = Status.Active;

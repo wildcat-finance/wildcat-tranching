@@ -70,6 +70,9 @@ The prototype makes these choices:
    token. After all requests are claimed, custody and the live senior reserve are clear, anyone may
    settle `recoverySurplus` to that recipient or its sanctions escrow. `pendingRequests` makes this
    final check constant-cost.
+7. Tranche names and symbols derive from the bound market symbol. The per-class gate addresses are
+   immutable. A gate can refuse acquisition but cannot stop an exit, and the real sentinel redirects
+   a sanctioned claim to canonical escrow without changing its recorded claim.
 
 Required conservation statement:
 

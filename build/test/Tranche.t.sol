@@ -6,6 +6,7 @@ import {TrancheManager} from "../src/TrancheManager.sol";
 import {TrancheFactory} from "../src/TrancheFactory.sol";
 import {TrancheToken} from "../src/TrancheToken.sol";
 import {WaterfallMath} from "../src/libraries/WaterfallMath.sol";
+import {LibString} from "../lib/solady/src/utils/LibString.sol";
 import {
     MockERC20,
     MockMarket,
@@ -137,6 +138,11 @@ contract TrancheTest is Test {
         assertEq(address(manager.underlyingVault()), address(wrapper));
         assertEq(address(manager.baseAsset()), address(usdc));
         assertTrue(manager.initialized());
+        string memory marketId = LibString.toHexStringNoPrefix(address(market));
+        assertEq(senior.name(), string.concat("Wildcat Senior Tranche mock-wmt ", marketId));
+        assertEq(senior.symbol(), string.concat("sr-mock-wmt-", marketId));
+        assertEq(junior.name(), string.concat("Wildcat Junior Tranche mock-wmt ", marketId));
+        assertEq(junior.symbol(), string.concat("jr-mock-wmt-", marketId));
     }
 
     function test_Create2PredictionIsNamespacedByCaller() public view {

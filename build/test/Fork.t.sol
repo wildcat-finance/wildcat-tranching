@@ -5,6 +5,7 @@ import "forge-std/Test.sol";
 
 import {TrancheFactory} from "../src/TrancheFactory.sol";
 import {TrancheManager} from "../src/TrancheManager.sol";
+import {TrancheToken} from "../src/TrancheToken.sol";
 import {TrancheOpenTermHooks} from "../src/TrancheOpenTermHooks.sol";
 import {HooksFactory} from "v2-protocol/src/HooksFactory.sol";
 import {WildcatArchController} from "v2-protocol/src/WildcatArchController.sol";
@@ -22,10 +23,29 @@ import {RoleProvider} from "v2-protocol/src/types/RoleProvider.sol";
 import {encodeHooksConfig} from "v2-protocol/src/types/HooksConfig.sol";
 import {Wildcat4626Wrapper} from "v2-protocol/src/vault/Wildcat4626Wrapper.sol";
 import {Wildcat4626WrapperFactory} from "v2-protocol/src/vault/Wildcat4626WrapperFactory.sol";
+import {LibString} from "../lib/solady/src/utils/LibString.sol";
 
 contract ForkChainalysisList {
-    function isSanctioned(address) external pure returns (bool) {
-        return false;
+    mapping(address => bool) internal sanctioned;
+
+    function setSanctioned(address account, bool value) external {
+        sanctioned[account] = value;
+    }
+
+    function isSanctioned(address account) external view returns (bool) {
+        return sanctioned[account];
+    }
+}
+
+contract ForkEnterGate {
+    mapping(address => bool) internal allowed;
+
+    function setAllowed(address account, bool value) external {
+        allowed[account] = value;
+    }
+
+    function canIncreaseCredit(address account) external view returns (bool) {
+        return allowed[account];
     }
 }
 
@@ -72,6 +92,7 @@ contract ForkTest is Test {
     ForkAsset internal asset;
     WildcatArchController internal archController;
     WildcatBorrowerIdentityRegistry internal borrowerIdentityRegistry;
+    ForkChainalysisList internal chainalysisList;
     WildcatSanctionsSentinel internal sentinel;
     Wildcat4626WrapperFactory internal wrapperFactory;
     HooksFactory internal hooksFactory;
@@ -170,6 +191,11 @@ contract ForkTest is Test {
         assertTrue(manager.senior().isSenior(), "senior class");
         assertEq(manager.junior().manager(), managerAddress, "junior manager");
         assertFalse(manager.junior().isSenior(), "junior class");
+        string memory marketId = LibString.toHexStringNoPrefix(marketAddress);
+        assertEq(manager.senior().name(), string.concat("Wildcat Senior Tranche WCFORK ", marketId), "senior facility name");
+        assertEq(manager.senior().symbol(), string.concat("sr-WCFORK-", marketId), "senior facility symbol");
+        assertEq(manager.junior().name(), string.concat("Wildcat Junior Tranche WCFORK ", marketId), "junior facility name");
+        assertEq(manager.junior().symbol(), string.concat("jr-WCFORK-", marketId), "junior facility symbol");
 
         _exerciseExitLifecycle(manager, market, asset, managerAddress, wrapperAddress);
     }
@@ -261,7 +287,79 @@ contract ForkTest is Test {
         assertEq(facility.market.scaledBalanceOf(facility.managerAddress), 0, "no scaled market custody remains");
     }
 
+    function test_fork_entryGateControlsAcquisitionButNotExit() public {
+        ForkEnterGate seniorGate = new ForkEnterGate();
+        ForkEnterGate juniorGate = new ForkEnterGate();
+        Facility memory facility = _deployFacility(address(seniorGate), address(juniorGate));
+        asset.mint(address(this), 400e18);
+        asset.approve(facility.managerAddress, 400e18);
+
+        vm.expectRevert(bytes("ENTRY_NOT_ALLOWED"));
+        facility.manager.depositJunior(100e18, address(this));
+
+        seniorGate.setAllowed(address(this), true);
+        juniorGate.setAllowed(address(this), true);
+        facility.manager.depositJunior(100e18, address(this));
+        facility.manager.depositSenior(300e18, address(this));
+
+        address receiver = address(0xBEEF);
+        TrancheToken junior = facility.manager.junior();
+        vm.expectRevert(bytes("ENTRY_NOT_ALLOWED"));
+        junior.transfer(receiver, 1e18);
+        juniorGate.setAllowed(receiver, true);
+        junior.transfer(receiver, 1e18);
+
+        seniorGate.setAllowed(address(this), false);
+        uint256 id = facility.manager.requestRedeem(true, facility.manager.senior().balanceOf(address(this)));
+        assertEq(id, 0, "entry policy cannot block an existing holder exit");
+    }
+
+    function test_fork_sanctionedHolderExitsToCanonicalEscrow() public {
+        Facility memory facility = _deployFacility();
+        address holder = address(0xA11CE);
+        asset.mint(holder, 100e18);
+        vm.startPrank(holder);
+        asset.approve(facility.managerAddress, 100e18);
+        facility.manager.depositJunior(100e18, holder);
+        vm.stopPrank();
+
+        chainalysisList.setSanctioned(holder, true);
+        uint256 holderShares = facility.manager.junior().balanceOf(holder);
+        vm.prank(holder);
+        uint256 id = facility.manager.requestRedeem(false, holderShares);
+        (,,,, uint32 expiry) = facility.manager.requests(id);
+        vm.warp(uint256(expiry) + 1);
+        facility.manager.pokeRecovery(expiry);
+
+        address escrow = sentinel.getEscrowAddress(facility.market.borrowerPrincipal(), holder, address(asset));
+        facility.manager.claim(id);
+        assertEq(asset.balanceOf(escrow), 100e18, "sanction redirects payment without changing claim");
+    }
+
+    function test_fork_managerSanctionDefersAuthenticatedRecovery() public {
+        Facility memory facility = _deployFacility();
+        asset.mint(address(this), 100e18);
+        asset.approve(facility.managerAddress, 100e18);
+        facility.manager.depositJunior(100e18, address(this));
+        uint256 id = facility.manager.requestRedeem(false, facility.manager.junior().balanceOf(address(this)));
+        (,,,, uint32 expiry) = facility.manager.requests(id);
+
+        chainalysisList.setSanctioned(facility.managerAddress, true);
+        vm.warp(uint256(expiry) + 1);
+        vm.expectRevert(TrancheManager.ManagerSanctioned.selector);
+        facility.market.executeWithdrawal(facility.managerAddress, expiry);
+        assertEq(facility.manager.recoveredUSDC(), 0, "sanction cannot create phantom recovery");
+
+        chainalysisList.setSanctioned(facility.managerAddress, false);
+        facility.manager.pokeRecovery(expiry);
+        assertEq(facility.manager.claimable(id), 100e18, "cleared manager receives tagged recovery");
+    }
+
     function _deployFacility() internal returns (Facility memory facility) {
+        return _deployFacility(address(0), address(0));
+    }
+
+    function _deployFacility(address seniorGate, address juniorGate) internal returns (Facility memory facility) {
         _deployProtocolStack();
         address predictedManager = trancheFactory.computeManagerAddress(address(this), MANAGER_SALT);
         bytes memory hooksConstructorArgs = _singletonConstructorArgs(predictedManager);
@@ -288,8 +386,8 @@ contract ForkTest is Test {
                 singletonProvider: providers[0].providerAddress(),
                 sentinel: address(sentinel),
                 borrower: address(this),
-                seniorGate: address(0),
-                juniorGate: address(0),
+                seniorGate: seniorGate,
+                juniorGate: juniorGate,
                 seniorRateBips: 800,
                 minJuniorBips: 2000,
                 defaultPenaltyWindow: 28 days,
@@ -420,7 +518,8 @@ contract ForkTest is Test {
         asset = new ForkAsset();
         archController = new WildcatArchController();
         borrowerIdentityRegistry = new WildcatBorrowerIdentityRegistry(address(archController));
-        sentinel = new WildcatSanctionsSentinel(address(archController), address(new ForkChainalysisList()));
+        chainalysisList = new ForkChainalysisList();
+        sentinel = new WildcatSanctionsSentinel(address(archController), address(chainalysisList));
         wrapperFactory = new Wildcat4626WrapperFactory(address(archController), address(0));
 
         bytes memory marketInitCode = type(WildcatMarket).creationCode;

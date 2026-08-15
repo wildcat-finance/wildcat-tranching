@@ -62,6 +62,8 @@ contract MockERC20 {
 }
 
 contract MockMarket {
+    string public constant name = "Mock Wildcat Market";
+    string public constant symbol = "mock-wmt";
     uint8 public decimals = 18;
     uint256 public totalSupply;
     mapping(address => uint256) public balanceOf;

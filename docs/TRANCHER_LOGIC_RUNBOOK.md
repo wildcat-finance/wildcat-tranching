@@ -436,15 +436,17 @@ holder, keeper or later depositor can choose the recipient of terminal value.
 
 ### Gates
 
-Pin the entry-gate interface and test zero/nonzero gate behaviour for both classes. The manager
-stores the gate address once. Policy changes inside a gate cannot alter the manager's economics or
-exit path.
+The manager stores one immutable gate address for each class. A zero address leaves that class
+open. A nonzero gate controls deposits and transfer recipients only; policy changes inside the gate
+cannot alter the manager's economics or exit path. The pinned fork proves a gate can reject both a
+deposit and a transfer, then shows an existing holder can still create a senior exit after the gate
+is turned off.
 
 ### Sanctions
 
-Test the real sentinel and escrow path using `market.borrowerPrincipal()`:
+The pinned suite uses the real sentinel and escrow contracts with `market.borrowerPrincipal()`:
 
-- borrower wallet rotation does not change the sanctions principal;
+- the local suite separately proves borrower wallet rotation does not change the sanctions principal;
 - a sanctioned holder can burn and queue an exit;
 - value and FIFO position remain unchanged;
 - claim payment moves to canonical escrow;
@@ -452,14 +454,16 @@ Test the real sentinel and escrow path using `market.borrowerPrincipal()`:
 
 ### Metadata and interfaces
 
-Replace hard-coded `sr-wmt` and `jr-wmt` before a second facility is presented to users. Derive
-names from the market symbol or pass validated immutable metadata through the factory.
+The manager derives immutable names and symbols from `market.symbol()` plus the bound market
+address: `Wildcat Senior Tranche <market symbol> <market id>`, `sr-<market symbol>-<market id>`,
+`Wildcat Junior Tranche <market symbol> <market id>` and `jr-<market symbol>-<market id>`. The
+fork asserts the resulting identifiers on a real V2.5 market.
 
 Keep ERC-4626 methods explicitly view-only. Decide whether the request surface should advertise
 ERC-7540 after the lifecycle is stable. Add `claimMany` only if it earns its extra surface.
 
-Exit condition: on-chain data identifies the facility and entry policy, while no policy call can
-veto exit.
+Exit condition: complete. On-chain data identifies the facility and entry policy, while no policy
+call can veto exit.
 
 ## Stage 10: review and release evidence
 

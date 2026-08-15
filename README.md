@@ -115,6 +115,12 @@ the recorded claimant. That shortfall makes the market delinquent at execution a
 interest in its batch. A second fork path proves a frozen mark, entry refusal, live-mark refresh after a
 delinquency cure, and the objective wind-down threshold.
 
+Tranche identity is derived from the bound market symbol and market address: `sr-<market symbol>-<market id>` and
+`jr-<market symbol>-<market id>`. The manager contains no access-policy state beyond immutable gate addresses.
+The fork suite proves that a gate can refuse deposit and transfer acquisition but cannot veto an
+existing holder's exit. It also runs the real sentinel and escrow path for a sanctioned holder and
+the manager-sanction deferral path for an authenticated market withdrawal.
+
 ## Read before implementing
 
 Start with [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), then follow
