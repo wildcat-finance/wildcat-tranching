@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-labelledby="title desc">
+  <title id="title">Who controls each commercial term</title>
+  <desc id="desc">Four columns separate borrower-selected fixed facility terms, loan operating terms, platform settings and mechanics fixed in code.</desc>
+  <style>
+    .title{font:700 32px Arial,sans-serif;fill:#0b2341}.sub{font:400 16px Arial,sans-serif;fill:#46596f}
+    .h{font:700 18px Arial,sans-serif;fill:#0b2341}.t{font:400 14px Arial,sans-serif;fill:#24384f}.tag{font:700 13px Arial,sans-serif;fill:#0b2341}
+    .c1{fill:#ddebfa;stroke:#1c5c9e;stroke-width:2}.c2{fill:#dff2ec;stroke:#238c84;stroke-width:2}
+    .c3{fill:#fff0d6;stroke:#d28720;stroke-width:2}.c4{fill:#eef2f5;stroke:#6b7d90;stroke-width:2}
+    .rule{stroke:#bdc7d1;stroke-width:1}
+  </style>
+  <rect width="1200" height="675" fill="#faf8f3"/>
+  <text class="title" x="60" y="58">Set the trade. Know what can move.</text>
+  <text class="sub" x="60" y="88">The borrower shapes the capital stack at closing. That is not a licence to rewrite it later.</text>
+
+  <rect class="c1" x="45" y="130" width="265" height="465" rx="14"/>
+  <text class="h" x="177" y="168" text-anchor="middle">Borrower at closing</text>
+  <text class="tag" x="177" y="192" text-anchor="middle">FACILITY TERMS · FIXED</text>
+  <line class="rule" x1="70" y1="212" x2="285" y2="212"/>
+  <text class="t" x="72" y="244">Senior target: 0–100%</text>
+  <text class="t" x="72" y="278">Junior share: 5–90%</text>
+  <text class="t" x="72" y="312">Extra window: &gt;0–90 days</text>
+  <text class="t" x="72" y="346">Senior eligibility</text>
+  <text class="t" x="72" y="380">Junior eligibility</text>
+  <text class="t" x="72" y="414">Final surplus recipient</text>
+  <text class="t" x="72" y="448">Formation reference</text>
+  <line class="rule" x1="70" y1="470" x2="285" y2="470"/>
+  <text class="tag" x="177" y="500" text-anchor="middle">NO LATER REPRICING</text>
+  <text class="t" x="177" y="528" text-anchor="middle">All terms supplied up front</text>
+  <text class="t" x="177" y="552" text-anchor="middle">Eligibility policy may change</text>
+
+  <rect class="c2" x="330" y="130" width="265" height="465" rx="14"/>
+  <text class="h" x="462" y="168" text-anchor="middle">Underlying loan</text>
+  <text class="tag" x="462" y="192" text-anchor="middle">OPERATING TERMS</text>
+  <line class="rule" x1="355" y1="212" x2="570" y2="212"/>
+  <text class="t" x="357" y="244">Lender rate and facility size</text>
+  <text class="t" x="357" y="278">Liquidity reserve</text>
+  <text class="t" x="357" y="312">Cash withdrawal period</text>
+  <text class="t" x="357" y="346">Arrears charge and grace</text>
+  <text class="t" x="357" y="380">Rate and size can change</text>
+  <text class="t" x="357" y="414">Operating minimum can change</text>
+  <text class="t" x="357" y="448">Administrator can stop new money</text>
+  <line class="rule" x1="355" y1="470" x2="570" y2="470"/>
+  <text class="tag" x="462" y="500" text-anchor="middle">DILIGENCE AMENDMENT RIGHTS</text>
+  <text class="t" x="462" y="528" text-anchor="middle">Cannot rewrite the waterfall</text>
+
+  <rect class="c3" x="615" y="130" width="265" height="465" rx="14"/>
+  <text class="h" x="747" y="168" text-anchor="middle">Platform</text>
+  <text class="tag" x="747" y="192" text-anchor="middle">SEPARATE FROM THE DEAL</text>
+  <line class="rule" x1="640" y1="212" x2="855" y2="212"/>
+  <text class="t" x="642" y="244">Platform fee rate</text>
+  <text class="t" x="642" y="278">Fee recipient</text>
+  <text class="t" x="642" y="312">Origination charge</text>
+  <text class="t" x="642" y="346">Sanctions and escrow</text>
+  <text class="t" x="642" y="380">Custody and settlement rails</text>
+  <text class="t" x="642" y="414">Verified implementation</text>
+  <line class="rule" x1="640" y1="438" x2="855" y2="438"/>
+  <text class="t" x="642" y="470">Fee rate may change</text>
+  <text class="t" x="642" y="504">Existing fee recipient is fixed</text>
+  <text class="t" x="642" y="538">Borrower cannot replace the rails</text>
+
+  <rect class="c4" x="900" y="130" width="255" height="465" rx="14"/>
+  <text class="h" x="1027" y="168" text-anchor="middle">Facility mechanics</text>
+  <text class="tag" x="1027" y="192" text-anchor="middle">FIXED IN CODE</text>
+  <line class="rule" x1="925" y1="212" x2="1130" y2="212"/>
+  <text class="t" x="927" y="244">One facility per loan</text>
+  <text class="t" x="927" y="278">Senior-first cash</text>
+  <text class="t" x="927" y="312">Junior-first loss</text>
+  <text class="t" x="927" y="346">FIFO within each class</text>
+  <text class="t" x="927" y="380">Sanctions and escrow routing</text>
+  <text class="t" x="927" y="414">Observed wind-down trigger</text>
+  <text class="t" x="927" y="448">Final surplus settlement</text>
+  <line class="rule" x1="925" y1="470" x2="1130" y2="470"/>
+  <text class="t" x="1027" y="500" text-anchor="middle">Loan asset and grace carried in</text>
+  <text class="t" x="1027" y="528" text-anchor="middle">No upgrade or pause role</text>
+  <text class="t" x="1027" y="552" text-anchor="middle">No discretionary default button</text>
+
+  <text class="sub" x="600" y="640" text-anchor="middle">Negotiate the capital stack now. Do not mistake formation choices for future control.</text>
+</svg>

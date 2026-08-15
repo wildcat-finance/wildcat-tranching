@@ -1,90 +1,58 @@
-# Wildcat tranching: meeting brief
+# Meeting brief
 
 ## Open with this
 
-One Wildcat market can have two participation classes without splitting custody or creating a second
-loan. A `TrancheManager` is the sole underlying lender. Senior has a fixed accounting target and first
-priority in realised value and recovery; junior receives the residual and takes realised loss first.
-Both retain the same borrower exposure, and both exit through the Wildcat withdrawal queue.
+One borrower. One facility. Two tickets.
 
-This is a prototype discussion, not an offer, rating, audit opinion or promise of repayment or timing.
+Junior takes the first loss and owns the residual. Senior sits above it, earns a fixed accounting target
+and gets the first cash back. The structure gives the borrower access to two risk books without pretending
+the underlying credit changed.
 
-## Five facts to establish
+Then stop talking and ask about the deal.
 
-1. **One exposure.** Senior and junior sit over the same named borrower and market.
-2. **Priority, not protection.** Junior absorbs loss first, but senior can be impaired once junior is
-   exhausted.
-3. **Fixed tranche terms.** The borrower chooses a bounded set at formation; the manager has no later
-   economic setter.
-4. **Separate market controls.** Wildcat market, hook and protocol terms keep their own authorities.
-5. **Queued exit.** A request burns tranche shares and settles as the underlying market processes and
-   pays its withdrawal batch.
+## Five questions that matter
 
-## Borrower choices at formation
+1. Who is the borrower, what is the money for and where does repayment come from?
+2. How much junior capital is genuinely funded, and what downside does it survive?
+3. What return does senior need for this credit and this time to cash?
+4. What can the borrower change after closing, and whose consent is needed?
+5. Who is allowed to hold each class, and who runs monitoring and workout?
 
-- senior target rate: 0% to 100%;
-- minimum junior percentage: 5% to 90%;
-- extra delinquency window: more than 0 and no more than 90 days;
-- senior and junior gate contracts: zero for open entry, otherwise a contract; and
-- terminal-surplus recipient: fixed, nonzero and not the manager.
+## Numbers to leave with
 
-There are no factory defaults for those terms. Gate addresses are fixed, but a gate contract may carry
-mutable policy. These choices do not let the borrower change the deployed waterfall later.
+- senior target: 0% to 100%;
+- junior percentage at entry: 5% to 90%;
+- extra workout window after loan grace: more than 0 and no more than 90 days;
+- senior and junior eligibility: open or controlled;
+- loan rate, size, reserve, arrears charge and withdrawal period;
+- platform and origination charges; and
+- final recipient for genuine surplus after everyone is paid.
 
-## Ask the borrower
+The borrower proposes the facility terms at formation. They are not a standing right to reprice the deal.
 
-- Who is the named credit exposure, and what market capacity and lender APR are contemplated?
-- What market APR and charges make the all-in borrowing cost workable?
-- What senior target and junior thickness make the capital mix workable?
-- How long after the market grace period should the facility wait before irreversible wind-down?
-- Should either class be open, allowlisted, credential-based or restricted to named entities?
-- Who controls each gate contract, and can its policy change?
-- What withdrawal-batch duration, reserve behaviour and repayment plan should lenders model?
-- Are the current protocol-fee basis, update authority and any origination charge understood?
-- Who should receive genuine surplus after every holder claim and custody position has cleared?
-- Who will call the permissionless `checkDefault` while delinquency remains observable?
-- What is the operating response if the manager itself is sanctioned and batch execution is deferred?
+## If they are senior
 
-## Ask senior lenders
+- Show the exact loss that burns through junior and reaches senior.
+- Show when cash is expected in the base case and in workout.
+- Prove the junior cheque exists and funds first.
+- List every loan term that can move without senior consent.
+- Agree the reporting pack before the money moves.
 
-- What junior percentage is the minimum acceptable at entry?
-- What target rate compensates for the borrower risk, queue and controlled transferability?
-- Which accounts or legal entities must be eligible to acquire the position?
-- What information is needed to monitor the market, delinquency counter and withdrawal queue?
-- What partial-recovery and delayed-settlement cases must be modelled before approval?
+## If they are junior
 
-## Ask junior providers
+- Show the residual after senior accrual in the base case.
+- Show how fast the residual disappears in the downside.
+- Explain that junior waits behind senior for recovery cash.
+- Test whether the exit constraint fits their treasury needs.
+- Be explicit about which decisions neither class controls.
 
-- What expected residual is needed for first-loss exposure and senior accrual?
-- What maximum senior size and target are acceptable against the junior contribution?
-- Is senior-first cash recovery acceptable during stress?
-- How should the active junior-exit constraint affect treasury planning?
-- What reporting is needed to explain changes in the realised mark and remaining junior value?
+## The honest answers
 
-## Keep these boundaries in the room
+Senior is not guaranteed. The junior cushion is not rebuilt after loss. Exit is not instant. Transfer does
+not produce a buyer. Wind-down is an operating state, not automatically legal default. This is a tested
+prototype, not a rated or production product.
 
-Say:
+## Close with this
 
-- fixed senior accounting target;
-- junior first realised loss;
-- senior-first recovery, FIFO within class;
-- controlled transferability; and
-- asynchronous exit.
-
-Do not say:
-
-- guaranteed yield or principal protected;
-- maintained junior cushion;
-- instant redemption or liquid market;
-- immutable allowlist;
-- automatic or legal default, rating or securitisation conclusion; or
-- audited, production-ready or live V2.5 product.
-
-## Close with the next piece of work
-
-Agree a range rather than a term sheet: senior target, junior percentage, extra delinquency window,
-market APR and capacity, withdrawal timing, gate model and operator, protocol charges, reporting needs
-and two stress cases. Record who controls each answer. The current delinquency counter must be observed
-by a manager checkpoint before cure for threshold wind-down to occur; the permissionless
-`checkDefault` call is part of the operating plan. Anything legal, tax, regulatory, sanctions-policy or
-credit-underwriting specific goes to the relevant owner before it becomes external language.
+Bring us one borrower, one proposed capital stack and three cash cases: whole, junior impaired and senior
+impaired. We will tell you whether the price, subordination and time to cash are worth pursuing.

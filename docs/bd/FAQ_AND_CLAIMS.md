@@ -1,178 +1,90 @@
-# Wildcat tranching: FAQ and claims guide
+# Desk FAQ
 
-## What is being tranched?
+## What am I buying?
 
-One wrapped position in one Wildcat market. The manager is the sole underlying lender and issues senior
-and junior claims over the same realised value and cash recovery. This is not a pool of loans.
+A senior or junior participation in one named borrower facility. Not a pool. Not a different loan.
 
-## Is senior principal protected?
+## Where do I attach?
 
-No. Junior absorbs realised loss first, but senior is impaired after junior value reaches zero. Senior
-priority changes the order of loss and payment; it does not remove borrower credit risk.
+Junior takes loss first. Senior takes loss after junior reaches zero.
 
-## Is the senior rate a fixed yield?
+## Who gets paid first?
 
-No. It is a fixed accounting target used to divide realised manager value. It accrues on outstanding
-senior principal, but payment remains limited by value and recovery. It does not automatically follow
-the Wildcat market APR.
+Senior gets facility value and recovery cash first. Junior gets what remains. Requests stay FIFO inside
+each class.
 
-## Does the junior percentage stay in place?
+## Is senior guaranteed?
 
-No. The contract checks the chosen minimum when senior enters and when junior exits while active. It is
-not rebalanced after market movement or loss. Junior can fall below the initial percentage and can be
-fully exhausted.
+No. Priority is not protection from a loss large enough to wipe out junior.
 
-## Can the borrower choose the terms?
+## Is the junior cushion maintained?
 
-Yes, within strict limits and only at formation. The borrower supplies the senior target, minimum junior
-percentage, extra delinquency window, two entry-gate addresses and terminal recipient. Those manager
-terms have no later setter.
+No. It is checked when senior enters and when junior exits during normal operation. It can shrink or
+disappear after a loss.
 
-The borrower does not choose everything. The market, hook and protocol layers have separate terms and
-authorities. The tranching factory also verifies the registered market, sole-lender arrangement,
-canonical wrapper, hook template, sanctions sentinel and exact manager code.
+## Is the senior target the loan coupon?
 
-## Can the borrower change anything later?
+No. The loan coupon is what the borrower pays. The senior target is how the facility divides value
+between senior and junior.
 
-Not through the manager. The underlying market borrower retains Wildcat-authorised paths for market
-capacity and APR. The current hook administrator can change the upstream market-hook minimum deposit or
-block fresh manager deposits, and that role can transfer. The ArchController owner can update the hook
-template's protocol-fee rate, and the HooksFactory can then propagate the configured rate to an
-existing open market within its cap. None of those paths reprices the senior target or rewrites
-existing payment priority.
+## How do I get cash out?
 
-## Are the gate policies immutable?
+Request an exit and wait for the underlying loan to produce cash. Settlement can be delayed or partial.
 
-The gate addresses are fixed after manager deployment. A nonzero gate is an external contract, so its
-internal policy may change if that contract permits it. Use "fixed gate address", not "immutable
-allowlist".
+## Can I sell it?
 
-## Can a gate stop someone leaving?
+Only to an eligible, sanctions-cleared recipient. The system does not promise a market, buyer or price.
 
-No. Gates apply when an account acquires tranche exposure through deposit or incoming transfer. An
-existing holder can still burn, request exit and claim. Sanctions routing remains separate.
+## What happens in arrears?
 
-## Are the tranche tokens freely transferable?
+New money stops. The position cannot be marked up using arrears charges, though losses still count. Cure
+can restore normal operation before wind-down is recorded.
 
-No. Transfers require both parties to pass sanctions checks and the recipient to pass the class gate.
-Even when a transfer is allowed, the protocol does not promise a buyer, venue, price or settlement
-liquidity.
+## What starts wind-down?
 
-## Is redemption instant?
+Loan close, or an operating checkpoint that sees the current arrears period reach loan grace plus the
+agreed extra window. Once recorded, wind-down is permanent and senior stops accruing at the cutoff.
 
-No. The holder burns tranche shares into a Wildcat withdrawal batch. Settlement depends on the market's
-batch timing, liquidity and borrower repayment. A request may receive partial cash over time.
+## Is that legal default?
 
-## Who receives recovery first?
+Not by itself. Legal default, enforcement and remedies belong in the deal documents.
 
-Senior request face receives cash before junior request face. Within a class, requests are FIFO. During
-distress, junior cash is held behind both queued senior face and the remaining live senior obligation.
+## What does the borrower pay?
 
-## What happens during delinquency?
+The loan rate plus the platform charge, before origination and arrears charges. The current facility adds
+no second manager fee. The platform charge is calculated on lender interest, not principal.
 
-Deposits stop. Recognised value cannot rise above the last healthy mark because of delinquency penalty
-upside, although live loss still reduces it. A cure before the objective wind-down threshold can refresh
-the mark and reopen entry.
+## Who chooses the terms?
 
-## What causes wind-down?
+The borrower proposes the senior target, junior percentage, extra workout window, class eligibility and
+final surplus recipient inside fixed ranges. Those facility terms are set once. Loan operating terms and
+platform settings sit elsewhere.
 
-The manager enters irreversible wind-down if the market closes or a state-changing manager checkpoint
-observes the current onchain delinquency counter at market grace plus the borrower-chosen tranche
-window. `checkDefault` is permissionless and should be called during delinquency. A threshold crossed
-and cured before any manager checkpoint observes it is not reconstructed later. Once observed, senior
-accrual stops at the objective cutoff. Exit, recovery and claims continue. This contract state is not
-necessarily a legal default.
+## Can the deal be repriced later?
 
-## What fees does the manager charge?
+Not through the facility. There is no manager governance, repricing, pause or discretionary default role.
+Any consent rights need to be written into the offchain deal.
 
-None in the current code. The Wildcat protocol fee is charged at the market layer on top of base lender
-interest. A 1,000-bip fee setting is 10% of the lender rate: on a 10% lender APR it adds 1% protocol
-APR, or one percentage point, giving 11% running base-interest cost before any origination fee or
-delinquency charge.
+## What happens under sanctions?
 
-Accrued fees reserve liquidity ahead of unprocessed withdrawals. Once a withdrawal is processed and
-unclaimed, later fee collection does not displace it. The manager divides only its market position and
-cash actually recovered.
+A sanctioned holder can exit, with proceeds routed to escrow. If the facility account is sanctioned,
+settlement for everyone waits until it is clear and the payment is retried.
 
-## Can the protocol fee change?
+## What belongs in credit committee?
 
-The ArchController owner chooses and can update the hook template's rate. The HooksFactory can then
-propagate that configured rate to an existing open market, subject to the 1,000-bip cap; the propagation
-call is permissionless. The fee recipient for that existing market is fixed. The ArchController owner
-also chooses any template origination-fee asset and amount required when a new market is created.
+The borrower memo, capital stack, pricing, base and downside cash cases, time to cash, amendment rights,
+reporting, eligibility, sanctions operations, legal analysis and named workout owners.
 
-## What happens if a holder is sanctioned?
+## Is it ready to buy?
 
-A holder sanction blocks acquisition and ordinary transfers, but does not confiscate the position or
-prevent that holder's exit. A sanctioned holder can request redemption; claim proceeds route to
-Wildcat's canonical escrow.
+No. It is a tested prototype. It is not rated, audited or in production.
 
-## What happens if the manager is sanctioned?
+## Say this
 
-That is separate from holder sanctions. The manager's withdrawal-execution callback reverts before the
-market records the batch as executed. Batch execution and recovery are deferred for every holder until
-the manager is clear and the batch can be retried. The individual holder escrow path does not solve a
-manager sanction.
+One borrower exposure. Senior priority. Junior first loss. Fixed senior target. Asynchronous cash exit.
+Controlled transferability. Terms fixed at formation.
 
-## Who gets money sent directly to the manager?
+## Never say this
 
-An unattributed transfer is not treated as recovery for a tranche request. It becomes terminal surplus.
-This prevents later requests from claiming cash that was not tied to their Wildcat withdrawal batch.
-
-## What is terminal surplus?
-
-Base asset proven not to belong to a live senior reserve or any holder request. After both tranche
-supplies are zero, all custody is unwound, every request is settled and no reserve remains, anyone can
-trigger payment to the fixed terminal recipient. A final holder cannot redirect it.
-
-## Is this ERC-4626 or ERC-7540?
-
-The canonical Wildcat wrapper is ERC-4626-shaped custody. The tranche tokens expose valuation-shaped
-views but are not full ERC-4626 vaults. The manager's request and claim lifecycle is ERC-7540-style, but
-the prototype does not claim full ERC-7540 conformance.
-
-## Is this a CLO, securitisation or rated product?
-
-No such conclusion is made here. Tranche and waterfall language helps explain payment priority. The
-prototype has one borrower and one market, no SPV, no diversified pool and no rating. Legal, tax and
-regulatory classification belongs with counsel for the proposed facts and jurisdictions.
-
-## Is this audited or production-ready?
-
-No. The repository calls it a prototype. It has tests and release evidence, but those are not an audit
-or a production deployment claim. A trancher-inclusive V2.5 audit bundle would need the capabilities
-named in the repository's compatibility assessment reconciled into its frozen revision. Their absence
-from a separate V2.5-only branch is not an error in that branch.
-
-## Approved short phrases
-
-- two claims over one Wildcat market;
-- fixed senior accounting target;
-- junior first realised loss;
-- senior-first recovery and FIFO within class;
-- controlled transferability;
-- asynchronous exit through the Wildcat queue;
-- borrower-selected, bounded terms at formation; and
-- objective onchain wind-down.
-
-## Phrases not to use
-
-| Avoid | Why | Use instead |
-| --- | --- | --- |
-| Guaranteed yield | Payment is limited by realised value and recovery | Fixed senior accounting target |
-| Principal protected | Senior can be impaired after junior is exhausted | Senior priority with junior first loss |
-| Maintained 20% cushion | The floor is checked at entry and active junior exit, not restored after loss | 20% minimum at the checked actions |
-| Instant redemption | Exit uses the Wildcat withdrawal queue | Asynchronous exit |
-| Freely transferable | Sanctions and class gates apply; a market is not promised | Controlled transferability |
-| Immutable allowlist | Only the gate address is fixed | Fixed gate address; external gate policy may change |
-| Borrower controls the facility | Borrower choices are bounded and one-time; upstream authorities differ | Borrower chooses named formation terms |
-| Protocol fee comes out of lender APR | It is charged to the borrower on top of base interest | Protocol fee on top of lender base interest |
-| Onchain default | Wind-down is a mechanical state and may differ from legal default | Objective manager wind-down |
-| Audited or production-ready | Current status is a tested prototype | Prototype under review |
-
-## Escalate before answering
-
-Do not improvise answers about legal classification, securities treatment, tax, accounting treatment,
-regulatory permissions, sanctions exceptions, credit approval, a named borrower's likelihood of
-repayment, future protocol changes, secondary-market support or production launch dates. Record the
-question and send it to the relevant owner.
+Guaranteed yield. Principal protected. Maintained cushion. Instant redemption. Freely transferable.
+Liquid. Rated. Automatic legal default. Audited. Production-ready.
