@@ -32,7 +32,7 @@ is allocated senior first across classes and FIFO within each class as the marke
 | Credit-language term | Contract-language term | What it means here |
 | --- | --- | --- |
 | Underlying exposure | Wildcat market | One borrower credit market, not a pool |
-| Facility agent and waterfall | `TrancheManager` | Sole lender, custody holder, accountant and recovery allocator |
+| Position administrator and waterfall | `TrancheManager` | Sole lender, custody holder, accountant and recovery allocator |
 | Senior participation | Senior `TrancheToken` | Fixed accounting target with first priority, limited by realised value |
 | First-loss participation | Junior `TrancheToken` | Residual return and first realised loss |
 | Eligibility policy | Senior or junior entry gate | Fixed gate address; policy inside the gate contract may change |
@@ -86,8 +86,8 @@ senior after time has passed:
 These figures are an accounting illustration. They are not a forecast, quote or term proposal.
 
 The minimum junior percentage is checked when senior enters and when junior exits while the facility
-is active. It is not a continuously maintained cushion. Market loss or price movement can reduce
-junior below the chosen percentage and can eventually impair senior.
+is active. It is not a continuously maintained cushion. A reduction in realised manager value or a
+recovery shortfall can reduce junior below the chosen percentage and can eventually impair senior.
 
 ## Entry and transfer
 
@@ -118,6 +118,10 @@ requests within the same class remain FIFO.
 If a holder is sanctioned, the holder can still leave. Claim proceeds route to Wildcat's canonical
 sanctions escrow rather than being trapped in the manager.
 
+A sanctioned manager is a different case. The market withdrawal callback reverts before the batch is
+marked executed, so batch execution and recovery are deferred for every holder until the manager is
+clear and the batch can be retried. That path does not use an individual holder's escrow routing.
+
 ## Delinquency and wind-down
 
 New deposits stop while the market is delinquent. The manager prevents delinquency penalty upside from
@@ -125,22 +129,27 @@ being used to inflate tranche value: recognised value is capped at the last heal
 losses still count. If the market cures before the objective threshold, the healthy mark can refresh
 and entry can reopen.
 
-The manager enters one-way wind-down when the market closes or when the market's onchain delinquency
-counter reaches its grace period plus the borrower-chosen tranche window. Senior accrual stops at the
-objective cutoff. Deposits remain closed, but exits, recovery, claims and terminal settlement continue.
-This is a contract state transition, not necessarily a legal declaration of default.
+The manager enters one-way wind-down when the market closes or when a state-changing manager checkpoint
+observes the current onchain delinquency counter at or above market grace plus the borrower-chosen
+tranche window. `checkDefault` is permissionless and should be called while delinquency is observable.
+If the market cures before any checkpoint observes the threshold, the manager does not reconstruct the
+historical crossing. Once observed, senior accrual stops at the objective cutoff. Deposits remain
+closed, but exits, recovery, claims and terminal settlement continue. This is a contract state
+transition, not necessarily a legal declaration of default.
 
 ## Fees
 
 The manager adds no second fee in the current code. Wildcat's protocol fee sits at the market layer and
 is charged to the borrower on top of base lender interest. The setting is a percentage of that base
-interest: a 1,000-bip protocol setting on a 10% lender APR gives an 11% running base-interest cost,
-before any origination fee or delinquency charge.
+interest: a 1,000-bip protocol setting on a 10% lender APR adds one percentage point, giving an 11%
+running base-interest cost before any origination fee or delinquency charge.
 
-The protocol can update the rate for an existing open market within the 1,000-bip cap; that market's
-fee recipient is fixed. Accrued fees reserve liquidity ahead of unprocessed market withdrawals. An
-already-processed unclaimed withdrawal is not later displaced by fee collection. Senior and junior
-divide the manager's position and cash actually recovered after the market-level mechanics have run.
+The ArchController owner chooses and can update the hook template's rate. The HooksFactory can then
+propagate that configured rate to an existing open market within the 1,000-bip cap; its propagation call
+is permissionless, while that market's fee recipient is fixed. Accrued fees reserve liquidity ahead of
+unprocessed market withdrawals. An already-processed unclaimed withdrawal is not later displaced by
+fee collection. Senior and junior divide the manager's position and cash actually recovered after the
+market-level mechanics have run.
 
 ## What each side should decide
 

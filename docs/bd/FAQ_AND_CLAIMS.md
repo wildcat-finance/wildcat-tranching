@@ -36,9 +36,10 @@ canonical wrapper, hook template, sanctions sentinel and exact manager code.
 
 Not through the manager. The underlying market borrower retains Wildcat-authorised paths for market
 capacity and APR. The current hook administrator can change the upstream market-hook minimum deposit or
-block fresh manager deposits, and that role can transfer. The protocol factory can update the
-protocol-fee rate for an existing open market within its cap. None of those paths reprices the senior
-target or rewrites existing payment priority.
+block fresh manager deposits, and that role can transfer. The ArchController owner can update the hook
+template's protocol-fee rate, and the HooksFactory can then propagate the configured rate to an
+existing open market within its cap. None of those paths reprices the senior target or rewrites
+existing payment priority.
 
 ## Are the gate policies immutable?
 
@@ -75,15 +76,19 @@ the mark and reopen entry.
 
 ## What causes wind-down?
 
-The manager enters irreversible wind-down if the market closes or its onchain delinquency counter
-reaches market grace plus the borrower-chosen tranche window. Senior accrual stops at that objective
-cutoff. Exit, recovery and claims continue. This contract state is not necessarily a legal default.
+The manager enters irreversible wind-down if the market closes or a state-changing manager checkpoint
+observes the current onchain delinquency counter at market grace plus the borrower-chosen tranche
+window. `checkDefault` is permissionless and should be called during delinquency. A threshold crossed
+and cured before any manager checkpoint observes it is not reconstructed later. Once observed, senior
+accrual stops at the objective cutoff. Exit, recovery and claims continue. This contract state is not
+necessarily a legal default.
 
 ## What fees does the manager charge?
 
 None in the current code. The Wildcat protocol fee is charged at the market layer on top of base lender
-interest. A 1,000-bip fee setting is 10% of the lender rate: on a 10% lender APR it adds 1% of running
-base-interest cost, before any origination fee or delinquency charge.
+interest. A 1,000-bip fee setting is 10% of the lender rate: on a 10% lender APR it adds 1% protocol
+APR, or one percentage point, giving 11% running base-interest cost before any origination fee or
+delinquency charge.
 
 Accrued fees reserve liquidity ahead of unprocessed withdrawals. Once a withdrawal is processed and
 unclaimed, later fee collection does not displace it. The manager divides only its market position and
@@ -91,14 +96,23 @@ cash actually recovered.
 
 ## Can the protocol fee change?
 
-The protocol factory can push a changed rate to an existing open market, subject to the 1,000-bip cap.
-The fee recipient for that existing market is fixed. A separate origination-fee asset and amount can be
-required when the market is created.
+The ArchController owner chooses and can update the hook template's rate. The HooksFactory can then
+propagate that configured rate to an existing open market, subject to the 1,000-bip cap; the propagation
+call is permissionless. The fee recipient for that existing market is fixed. The ArchController owner
+also chooses any template origination-fee asset and amount required when a new market is created.
 
 ## What happens if a holder is sanctioned?
 
-Sanctions block acquisition and ordinary transfers, but do not confiscate the position or prevent
-exit. A sanctioned holder can request redemption; claim proceeds route to Wildcat's canonical escrow.
+A holder sanction blocks acquisition and ordinary transfers, but does not confiscate the position or
+prevent that holder's exit. A sanctioned holder can request redemption; claim proceeds route to
+Wildcat's canonical escrow.
+
+## What happens if the manager is sanctioned?
+
+That is separate from holder sanctions. The manager's withdrawal-execution callback reverts before the
+market records the batch as executed. Batch execution and recovery are deferred for every holder until
+the manager is clear and the batch can be retried. The individual holder escrow path does not solve a
+manager sanction.
 
 ## Who gets money sent directly to the manager?
 
@@ -126,9 +140,9 @@ regulatory classification belongs with counsel for the proposed facts and jurisd
 ## Is this audited or production-ready?
 
 No. The repository calls it a prototype. It has tests and release evidence, but those are not an audit
-or a production deployment claim. The current V2.5 integration also depends on reconciling the specific
-trancher capabilities described in the repository's compatibility assessment. Their absence from a
-separate V2.5-only branch is not an error in that branch.
+or a production deployment claim. A trancher-inclusive V2.5 audit bundle would need the capabilities
+named in the repository's compatibility assessment reconciled into its frozen revision. Their absence
+from a separate V2.5-only branch is not an error in that branch.
 
 ## Approved short phrases
 
@@ -150,7 +164,7 @@ separate V2.5-only branch is not an error in that branch.
 | Maintained 20% cushion | The floor is checked at entry and active junior exit, not restored after loss | 20% minimum at the checked actions |
 | Instant redemption | Exit uses the Wildcat withdrawal queue | Asynchronous exit |
 | Freely transferable | Sanctions and class gates apply; a market is not promised | Controlled transferability |
-| Immutable allowlist | Only the gate address is fixed | Fixed gate contract with separately governed policy |
+| Immutable allowlist | Only the gate address is fixed | Fixed gate address; external gate policy may change |
 | Borrower controls the facility | Borrower choices are bounded and one-time; upstream authorities differ | Borrower chooses named formation terms |
 | Protocol fee comes out of lender APR | It is charged to the borrower on top of base interest | Protocol fee on top of lender base interest |
 | Onchain default | Wind-down is a mechanical state and may differ from legal default | Objective manager wind-down |
