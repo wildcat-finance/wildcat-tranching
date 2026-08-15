@@ -28,3 +28,12 @@ pursued because this step changes prose only.
 | S1-R2-04 | low | `docs/bd/RESEARCH_REPORT.md` | One claims-boundary sentence said "fixed class gate" rather than distinguishing the fixed address from potentially mutable gate policy. | fixed in `260e14f` |
 
 Leads not pursued: none.
+
+## Step 1, round 3 -- 15 August 2026
+
+| id | severity | file | finding | status |
+| --- | --- | --- | --- | --- |
+| S1-R3-01 | medium | `docs/bd/RESEARCH_REPORT.md` | The authority map omitted the borrower-supplied initial hook tuple, the differing mutability of its fields and the trancher's transfer-enabled requirement. | fixed in `0b96446` |
+| S1-R3-02 | low | `docs/bd/README.md` | The short authority table grouped protocol-fee rate and recipient without preserving their differing mutability. | fixed in `0b96446` |
+
+Leads not pursued: none.
