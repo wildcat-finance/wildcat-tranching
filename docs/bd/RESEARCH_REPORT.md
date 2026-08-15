@@ -110,6 +110,10 @@ The current generic bounds are 0 to 10,000 bips for APR, reserve ratio and delin
 for grace; and 0 to 365 days for the withdrawal-batch duration. The tranching factory narrows the
 delinquency-fee range to 1 through 10,000 bips because it rejects a zero-fee market. Capacity is stored
 as a `uint128`. The upstream market-hook minimum deposit is also a `uint128`, with zero meaning none.
+At market creation, the operational borrower supplies that initial minimum and a `transfersDisabled`
+flag as the singleton hook's exact 64-byte data tuple. The current hook administrator may later change
+the minimum, but there is no setter for the transfer flag. The tranching factory accepts only
+`transfersDisabled == false`, because the canonical wrapper needs market-token transfers.
 Market capacity and APR retain borrower-authorised update paths under Wildcat rules. Reserve-ratio
 changes travel with APR changes and can be constrained or derived by the OpenTerm hook rather than
 accepted as a free borrower choice. The manager's senior target deliberately does not track a later
