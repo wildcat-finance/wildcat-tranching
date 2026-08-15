@@ -69,6 +69,9 @@ build/test/
 docs/
   ARCHITECTURE.md              target topology, trust boundaries and invariants
   IMPLEMENTATION_RUNBOOK.md    build order, interfaces, events, tests and deployment flows
+  PROTOTYPE_HANDOFF.md         visual explainer and boundaries for the demonstrable prototype
+  TRADFI_OUTREACH_PRIMER.md    first-conversation guide for credit and allocator outreach
+  V25_AUDIT_BUNDLE_ASSESSMENT.md required V2.5 reconciliation before a frozen audit bundle
   SINGLETON_WRAPPER_HANDOFF.md handoff for the singleton-role-provider implementation
 ```
 
