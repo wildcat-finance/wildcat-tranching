@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.25;
 
-import {MarketState, HookedMarket, IERC20} from "../src/interfaces/IExternal.sol";
+import {HookedMarket} from "v2-protocol/src/access/OpenTermHooks.sol";
+import {IERC20} from "v2-protocol/src/interfaces/IERC20.sol";
+import {MarketState} from "v2-protocol/src/libraries/MarketState.sol";
+import {RoleProvider} from "v2-protocol/src/types/RoleProvider.sol";
+import {HooksConfig} from "v2-protocol/src/types/HooksConfig.sol";
 
 contract MockERC20 {
     string public name;
@@ -49,10 +53,11 @@ contract MockMarket {
 
     address public immutable asset;
     address public immutable wrapperFactory;
+    address public factory;
     address public borrower;
     address public immutable borrowerPrincipal;
     address public immutable sentinel;
-    uint256 public immutable hooks;
+    HooksConfig public immutable hooks;
     address public registeredWrapper;
     uint256 public delinquencyGracePeriod = 10 days;
     uint256 public withdrawalBatchDuration = 1 days;
@@ -70,12 +75,18 @@ contract MockMarket {
         borrower = borrower_;
         borrowerPrincipal = borrower_;
         sentinel = sentinel_;
-        hooks = (uint256(uint160(hooks_)) << 96) | (uint256(1) << 95) | (uint256(1) << 92);
+        hooks = HooksConfig.wrap(
+            (uint256(uint160(hooks_)) << 96) | (uint256(1) << 95) | (uint256(1) << 92)
+        );
     }
 
     function setRegisteredWrapper(address wrapper) external {
         require(registeredWrapper == address(0), "WRAPPER_SET");
         registeredWrapper = wrapper;
+    }
+
+    function setFactory(address factory_) external {
+        factory = factory_;
     }
 
     function setBorrower(address borrower_) external {
@@ -228,6 +239,14 @@ contract MockWrapperFactory {
     }
 }
 
+contract MockHooksFactory {
+    mapping(address => address) public getHooksTemplateForInstance;
+
+    function setTemplate(address hooks, address template) external {
+        getHooksTemplateForInstance[hooks] = template;
+    }
+}
+
 contract MockSingletonProvider {
     address public immutable lender;
 
@@ -238,11 +257,11 @@ contract MockSingletonProvider {
 
 contract MockSingletonHooks {
     bool public roleProviderConfigurationSealed = true;
-    uint256[] internal _providers;
+    RoleProvider[] internal _providers;
     mapping(address => HookedMarket) internal _markets;
 
     constructor(address provider) {
-        _providers.push(uint256(uint160(provider)) << 64);
+        _providers.push(RoleProvider.wrap(uint256(uint160(provider)) << 64));
     }
 
     function version() external pure returns (string memory) {
@@ -257,7 +276,7 @@ contract MockSingletonHooks {
         _markets[market] = HookedMarket(true, true, true, 0, transfersDisabled);
     }
 
-    function getPullProviders() external view returns (uint256[] memory) {
+    function getPullProviders() external view returns (RoleProvider[] memory) {
         return _providers;
     }
 

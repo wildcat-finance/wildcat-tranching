@@ -2,14 +2,19 @@
 
 ## Status
 
-This document defines the prototype boundary implemented under `build/src`. The contracts use
-local interface mirrors and test doubles rather than imported V2.5 sources, so they remain an
-engineering prototype. The singleton and wrapper composition depends on the recipient exception in
-PR #124.
+This document defines the prototype boundary implemented under `build/src`. The contracts import
+the protocol types and implementations pinned by the `build/lib/v2-protocol` submodule at
+`49be5432dbc8f268aec84beaada31de406fad875`. Unit tests still use local doubles; `build/test/Fork.t.sol`
+deploys the pinned contracts on mainnet block `25,758,381` and verifies the complete market,
+canonical wrapper and predicted manager deployment path. This remains an engineering prototype.
 
 The prototype targets Wildcat V2.5 and the sealed singleton role-provider hooks proposed in
 [`v2-protocol#124`](https://github.com/wildcat-finance/v2-protocol/pull/124). Supporting an earlier
 V2 market without an equivalent immutable admission primitive is a separate design.
+
+The next implementation step is deliberately narrower than production hardening: exercise one
+base-asset deposit and one async exit against the same real contract stack. That lifecycle work is
+not part of the deployment proof recorded here.
 
 ## Terms
 
@@ -110,6 +115,8 @@ Target behavior:
 - namespaces salts by the calling borrower wallet;
 - initializes the new manager in the same transaction as deployment;
 - verifies the market, wrapper, singleton hook and provider bindings before registration;
+- verifies through the market's `HooksFactory` that the hooks instance came from the pinned
+  singleton template;
 - records one current manager per market and an append-only deployment history;
 - permits replacement only after an explicit supersession policy is implemented and tested.
 

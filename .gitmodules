@@ -1,0 +1,3 @@
+[submodule "build/lib/v2-protocol"]
+	path = build/lib/v2-protocol
+	url = https://github.com/wildcat-finance/v2-protocol.git

@@ -7,4 +7,15 @@ solc = "0.8.25"
 evm_version = "cancun"
 optimizer = true
 optimizer_runs = 200
-remappings = ["forge-std/=lib/forge-std/src/", "solady/=lib/solady/src/"]
+remappings = [
+  "forge-std/=lib/forge-std/src/",
+  "v2-protocol/=lib/v2-protocol/",
+  "solady/=lib/v2-protocol/lib/solady/src/",
+  "openzeppelin/=lib/v2-protocol/lib/openzeppelin-contracts/",
+  "ethereum-access-token/=lib/v2-protocol/lib/ethereum-access-token/contracts/",
+  "sol-utils/=lib/v2-protocol/lib/sol-utils/src/",
+  "solmate/=lib/v2-protocol/lib/solmate/src/"
+]
+
+[lint]
+lint_on_build = false

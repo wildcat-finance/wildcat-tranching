@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.25;
 
-import {ERC20} from "solady/tokens/ERC20.sol";
+import {ERC20} from "../lib/solady/src/tokens/ERC20.sol";
 
 interface ITrancheManagerView {
     function beforeTrancheTransfer(address token, address from, address to, uint256 amount) external view;
