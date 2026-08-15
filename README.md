@@ -22,11 +22,13 @@ check. Tranche holders never hold the Wildcat market token or the wrapper share.
 
 The contracts under [`build/`](build/) are a runnable prototype, not a deployment candidate. They
 cover deterministic manager deployment, singleton and wrapper binding checks, base-asset custody,
-the waterfall, async redemption and sanctions handling. They compile against
-[`v2-protocol@49be543`](https://github.com/wildcat-finance/v2-protocol/commit/49be5432dbc8f268aec84beaada31de406fad875),
-the current head of PR #124. `Fork.t.sol` deploys that pinned protocol stack on mainnet block
-`25,758,381`, then creates the singleton market, registers its canonical wrapper and deploys the
-predicted manager.
+the waterfall, async redemption and sanctions handling. They compile against the V2.5 singleton
+branch plus the narrow hook-specialisation change in
+[`v2-protocol@e88e799`](https://github.com/wildcat-finance/v2-protocol/commit/e88e799),
+which is proposed in V2 PR #129 on top of PR #124. `Fork.t.sol` deploys that pinned protocol stack
+on mainnet block `25,758,381`, then creates the singleton market and tranching hook, registers the
+canonical wrapper, deploys the predicted manager, funds both tranches and settles their queued
+exit through the market's expiry path.
 
 ## Design rules
 
@@ -51,7 +53,9 @@ predicted manager.
 build/src/
   TrancheFactory.sol          deterministic deployment and binding verifier
   TrancheManager.sol          per-market custody, accounting and settlement
+  TrancheOpenTermHooks.sol    singleton admission with an exact close checkpoint
   TrancheToken.sol            senior/junior share token
+  interfaces/IEnterGate.sol   class-specific acquisition policy
   libraries/WaterfallMath.sol pure waterfall helpers
 
 build/test/
@@ -65,6 +69,9 @@ build/test/
 docs/
   ARCHITECTURE.md              target topology, trust boundaries and invariants
   IMPLEMENTATION_RUNBOOK.md    build order, interfaces, events, tests and deployment flows
+  PROTOTYPE_HANDOFF.md         visual explainer and boundaries for the demonstrable prototype
+  TRADFI_OUTREACH_PRIMER.md    first-conversation guide for credit and allocator outreach
+  V25_AUDIT_BUNDLE_ASSESSMENT.md required V2.5 reconciliation before a frozen audit bundle
   SINGLETON_WRAPPER_HANDOFF.md handoff for the singleton-role-provider implementation
 ```
 
@@ -87,11 +94,35 @@ Set `MAINNET_RPC_URL` to override the default endpoint. The fork test is pinned 
 `25,758,381`; it deploys the V2.5 contracts from the pinned submodule rather than relying on a live
 V2.5 deployment.
 
-## Next step
+## Current edge
 
-The next bounded change is a real-stack lifecycle test: deposit the base asset through the manager,
-prove that the manager wraps every market token, then request and execute an async exit. This
-prototype stops at deployment and binding verification.
+The manager has fixed economics, call-independent senior accrual, objective wind-down, a complete
+distress reserve and one immutable entry-gate address per class. A zero gate leaves that class open.
+A nonzero gate is consulted only when an account acquires exposure: on deposit and on the receiving
+side of an ordinary transfer. It cannot block a burn, withdrawal request, recovery execution or
+claim. Recovery from the permissionless market executor is recorded by withdrawal expiry, so an
+older batch cannot make a later request claimable.
+The factory also rejects a zero V2.5 delinquency fee: that protocol configuration does not advance
+the observable delinquency counter used by this facility's objective wind-down rule.
+
+The local suite covers deposit, exit, recovery and terminal accounting. The factory records a
+nonzero immutable terminal recipient and rejects the predicted manager itself as that recipient.
+When the final tranche shares burn, the facility closes permanently and queues every remaining
+wrapper share or market token. Once every request has been claimed and custody and senior reserve
+are clear, anyone may settle proven surplus to that term recipient (or its sanctions escrow).
+
+The pinned fork suite proves the
+deployment, hook wiring, base-asset entry and a two-step queued settlement: an initial shortfall
+puts a later senior request ahead of earlier junior requests, then later recovery settles junior to
+the recorded claimant. That shortfall makes the market delinquent at execution and leaves accrued
+interest in its batch. A second fork path proves a frozen mark, entry refusal, live-mark refresh after a
+delinquency cure, and the objective wind-down threshold.
+
+Tranche identity is derived from the bound market symbol and market address: `sr-<market symbol>-<market id>` and
+`jr-<market symbol>-<market id>`. The manager contains no access-policy state beyond immutable gate addresses.
+The fork suite proves that a gate can refuse deposit and transfer acquisition but cannot veto an
+existing holder's exit. It also runs the real sentinel and escrow path for a sanctioned holder and
+the manager-sanction deferral path for an authenticated market withdrawal.
 
 ## Read before implementing
 

@@ -86,16 +86,16 @@ contract TrancheInvariantTest is Test {
             TrancheManager.Params({
                 underlyingVault: address(wrapper),
                 sentinel: address(sentinel),
-                governance: address(this),
-                defaultDeclarer: address(this),
+                seniorGate: address(0),
+                juniorGate: address(0),
                 seniorRateBips: 1000,
                 minJuniorBips: 2000,
-                defaultPenaltyWindow: 90 days
+                defaultPenaltyWindow: 90 days,
+                terminalRecipient: address(this)
             })
         );
 
         handler = new TrancheInvariantHandler(manager, base, market, wrapper);
-        manager.setJuniorAllowed(address(handler), true);
         base.mint(address(handler), 1_000_000_000e18);
 
         handler.depositJunior(200e18);
@@ -110,7 +110,12 @@ contract TrancheInvariantTest is Test {
 
     function invariant_juniorTakesFirstLoss() public view {
         (uint256 seniorValue, uint256 juniorValue) = manager.trancheValues();
-        if (juniorValue > 0) assertEq(seniorValue, manager.seniorOwed());
+        if (juniorValue > 0) assertEq(seniorValue, manager.previewSeniorOwed());
+    }
+
+    function invariant_seniorAccrualStateIsBounded() public view {
+        assertLe(manager.seniorPrincipal(), manager.seniorOwed());
+        assertLt(manager.seniorAccrualRemainder(), 1e4 * 365 days);
     }
 
     function invariant_managerOwnsWrapperSupplyAndNoMarketTokens() public view {
@@ -126,5 +131,10 @@ contract TrancheInvariantTest is Test {
             entitled += uint256(claimed) + manager.claimable(i);
         }
         assertLe(entitled, manager.recoveredUSDC());
+        assertLe(manager.allocatableUSDC(), manager.recoveredUSDC());
+        assertEq(
+            manager.allocatableUSDC() + manager.seniorDebtReserveUSDC() + manager.recoverySurplus(),
+            manager.recoveredUSDC()
+        );
     }
 }

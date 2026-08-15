@@ -2,10 +2,29 @@
 pragma solidity ^0.8.25;
 
 import {HookedMarket} from "v2-protocol/src/access/OpenTermHooks.sol";
+import {IEnterGate} from "../src/interfaces/IEnterGate.sol";
 import {IERC20} from "v2-protocol/src/interfaces/IERC20.sol";
 import {MarketState} from "v2-protocol/src/libraries/MarketState.sol";
 import {RoleProvider} from "v2-protocol/src/types/RoleProvider.sol";
 import {HooksConfig} from "v2-protocol/src/types/HooksConfig.sol";
+
+interface IMockExecuteWithdrawalHook {
+    function onExecuteWithdrawal(
+        address lender,
+        uint32 expiry,
+        uint128 normalizedAmountWithdrawn,
+        MarketState calldata state
+    ) external;
+}
+
+interface IMockManagerRecoveryCallback {
+    function onMarketWithdrawalExecuted(
+        address executedMarket,
+        uint32 expiry,
+        uint128 normalizedAmount,
+        MarketState calldata state
+    ) external;
+}
 
 contract MockERC20 {
     string public name;
@@ -46,7 +65,9 @@ contract MockERC20 {
 }
 
 contract MockMarket {
-    uint8 public constant decimals = 18;
+    string public constant name = "Mock Wildcat Market";
+    string public constant symbol = "mock-wmt";
+    uint8 public decimals = 18;
     uint256 public totalSupply;
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
@@ -55,7 +76,7 @@ contract MockMarket {
     address public immutable wrapperFactory;
     address public factory;
     address public borrower;
-    address public immutable borrowerPrincipal;
+    address public borrowerPrincipal;
     address public immutable sentinel;
     HooksConfig public immutable hooks;
     address public registeredWrapper;
@@ -64,7 +85,10 @@ contract MockMarket {
     bool internal _isClosed;
     bool internal _isDelinquent;
     uint32 internal _timeDelinquent;
+    uint32 internal _lastInterestAccruedTimestamp;
     uint16 internal _annualInterestBips = 1000;
+    uint16 public delinquencyFeeBips = 1;
+    uint256 public queueFullWithdrawalCalls;
 
     mapping(address => mapping(uint32 => uint256)) public owed;
     mapping(address => mapping(uint32 => uint256)) public paid;
@@ -75,8 +99,10 @@ contract MockMarket {
         borrower = borrower_;
         borrowerPrincipal = borrower_;
         sentinel = sentinel_;
+        _lastInterestAccruedTimestamp = uint32(block.timestamp);
         hooks = HooksConfig.wrap(
-            (uint256(uint160(hooks_)) << 96) | (uint256(1) << 95) | (uint256(1) << 92)
+            (uint256(uint160(hooks_)) << 96) | (uint256(1) << 95) | (uint256(1) << 93) | (uint256(1) << 92)
+                | (uint256(1) << 89)
         );
     }
 
@@ -85,12 +111,24 @@ contract MockMarket {
         registeredWrapper = wrapper;
     }
 
+    function setDecimals(uint8 value) external {
+        decimals = value;
+    }
+
+    function setDelinquencyFeeBips(uint16 value) external {
+        delinquencyFeeBips = value;
+    }
+
     function setFactory(address factory_) external {
         factory = factory_;
     }
 
     function setBorrower(address borrower_) external {
         borrower = borrower_;
+    }
+
+    function setBorrowerPrincipal(address borrowerPrincipal_) external {
+        borrowerPrincipal = borrowerPrincipal_;
     }
 
     function deposit(uint256 amount) external {
@@ -125,10 +163,12 @@ contract MockMarket {
 
     function setTimeDelinquent(uint32 value) external {
         _timeDelinquent = value;
+        _lastInterestAccruedTimestamp = uint32(block.timestamp);
     }
 
     function setClosed(bool value) external {
         _isClosed = value;
+        _lastInterestAccruedTimestamp = uint32(block.timestamp);
     }
 
     function setDelinquent(bool value) external {
@@ -145,13 +185,32 @@ contract MockMarket {
         state.timeDelinquent = _timeDelinquent;
         state.annualInterestBips = _annualInterestBips;
         state.scaleFactor = uint112(1e27);
+        state.lastInterestAccruedTimestamp = uint32(block.timestamp);
+    }
+
+    function previousState() external view returns (MarketState memory state) {
+        state.isClosed = _isClosed;
+        state.isDelinquent = _isDelinquent;
+        state.timeDelinquent = _timeDelinquent;
+        state.annualInterestBips = _annualInterestBips;
+        state.scaleFactor = uint112(1e27);
+        state.lastInterestAccruedTimestamp = _lastInterestAccruedTimestamp;
     }
 
     function queueWithdrawal(uint256 amount) external returns (uint32 expiry) {
-        balanceOf[msg.sender] -= amount;
+        return _queueWithdrawal(msg.sender, amount);
+    }
+
+    function queueFullWithdrawal() external returns (uint32 expiry) {
+        ++queueFullWithdrawalCalls;
+        return _queueWithdrawal(msg.sender, balanceOf[msg.sender]);
+    }
+
+    function _queueWithdrawal(address account, uint256 amount) internal returns (uint32 expiry) {
+        balanceOf[account] -= amount;
         totalSupply -= amount;
         expiry = uint32(block.timestamp + withdrawalBatchDuration);
-        owed[msg.sender][expiry] += amount;
+        owed[account][expiry] += amount;
     }
 
     function executeWithdrawal(address account, uint32 expiry) external returns (uint256) {
@@ -159,8 +218,25 @@ contract MockMarket {
         uint256 due = owed[account][expiry] - paid[account][expiry];
         uint256 available = IERC20(asset).balanceOf(address(this));
         uint256 amount = due < available ? due : available;
+        if (amount > 0) {
+            MarketState memory state;
+            state.isClosed = _isClosed;
+            state.isDelinquent = _isDelinquent;
+            state.timeDelinquent = _timeDelinquent;
+            state.annualInterestBips = _annualInterestBips;
+            state.scaleFactor = uint112(1e27);
+            state.lastInterestAccruedTimestamp = uint32(block.timestamp);
+            address hooksAddress = address(uint160(HooksConfig.unwrap(hooks) >> 96));
+            IMockExecuteWithdrawalHook(hooksAddress).onExecuteWithdrawal(account, expiry, uint128(amount), state);
+        }
         paid[account][expiry] += amount;
-        if (amount > 0) IERC20(asset).transfer(account, amount);
+        if (amount > 0) {
+            address recipient = account;
+            if (MockSentinel(sentinel).isSanctioned(borrowerPrincipal, account)) {
+                recipient = MockSentinel(sentinel).createEscrow(borrowerPrincipal, account, asset);
+            }
+            IERC20(asset).transfer(recipient, amount);
+        }
         return amount;
     }
 }
@@ -172,6 +248,7 @@ contract MockWrapper {
     mapping(address => mapping(address => uint256)) public allowance;
     address public immutable market;
     uint256 public price = 1e18;
+    uint256 public redeemBonus;
 
     constructor(address market_) {
         market = market_;
@@ -185,6 +262,12 @@ contract MockWrapper {
         price = value;
     }
 
+    /// @dev Test harness knob for a wrapper-to-market unit conversion which returns more normalised
+    ///      market units than the manager's floor-normalised request face.
+    function setRedeemBonus(uint256 value) external {
+        redeemBonus = value;
+    }
+
     function convertToAssets(uint256 shares) public view returns (uint256) {
         return (shares * price) / 1e18;
     }
@@ -195,6 +278,10 @@ contract MockWrapper {
 
     function previewRedeem(uint256 shares) external view returns (uint256) {
         return convertToAssets(shares);
+    }
+
+    function previewWithdraw(uint256 assets) external view returns (uint256) {
+        return (assets * 1e18 + price - 1) / price;
     }
 
     function approve(address spender, uint256 amount) external returns (bool) {
@@ -226,7 +313,7 @@ contract MockWrapper {
     function redeem(uint256 shares, address receiver, address owner) external returns (uint256 assets) {
         balanceOf[owner] -= shares;
         totalSupply -= shares;
-        assets = convertToAssets(shares);
+        assets = (shares * price + 1e18 - 1) / 1e18 + redeemBonus;
         MockMarket(market).transfer(receiver, assets);
     }
 }
@@ -257,11 +344,13 @@ contract MockSingletonProvider {
 
 contract MockSingletonHooks {
     bool public roleProviderConfigurationSealed = true;
+    address public immutable provider;
     RoleProvider[] internal _providers;
     mapping(address => HookedMarket) internal _markets;
 
-    constructor(address provider) {
-        _providers.push(RoleProvider.wrap(uint256(uint160(provider)) << 64));
+    constructor(address provider_) {
+        provider = provider_;
+        _providers.push(RoleProvider.wrap(uint256(uint160(provider_)) << 64));
     }
 
     function version() external pure returns (string memory) {
@@ -283,6 +372,19 @@ contract MockSingletonHooks {
     function getHookedMarket(address market) external view returns (HookedMarket memory) {
         return _markets[market];
     }
+
+    function onExecuteWithdrawal(
+        address lender,
+        uint32 expiry,
+        uint128 normalizedAmountWithdrawn,
+        MarketState calldata state
+    ) external {
+        require(_markets[msg.sender].isHooked, "NOT_HOOKED");
+        if (lender == MockSingletonProvider(provider).lender()) {
+            IMockManagerRecoveryCallback(lender)
+                .onMarketWithdrawalExecuted(msg.sender, expiry, normalizedAmountWithdrawn, state);
+        }
+    }
 }
 
 contract MockUnpinnedHooks is MockSingletonHooks {
@@ -295,17 +397,40 @@ contract MockUnpinnedHooks is MockSingletonHooks {
 
 contract MockSentinel {
     mapping(address => bool) public flagged;
+    mapping(address => mapping(address => bool)) public scopedFlagged;
 
     function setSanctioned(address account, bool value) external {
         flagged[account] = value;
     }
 
-    function isSanctioned(address, address account) external view returns (bool) {
-        return flagged[account];
+    function setSanctionedFor(address borrowerPrincipal, address account, bool value) external {
+        scopedFlagged[borrowerPrincipal][account] = value;
+    }
+
+    function isSanctioned(address borrowerPrincipal, address account) external view returns (bool) {
+        return flagged[account] || scopedFlagged[borrowerPrincipal][account];
     }
 
     function createEscrow(address, address account, address) external pure returns (address) {
         return address(uint160(uint256(keccak256(abi.encodePacked("escrow", account)))));
+    }
+}
+
+contract MockEnterGate is IEnterGate {
+    mapping(address => bool) public allowed;
+    bool public shouldRevert;
+
+    function setAllowed(address account, bool value) external {
+        allowed[account] = value;
+    }
+
+    function setShouldRevert(bool value) external {
+        shouldRevert = value;
+    }
+
+    function canIncreaseCredit(address account) external view returns (bool) {
+        require(!shouldRevert, "GATE_REVERT");
+        return allowed[account];
     }
 }
 

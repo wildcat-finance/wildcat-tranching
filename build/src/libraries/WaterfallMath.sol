@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.25;
 
+import {FixedPointMathLib} from "../../lib/solady/src/utils/FixedPointMathLib.sol";
+
 /// @title WaterfallMath
 /// @notice Pure senior/junior tranche accounting for the Wildcat in-house tranching layer.
 ///         Senior holds a priority claim that accrues at a target rate; junior is the
@@ -14,13 +16,22 @@ library WaterfallMath {
     uint256 internal constant BIPS = 1e4;
     uint256 internal constant YEAR = 365 days;
 
-    /// @notice Linear accrual of the senior's owed claim at an annual bips rate (Wildcat-style,
-    ///         linear-per-update). Senior accrues only while the market is performing; the
-    ///         manager stops calling this once a default is mirrored on-chain.
-    function accrueSeniorOwed(uint256 seniorOwed, uint256 annualRateBips, uint256 dt) internal pure returns (uint256) {
-        if (seniorOwed == 0 || annualRateBips == 0 || dt == 0) return seniorOwed;
-        uint256 interest = (seniorOwed * annualRateBips * dt) / (BIPS * YEAR);
-        return seniorOwed + interest;
+    /// @notice Simple interest on outstanding senior principal with exact remainder carry.
+    /// @dev Partitioning `dt` across any number of calls produces the same interest and remainder.
+    function accrueSeniorInterest(uint256 seniorPrincipal, uint256 annualRateBips, uint256 dt, uint256 remainder)
+        internal
+        pure
+        returns (uint256 interest, uint256 nextRemainder)
+    {
+        uint256 denominator = BIPS * YEAR;
+        if (seniorPrincipal == 0 || annualRateBips == 0 || dt == 0) return (0, remainder);
+        uint256 rateTime = annualRateBips * dt;
+        interest = FixedPointMathLib.fullMulDiv(seniorPrincipal, rateTime, denominator);
+        nextRemainder = mulmod(seniorPrincipal, rateTime, denominator) + remainder;
+        if (nextRemainder >= denominator) {
+            ++interest;
+            nextRemainder -= denominator;
+        }
     }
 
     /// @notice Split realised value: senior up to its owed claim, junior the residual.
@@ -75,13 +86,10 @@ library WaterfallMath {
         return (lhsJ - rhs) / den;
     }
 
-    /// @notice Mirror of Wildcat Terms-of-Use §6.2: a market is "considered in default" once it
-    ///         has incurred the penalty rate (i.e. exhausted its grace period) for a continuous
-    ///         `penaltyWindow`. On-chain proxy off the grace tracker:
+    /// @notice Mirror of Wildcat Terms-of-Use §6.2 using the market's on-chain delinquency counter:
     ///             timeDelinquent >= delinquencyGracePeriod + penaltyWindow.
-    /// @dev This is NOT the 90-day cap on the grace period itself; default requires grace to be
-    ///      exhausted AND then lapped by `penaltyWindow` (default 90 days). A bilateral Loan
-    ///      Agreement may supersede this; the manager exposes a per-market override path.
+    /// @dev V2.5 reduces `timeDelinquent` during cure rather than reconstructing separate episodes.
+    ///      The manager reads that counter as supplied. The penalty window is fixed at deployment.
     function defaultReached(uint256 timeDelinquent, uint256 gracePeriod, uint256 penaltyWindow)
         internal
         pure

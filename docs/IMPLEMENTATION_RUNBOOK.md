@@ -11,9 +11,8 @@ production-readiness claim.
 
 ## Gate 1: Pinned integration surface
 
-The prototype pins `v2-protocol` at
-`49be5432dbc8f268aec84beaada31de406fad875`, the current head of PR #124, and imports its contracts,
-structs and value types directly. The implementation relies on:
+The prototype pins `v2-protocol` at `e88e799`, the head of PR #129 stacked on PR #124, and imports
+its contracts, structs and value types directly. The implementation relies on:
 
 - the market factory accepting a predicted manager as the singleton lender;
 - `market.asset()`, `deposit`, `queueWithdrawal`, `executeWithdrawal` and `registeredWrapper()`;
@@ -33,33 +32,60 @@ The singleton workstream must first make the small change described in
 requirement while preserving transfer-hook access checks and exempting only the nonzero canonical
 registered wrapper from the normal recipient-credential check.
 
-The next bounded step is a lifecycle test against this stack: one base-asset deposit through the
-manager followed by one queued and executed exit. It is recorded here and not implemented by the
-deployment integration change.
+The real-stack test covers junior then senior base-asset deposits through the manager, records exact
+class issuance and post-deposit custody identities, then queues senior and junior exits into one
+batch. It deliberately creates a 100-asset shortfall, proves the market's available withdrawal and
+execution-hook recovery booking, then proves senior-first allocation before a later repayment
+settles junior to the recorded holder. The shortfall makes the market delinquent at execution; all
+tranche face settles, while accrued market interest remains in a later market withdrawal batch
+outside that fork scenario.
+
+The fork also retains junior and senior exposure through a separate delinquent batch. It proves that
+the manager freezes a healthy aggregate mark, excludes later live upside, refuses new entry, and
+refreshes the mark only after repayment cures the market. A third fork path holds that batch through
+the fixed threshold, proves irreversible wind-down and confirms senior accrual stops.
 
 ## Gate 2: Prototype accounting semantics
 
 The prototype makes these choices:
 
-1. Senior is a time-accruing liability at a fixed manager rate. Rate changes are timelocked and
-   checkpoint the old rate before taking effect.
-2. Manager actions checkpoint accounting. Delinquent valuation is capped at the last healthy price
-   observed by such a checkpoint.
-3. Deposits and exits round tranche shares down. Exits redeem the wrapper shares attributable to
-   the holder's class value and queue the market tokens actually received.
-4. Recovery is senior-first between classes and FIFO within each class.
-5. Default and forced wind-down cannot be reversed. Wind-down stops deposits and senior accrual.
-6. Terminal wrapper-share dust is not swept in this prototype and needs a production rule.
+1. Senior is a time-accruing liability at the fixed manager rate selected during initialisation.
+2. Manager actions checkpoint accounting. Delinquent valuation is capped at the last healthy
+   aggregate wrapper value observed by such a checkpoint.
+3. Deposits and exits round tranche shares down. An exit converts its class entitlement down to
+   whole wrapper shares, records their floor-normalised backed value as request face and removes
+   that face from the aggregate mark.
+4. Recovery is senior-first between classes and FIFO within each class. The pinned
+   `onExecuteWithdrawal` hook books a market withdrawal at its execution-time state and exact
+   expiry, whether `pokeRecovery` or another account called the public market executor. Recovery
+   from that execution is admitted only against face recorded for the same expiry. A generic balance sync
+   records all direct transfers and other unexplained cash as terminal surplus; it never makes a
+   queue face claimable. If the manager itself is sanctioned, the execution hook reverts before the
+   market consumes the batch into its sanctions escrow; execution resumes after clearance. The tagged reserve
+   can migrate only into a senior exit before cure.
+5. Market closure or an observed current delinquency counter at the fixed threshold triggers
+   irreversible wind-down. Wind-down stops deposits and senior accrual.
+6. `terminalRecipient` is an immutable nonzero facility term. When both share supplies first reach
+   zero, the facility cannot reopen and the manager queues every residual wrapper share and market
+   token. After all requests are claimed, custody and the live senior reserve are clear, anyone may
+   settle `recoverySurplus` to that recipient or its sanctions escrow. `pendingRequests` makes this
+   final check constant-cost.
+7. Tranche names and symbols derive from the bound market symbol. The per-class gate addresses are
+   immutable. A gate can refuse acquisition but cannot stop an exit, and the real sentinel redirects
+   a sanctioned claim to canonical escrow without changing its recorded claim.
 
 Required conservation statement:
 
 ```text
-manager wrapper value + idle base asset + base asset already paid
-  == active tranche value + queued claim value + explicit rounding dust
+manager live wrapper value + idle base asset + base asset already paid
+  == active marked tranche value + queued claim value
+   + unrecognised delinquency appreciation + recovery surplus
 ```
 
-The stale healthy-price case is conservative until cure, but exact transition accounting would
-require a market callback or equivalent protocol integration.
+The stale healthy-price case is conservative until cure. Market closure is checkpointed exactly by
+the pinned tranching hook; an exact delinquency transition would require another protocol callback.
+The factory rejects a zero `delinquencyFeeBips` setting because V2.5 otherwise leaves
+`timeDelinquent` at zero, making the manager's counter-based wind-down threshold unreachable.
 
 ## Target source layout
 
@@ -67,6 +93,7 @@ require a market callback or equivalent protocol integration.
 src/
   TrancheFactory.sol
   TrancheManager.sol
+  TrancheOpenTermHooks.sol
   TrancheToken.sol
   libraries/
     WaterfallMath.sol
@@ -76,7 +103,7 @@ test/
   Invariant.t.sol
   Fork.t.sol
 lib/
-  v2-protocol/              pinned at 49be5432dbc8f268aec84beaada31de406fad875
+  v2-protocol/              pinned at e88e799 (PR #129 on PR #124)
 ```
 
 Keep pure waterfall arithmetic isolated from custody and lifecycle transitions. Prefer custom
@@ -94,7 +121,7 @@ Expose:
 
 ```solidity
 function computeManagerAddress(address deployer, bytes32 salt) external view returns (address);
-function deployTranches(bytes32 salt, DeployParams calldata init)
+function deployTranches(bytes32 salt, DeployParams calldata init, bytes calldata managerInitCode)
   external returns (address manager);
 ```
 
@@ -102,11 +129,16 @@ Namespace the CREATE2 salt by `msg.sender`. Address prediction must not depend o
 wrapper or tranche parameters because the predicted manager must be supplied while creating the
 market, before the wrapper exists. Achieve this with constant constructor code and a factory-only,
 one-time `initialize`. Initialization must occur in the deployment transaction; this is not a
-proxy and there is no implementation pointer.
+proxy and there is no implementation pointer. `managerInitCode` is the compiled
+`TrancheManager` creation code with the factory address ABI-encoded as its constructor argument.
+The factory commits its hash at construction and rejects any other bytes. This keeps manager
+creation code out of every deployed factory runtime contract while preserving a fixed CREATE2
+address and fixed manager runtime.
 
 `deployTranches` must verify before registration:
 
 - the market is registered with the pinned ArchController;
+- the market asset uses at least six decimals;
 - the caller is the market's current borrower and its registered borrower principal is nonzero;
 - the wrapper equals both `market.registeredWrapper()` and
   `wrapperFactory.wrapperForMarket(market)`;
@@ -147,7 +179,7 @@ Bind at least:
 - the market's registered borrower principal for sanctions and escrow calls;
 - hooks and singleton provider, verified by the factory;
 - sanctions sentinel and escrow destination or resolver;
-- governance and optional default declarer;
+- immutable senior and junior entry-gate addresses;
 - senior economics, minimum junior subordination and default threshold;
 - senior and junior token metadata.
 
@@ -157,9 +189,10 @@ Emit the complete immutable/bound configuration once. A useful shape is:
 event Initialized(
   address indexed market,
   address indexed wrapper,
-  address indexed governance,
   address senior,
-  address junior
+  address junior,
+  address seniorGate,
+  address juniorGate
 );
 ```
 
@@ -171,7 +204,7 @@ tokens or wrapper shares.
 For each deposit:
 
 1. checkpoint accounting and lifecycle state;
-2. reject a zero receiver, zero amount, inactive status, paused deposits or ineligible parties;
+2. reject a zero receiver, zero amount, inactive or delinquent status, sanctions or failed entry;
 3. calculate tranche shares using pre-deposit class values and explicit downward rounding;
 4. transfer base assets from the caller to the manager;
 5. approve the market for the exact amount and call `market.deposit`;
@@ -202,19 +235,21 @@ event Deposited(
 An exit is not an ERC-4626 synchronous withdrawal. The manager must:
 
 1. checkpoint;
-2. calculate the holder's class entitlement and required wrapper shares;
+2. calculate the holder's exact class entitlement;
 3. burn tranche shares before external interactions;
-4. redeem wrapper shares to market tokens with the manager as receiver;
-5. queue those market tokens in the Wildcat withdrawal batch;
+4. redeem the calculated whole wrapper shares with the manager as receiver;
+5. queue the redemption label, verify the same scaled backing moved and reduce the aggregate mark
+   by its floor-normalised request face;
 6. append an immutable request containing owner, class, face, queue expiry and FIFO position;
 7. later execute the expired market batch permissionlessly;
 8. allocate observed base-asset recovery according to the frozen recovery rule;
-9. permit permissionless claiming only to the recorded owner or canonical sanctions escrow.
+9. permit anyone to trigger a claim, but send it only to the recorded owner or canonical sanctions
+   escrow.
 
 Events should make the lifecycle reconstructible without replaying internal math:
 
 ```solidity
-event RedemptionRequested(
+event RedeemRequested(
   uint256 indexed requestId,
   address indexed owner,
   address indexed tranche,
@@ -242,25 +277,24 @@ event Claimed(
 Do not emit a second copy of ERC-20 `Transfer` data. Emit only protocol state that is otherwise
 hard to reconstruct.
 
-### 5. Make lifecycle and governance auditable
+### 5. Make lifecycle and entry policy auditable
 
-Represent lifecycle transitions with one event carrying previous state, next state and trigger.
-Wind-down/default entry should be irreversible unless the terms specify a reversal.
+Represent lifecycle transitions with one event carrying previous and next state. Wind-down is
+irreversible and follows only market closure or the fixed delinquency threshold.
 
 ```solidity
-event StatusChanged(Status indexed previous, Status indexed current, bytes32 indexed trigger);
+event StatusChanged(Status indexed previous, Status indexed current);
 event AccountingCheckpoint(
   uint256 timestamp,
   uint256 seniorOwed,
-  uint256 wrapperShares,
-  uint256 effectiveAssets
+  uint256 realisedValue
 );
 ```
 
-For each mutable setting, use bounded values, a delay where economic impact warrants it, two-step
-role rotation, and events containing previous and new values. Governance may pause entry; it must
-not block burns, withdrawal execution or claims. Entry restrictions on tranche transfers must
-ignore mint and burn and must not create a claim veto.
+The manager has no mutable economic setting or control role. Each class gate is selected during
+initialisation; zero means open entry, while a nonzero address must contain code. The manager calls
+the gate for a deposit receiver and ordinary-transfer recipient. Mint, burn, withdrawal request,
+batch execution and claim never call it.
 
 ## Deployment ceremonies
 
@@ -273,7 +307,8 @@ because the only admitted lender is an address with no code until the final tran
 2. Create the market and singleton hooks with that predicted address as sole lender. Deposit and
    transfer hooks are enabled/access-required; global transfers are not disabled.
 3. Call `Wildcat4626WrapperFactory.createWrapper(market)`.
-4. Call `TrancheFactory.deployTranches(salt, init)`.
+4. Call `TrancheFactory.deployTranches(salt, init, managerInitCode)` using the artefact whose hash
+   matches `managerInitCodeHash()`.
 5. Run the verifier checklist below before funding or publishing the tranche addresses.
 
 The gap is inert, not partially live: no other address has the deposit credential, the manager is
@@ -330,11 +365,11 @@ wrapper total supply == wrapper balance of manager
 - every initialization field and invalid combination;
 - CREATE2 prediction for EOA and Safe callers;
 - deposit share math, rounding and minimum subordination;
-- healthy, delinquent, closed and forced wind-down transitions;
+- healthy, delinquent and closed transitions into objective wind-down;
 - partial, excess and zero recovery;
 - FIFO within each class and senior priority between classes;
 - sanctions escrow without amount or queue-position changes;
-- every governance bound, delay and two-step transfer.
+- zero, accepting, denying and reverting entry gates.
 
 ### Integration
 
@@ -355,23 +390,25 @@ wrapper total supply == wrapper balance of manager
 - junior cannot escape the subordination floor while active;
 - junior receives no distressed recovery while senior remains uncovered;
 - claims never exceed recovery or a request's FIFO entitlement;
-- no user action can strand wrapper shares after the last tranche share exits;
-- no entry policy or governance action can prevent burn and claim.
+- an empty tranche class cannot be reopened while residual value remains;
+- no entry policy can prevent burn and claim.
 
 ### Fork
 
 - selectors and hook flags against the pinned V2.5 deployment;
 - wrapper factory registration path;
-- actual market-token rounding and queue expiry behavior;
+- actual market-token rounding, queue expiry behavior and direct execution-hook accounting;
 - Safe MultiSend call semantics if it is part of the supported deployment path.
 
 ## Current prototype state
 
-`build/` now contains ownerless deterministic deployment, a factory-only one-time initializer,
-base-asset deposits followed by market deposit and canonical wrapping, fixed-rate senior accrual,
-and reconstructible custody and recovery events. A small factory-owned deployer holds manager
-creation code so `TrancheFactory` remains well below the EIP-170 runtime limit.
+`build/` contains ownerless deterministic deployment, a factory-only one-time initializer,
+base-asset deposits followed by market deposit and canonical wrapping, time-deterministic fixed-rate
+senior accrual, exact market-close checkpointing, complete distress reserve, class entry gates and
+reconstructible custody and recovery events. The manager creation code is supplied only at
+deployment, checked against the factory's immutable hash, then consumed by a small factory-owned
+CREATE2 deployer. The production Foundry profile uses one optimizer run and has an executable
+EIP-170/EIP-3860 size gate; these settings are part of the artefact identity.
 
-Before deployment work, replace the local interfaces with imports from a pinned V2.5 commit, add
-an integration deployment against the real singleton template, specify terminal dust allocation,
-and convert the remaining manager string reverts to typed errors.
+The pinned V2.5 deployment, entry, sanctions and recovery paths are covered in
+`build/test/Fork.t.sol`. Release checks and command sequence live in `docs/RELEASE_EVIDENCE.md`.
