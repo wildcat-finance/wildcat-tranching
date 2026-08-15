@@ -2,29 +2,15 @@
 
 ## Status
 
-This document defines the prototype boundary implemented under `build/src`. The contracts import
-the protocol types and implementations pinned by the `build/lib/v2-protocol` submodule at
-`e88e799`, the head of PR #129 stacked on PR #124. Unit tests still use local doubles;
-`build/test/Fork.t.sol`
-deploys the pinned contracts on mainnet block `25,758,381`, verifies the complete market,
-canonical wrapper and predicted manager deployment path, then deposits junior and senior capital
-through the manager, queues both exits into one market batch and settles an initial shortfall before
-the final recovery. That batch is delinquent at execution and retains accrued-interest residue in
-the market after all tranche face is settled. This remains an engineering prototype.
+This document defines the prototype boundary implemented under `build/src`. The contracts import the
+Wildcat V2.5 types and implementations pinned by the `build/lib/v2-protocol` submodule at `e88e799`.
+That revision supplies the sealed singleton role provider, canonical wrapper support and the close and
+withdrawal-execution hooks used by the trancher. Supporting a market without an equivalent immutable
+admission primitive is a separate design.
 
-The prototype targets Wildcat V2.5 and the sealed singleton role-provider hooks proposed in
-[`v2-protocol#124`](https://github.com/wildcat-finance/v2-protocol/pull/124), with narrow close and
-withdrawal-execution hook extensions in
-[`v2-protocol#129`](https://github.com/wildcat-finance/v2-protocol/pull/129).
-Supporting an earlier
-V2 market without an equivalent immutable admission primitive is a separate design.
-
-The real-stack proof covers one bounded delinquent shortfall and later repayment. Broader
-delinquency and sanctions settlement remain hardening work. Terminal accounting is local-suite
-covered: the facility closes when both tranche supplies first reach zero, queues residual custody,
-and pays only the immutable deployment-time terminal recipient after all claims clear. Separate
-fork cases prove frozen marking, entry refusal, cure recognition and the objective wind-down
-threshold without claiming that this is ready for deployment.
+`build/test/Fork.t.sol` deploys the pinned contracts on mainnet block `25,758,381` and exercises the
+market, canonical wrapper, predicted manager, two tranche classes, queued exits, shortfall recovery,
+sanctions routing and objective wind-down. This remains an engineering prototype.
 
 ## Terms
 
@@ -61,15 +47,15 @@ The wrapper is a custody adapter, not a second economic lender. The manager owns
 share. The wrapper holds the corresponding market-token backing. No tranche holder touches either
 asset.
 
-## Why the `SingletonOpenTermHooks` supply identity must change
+## Wrapped singleton supply identity
 
-The unwrapped `SingletonOpenTermHooks` design disables all market-token transfers and proves:
+Singleton admission without a wrapper can prove:
 
 ```text
 scaledTotalSupply == scaledBalanceOf(singletonLender) + scaledPendingWithdrawals
 ```
 
-That is incompatible with the canonical ERC-4626 wrapper:
+The canonical ERC-4626 wrapper changes that custody identity:
 
 1. `Wildcat4626WrapperFactory.createWrapper` currently rejects a market reported as
    transfer-disabled.
@@ -77,7 +63,7 @@ That is incompatible with the canonical ERC-4626 wrapper:
 3. Unwrapping calls `market.transfer(wrapper, manager, amount)`.
 4. The wrapper, not the manager, holds the active market-token balance after wrapping.
 
-The wrapped `SingletonOpenTermHooks` supply identity should instead be:
+The wrapped supply identity is:
 
 ```text
 market.scaledTotalSupply
@@ -95,9 +81,8 @@ scaled backing check rather than normalized `balanceOf`, avoiding rounding ambig
 
 ## Market-token transfers
 
-PR #124's requirement that the market report all transfers disabled should be removed. Adding a
-new transfer mode or encoding bespoke caller/from/to edges is unnecessary. The existing singleton
-recipient check remains the policy:
+The market cannot disable transfers globally because the canonical wrapper must receive market tokens.
+A new transfer mode or bespoke caller/from/to edges are unnecessary. The singleton recipient check is:
 
 1. transfer-hook dispatch and access checks remain required;
 2. if `to == market.registeredWrapper()` and the registered wrapper is nonzero, allow the transfer;
@@ -140,9 +125,9 @@ path.
 
 Target behavior:
 
-- binds one market, canonical wrapper and base asset; sanctions calls resolve the market's registered
-  borrower principal at execution time; the factory verifies the hooks instance, provider and
-  sanctions sentinel;
+- binds one market, canonical wrapper and base asset; holder sanctions checks use the borrower principal
+  captured at initialisation, while manager-settlement sanctions read the market's current principal;
+  the factory verifies the hooks instance, provider and sanctions sentinel;
 - deploys or receives the two tranche-token addresses during initialization;
 - accepts the base asset from an eligible user;
 - deposits it into the market as the singleton lender;
