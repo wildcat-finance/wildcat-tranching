@@ -96,9 +96,10 @@ inside that external gate may itself be mutable. The correct phrase is therefore
 not "immutable allowlist". The factory supplies no economic defaults: the borrower must submit every
 one-time tranche term. A 0% senior target and open gates are valid choices.
 
-The first deposit into either empty tranche class must be at least `1e6` raw base-asset units. The
-human amount depends on the asset's decimals; the manager requires at least six decimals. This is a
-fixed implementation constraint, not a borrower parameter.
+The base-asset-denominated value credited from the first deposit into either empty tranche class must
+be at least `1e6` units. Conversion rounding can require a slightly larger tender. The human amount
+depends on the asset's decimals; the manager requires at least six decimals. This is a fixed
+implementation constraint, not a borrower parameter.
 
 #### Borrower-selected or borrower-operated in the underlying market
 
@@ -124,11 +125,11 @@ The protocol-fee rate and fee recipient come from the Wildcat hook-template conf
 through the ArchController owner, not from the tranche borrower. `protocolFeeBips` is a percentage of
 base lender interest and is charged on top rather than deducted from it. Its 1,000-bip cap therefore
 means at most 10% of the lender rate: a 10% lender APR and 1,000-bip fee setting produce 11% borrower
-cost. The factory can push a changed fee rate to existing open markets; an existing market's fee
-recipient is immutable. The template can also specify an origination-fee asset and amount which the
-borrower must echo and pay when creating the market. The tranching factory's ArchController, wrapper
-factory, singleton hook template and manager bytecode commitment are fixed when that factory is
-deployed.
+running base-interest cost, before any origination fee or delinquency charge. The factory can push a
+changed fee rate to existing open markets; an existing market's fee recipient is immutable. The
+template can also specify an origination-fee asset and amount which the borrower must echo and pay when
+creating the market. The tranching factory's ArchController, wrapper factory, singleton hook template
+and manager bytecode commitment are fixed when that factory is deployed.
 
 #### Verified, inherited or algorithmic
 
@@ -182,8 +183,8 @@ trancher as a prototype.
   recovery. It is neither the Wildcat market APR nor a promised return.
 - State that minimum junior subordination is enforced on senior entry and active junior exit. It is not
   a continuously maintained collateral ratio after market movement or loss.
-- State that transferability is conditional on sanctions and the fixed class gate. It is not a secondary
-  liquidity undertaking.
+- State that transferability is conditional on sanctions and the fixed class-gate address. It is not a
+  secondary liquidity undertaking.
 - State that a redemption request burns tranche shares into the Wildcat withdrawal process. Timing and
   amount depend on market liquidity and borrower repayment.
 - Show protocol fee at the market layer. The manager charges no additional fee in the current code.
@@ -376,19 +377,19 @@ status.
 
 The V2.5 submodule is pinned at `e88e799bedd3108feb5ff45b33dc7b62f865b56c`.
 
-- [Market deployment and template fees](../../build/lib/v2-protocol/src/HooksFactory.sol)
-- [Market input structure](../../build/lib/v2-protocol/src/interfaces/WildcatStructsAndEnums.sol)
-- [Market parameter bounds](../../build/lib/v2-protocol/src/access/MarketConstraintHooks.sol)
-- [OpenTerm controls](../../build/lib/v2-protocol/src/access/OpenTermHooks.sol)
-- [Hook-administrator transfer and access controls](../../build/lib/v2-protocol/src/access/BaseAccessControls.sol)
-- [Sealed singleton hook](../../build/lib/v2-protocol/src/access/SingletonOpenTermHooks.sol)
-- [Sealed singleton lender provider](../../build/lib/v2-protocol/src/providers/SingletonRoleProvider.sol)
-- [Mutable market configuration](../../build/lib/v2-protocol/src/market/WildcatMarketConfig.sol)
-- [Market immutables](../../build/lib/v2-protocol/src/market/WildcatMarketBase.sol)
-- [Market-state withdrawal ordering](../../build/lib/v2-protocol/src/libraries/MarketState.sol)
-- [Withdrawal availability](../../build/lib/v2-protocol/src/libraries/Withdrawal.sol)
-- [Protocol-fee calculation](../../build/lib/v2-protocol/src/libraries/FeeMath.sol)
-- [Canonical wrapper](../../build/lib/v2-protocol/src/vault/Wildcat4626Wrapper.sol)
+- [Market deployment and template fees](https://github.com/wildcat-finance/v2-protocol/blob/e88e799bedd3108feb5ff45b33dc7b62f865b56c/src/HooksFactory.sol)
+- [Market input structure](https://github.com/wildcat-finance/v2-protocol/blob/e88e799bedd3108feb5ff45b33dc7b62f865b56c/src/interfaces/WildcatStructsAndEnums.sol)
+- [Market parameter bounds](https://github.com/wildcat-finance/v2-protocol/blob/e88e799bedd3108feb5ff45b33dc7b62f865b56c/src/access/MarketConstraintHooks.sol)
+- [OpenTerm controls](https://github.com/wildcat-finance/v2-protocol/blob/e88e799bedd3108feb5ff45b33dc7b62f865b56c/src/access/OpenTermHooks.sol)
+- [Hook-administrator transfer and access controls](https://github.com/wildcat-finance/v2-protocol/blob/e88e799bedd3108feb5ff45b33dc7b62f865b56c/src/access/BaseAccessControls.sol)
+- [Sealed singleton hook](https://github.com/wildcat-finance/v2-protocol/blob/e88e799bedd3108feb5ff45b33dc7b62f865b56c/src/access/SingletonOpenTermHooks.sol)
+- [Sealed singleton lender provider](https://github.com/wildcat-finance/v2-protocol/blob/e88e799bedd3108feb5ff45b33dc7b62f865b56c/src/providers/SingletonRoleProvider.sol)
+- [Mutable market configuration](https://github.com/wildcat-finance/v2-protocol/blob/e88e799bedd3108feb5ff45b33dc7b62f865b56c/src/market/WildcatMarketConfig.sol)
+- [Market immutables](https://github.com/wildcat-finance/v2-protocol/blob/e88e799bedd3108feb5ff45b33dc7b62f865b56c/src/market/WildcatMarketBase.sol)
+- [Market-state withdrawal ordering](https://github.com/wildcat-finance/v2-protocol/blob/e88e799bedd3108feb5ff45b33dc7b62f865b56c/src/libraries/MarketState.sol)
+- [Withdrawal availability](https://github.com/wildcat-finance/v2-protocol/blob/e88e799bedd3108feb5ff45b33dc7b62f865b56c/src/libraries/Withdrawal.sol)
+- [Protocol-fee calculation](https://github.com/wildcat-finance/v2-protocol/blob/e88e799bedd3108feb5ff45b33dc7b62f865b56c/src/libraries/FeeMath.sol)
+- [Canonical wrapper](https://github.com/wildcat-finance/v2-protocol/blob/e88e799bedd3108feb5ff45b33dc7b62f865b56c/src/vault/Wildcat4626Wrapper.sol)
 
 ### Public references
 

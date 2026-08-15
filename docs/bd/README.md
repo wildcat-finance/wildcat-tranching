@@ -64,6 +64,7 @@ manager wind-down is not, by itself, a legal declaration of default.
 
 The protocol fee remains at the Wildcat market layer. The manager adds no second fee in the current
 code. The fee rate is a percentage of base lender interest, charged on top to the borrower: a 1,000-bip
-setting on a 10% lender APR adds 1% to borrower cost. Accrued fees are reserved ahead of unprocessed
-market withdrawals; an already-processed unclaimed withdrawal is not later displaced by fee
-collection. Senior and junior divide only the manager's position and cash actually recovered.
+setting on a 10% lender APR gives an 11% running base-interest cost before any origination fee or
+delinquency charge. Accrued fees are reserved ahead of unprocessed market withdrawals; an
+already-processed unclaimed withdrawal is not later displaced by fee collection. Senior and junior
+divide only the manager's position and cash actually recovered.
