@@ -50,7 +50,7 @@ commercial minimum ticket. Conversion rounding may require a slightly larger ten
 | Expected stressed time to cash |  |  |  |
 
 Borrower running cost is lender interest plus the platform fee, before arrears and one-off costs. The
-current facility does not add another manager fee.
+participation layer does not charge a fee.
 
 ## 4. Operations
 

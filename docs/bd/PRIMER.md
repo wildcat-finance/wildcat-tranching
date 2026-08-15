@@ -75,8 +75,8 @@ This is an operating rule. Legal default, enforcement and remedies belong in the
 3. **Senior target:** the rate used to split facility value between senior and junior.
 
 At a 10% lender rate, a 5% platform fee means 5% of the interest bill. It adds 0.5 percentage points, so
-the running borrower cost is 10.5% before arrears or one-off charges. The current facility does not levy
-another manager fee.
+the running borrower cost is 10.5% before arrears or one-off charges. There is no fee at the participation
+layer.
 
 ## Before anyone says yes
 

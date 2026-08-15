@@ -59,7 +59,7 @@ Not by itself. Legal default, enforcement and remedies belong in the deal docume
 
 The lender rate plus a platform fee calculated as a percentage of lender interest, before arrears and
 one-off charges. At a 10% lender rate, a 5% platform fee adds 0.5 percentage points. Running cost is 10.5%.
-The current facility does not levy another manager fee.
+There is no fee at the participation layer.
 
 ## Who chooses the terms?
 
