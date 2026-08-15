@@ -320,22 +320,3 @@ The implementation and tests should state these directly:
     deliberately defers its own market execution until clearance, preserving batch provenance.
 12. Wind-down cannot be reversed and senior accrual cannot restart.
 13. The manager cannot be rebound, replaced or initialised twice.
-
-## Work still open
-
-The economic shape is fixed. The remaining questions are narrower:
-
-- real-stack recovery across multiple batches, live-senior reserve and sanctions settlement cases;
-- whether exact delinquency marking deserves a protocol callback;
-- unique senior and junior token metadata;
-- which class gates, if any, the first facility should select at deployment;
-- protocol-fee recovery tests at zero, deployment and maximum permitted rates;
-- whether `claimMany` is worth adding;
-- whether the request surface should advertise an ERC-7540 interface.
-
-The Solidity manager matches the fixed-term shape: no owner, rate setter, pause switch or
-discretionary default path. Each class has one initialisation-time entry-gate address. A zero gate
-is open; a nonzero gate may control acquisition but cannot enter the exit path.
-
-The implementation sequence is in
-[`TRANCHER_LOGIC_RUNBOOK.md`](TRANCHER_LOGIC_RUNBOOK.md).

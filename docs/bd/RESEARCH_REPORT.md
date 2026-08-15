@@ -1,46 +1,22 @@
-# Wildcat tranching BD field kit: study
+# Wildcat tranching: credit and product research
 
-## Problem statement
+## What the facility is
 
-Wildcat BD needs a source-grounded set of material for first and second conversations with prospective
-borrowers, senior lenders and junior capital providers. It must work for crypto-native firms and
-traditional credit teams without asking either audience to adopt the other's vocabulary first.
+The prototype issues senior and junior participations over one Wildcat borrower market. It does not
+pool borrowers or create a second loan. One `TrancheManager` holds the underlying market position,
+accounts for the two classes, sends exits through the market withdrawal queue and allocates recovered
+cash.
 
-The material must explain four things accurately:
+Senior has a simple annual accounting target and first claim on realised value. Junior takes realised
+loss first and owns value above the senior claim. Senior exit requests clear before junior exit
+requests; FIFO applies within each class. Neither class has a guaranteed return, repayment or exit date.
 
-1. what the current tranching prototype does over one Wildcat market;
-2. how capital enters, accrues, queues for exit and receives recovery;
-3. which terms the borrower chooses, which terms come from the underlying market, which terms belong
-   to the protocol, and which rules are fixed in code; and
-4. which commercial questions BD should ask without turning a prototype or an accounting target into
-   a promise.
+The borrower chooses the senior target, minimum junior percentage, extra wind-down window, class entry
+settings and final surplus recipient when the facility is formed. Those manager terms have no later
+setters. The underlying loan and protocol retain separate parameter and operating authority described
+below.
 
-For this topic, a working prototype is a repository-native field kit that a BD colleague can open at
-one index, use to prepare for a call, and share in parts. It comprises a research report, a short
-primer, a one-page meeting brief, a parameter discovery guide, a question-and-answer and claims guide,
-and a gallery of static SVG infographics. The check is that every material protocol claim maps to the
-contracts, tests or pinned upstream source; every diagram renders without an external service; and the
-repository documentation and test gates still run.
-
-### Chosen reading of the request
-
-"Factory permits borrower-driven decisions" is read narrowly. The market borrower is the only account
-that may call `TrancheFactory.deployTranches`, and it supplies the senior target rate, minimum junior
-subordination, tranche wind-down window, both entry-gate addresses and the terminal recipient. Those
-terms are fixed after one-time initialisation and bounded by the manager. The borrower does not receive
-a general control plane and cannot use the tranching factory to replace code, change the waterfall,
-redirect custody or set the protocol fee.
-
-The underlying Wildcat market has a separate parameter surface. Some market terms originate with the
-borrower and some remain mutable under Wildcat's own rules. The protocol fee and canonical deployment
-dependencies do not belong to the tranche borrower. The field kit must show these as separate columns.
-
-## Existing implementation and prior art
-
-### Current repository
-
-The source of truth is `wildcat-finance/wildcat-tranching` at
-`b90a155f257c76f96e50cf2fa29872e1735f8bd8`, the current `main` when this run began.
+## Current implementation
 
 - `build/src/TrancheFactory.sol` is an ownerless CREATE2 factory. It pins the ArchController, wrapper
   factory, singleton hook template and manager init-code hash, authenticates the existing market stack,
@@ -55,31 +31,9 @@ The source of truth is `wildcat-finance/wildcat-tranching` at
 - `build/src/libraries/WaterfallMath.sol` contains the simple-interest senior accrual, realised-value
   split, minimum-subordination checks and objective wind-down threshold.
 
-Existing prose already establishes the technical design:
+## Parameter authority
 
-- `docs/ARCHITECTURE.md` defines custody, trust boundaries and invariants.
-- `docs/IMPLEMENTATION_RUNBOOK.md` records the prototype build and integration assumptions.
-- `docs/TRANCHER_LOGIC_REPORT.md` explains the accounting and lifecycle design.
-- `docs/PROTOTYPE_HANDOFF.md` gives a short repository handoff.
-- `docs/TRADFI_OUTREACH_PRIMER.md` is a useful first-conversation note, but it does not yet provide the
-  parameter authority map, worked scenarios, crypto/TradFi translation, fee bridge, meeting runbook or
-  infographic set requested here.
-- `docs/RELEASE_EVIDENCE.md` records the compiler profile and test commands.
-- `docs/V25_AUDIT_BUNDLE_ASSESSMENT.md` distinguishes missing trancher dependencies from errors in the
-  separate V2.5 audit branch.
-- `docs/assets/tranching-prototype-infographic.png` supplies an attractive topology image, but contains
-  no explanatory labels for terms, fees, queues or distress.
-
-On 15 August 2026, the selected conventional, fuzz, view and release suites reported 52
-unit/integration tests, five fuzz tests, one view test and one release-evidence test passing. The exact
-non-fork command was also attempted, but it ended before reporting the stateful property campaigns or a shell
-exit status. Foundry emitted an unresolved-symbol diagnostic from the pinned SphereX source while
-continuing through the reported suites. The result is therefore not recorded as a complete non-fork
-baseline. The stateful property and fork suites remain part of the final verification step.
-
-### Parameter authority established by the code
-
-#### Borrower-selected once, through this factory
+### Borrower-selected once, through this factory
 
 `TrancheFactory.DeployParams` and `TrancheManager.Params` establish the facility choices:
 
@@ -92,16 +46,15 @@ baseline. The stateful property and fork suites remain part of the final verific
 
 The caller must equal both the supplied borrower and `market.borrower()`. The terms are written during
 factory-only initialisation. There are no setters. A nonzero gate address is fixed, although the policy
-inside that external gate may itself be mutable. The correct phrase is therefore "fixed gate contract",
-not "immutable allowlist". The factory supplies no economic defaults: the borrower must submit every
-one-time tranche term. A 0% senior target and open gates are valid choices.
+inside that external gate may itself be mutable. The factory supplies no economic defaults: the borrower
+must submit every one-time tranche term. A 0% senior target and open gates are valid choices.
 
 The base-asset-denominated value credited from the first deposit into either empty tranche class must
 be at least `1e6` units. Conversion rounding can require a slightly larger tender. The human amount
 depends on the asset's decimals; the manager requires at least six decimals. This is a fixed
 implementation constraint, not a borrower parameter.
 
-#### Borrower-selected or borrower-operated in the underlying market
+### Borrower-selected or borrower-operated in the underlying market
 
 The Wildcat market is created before the tranching factory attaches a manager. At market creation the
 borrower supplies market inputs such as capacity, lender APR, reserve ratio, withdrawal-batch duration,
@@ -123,7 +76,7 @@ principal and can be transferred to another registered borrower under Wildcat's 
 administrator-transfer rules. Its actions can suspend new tranche entry at the market layer without
 changing the manager's economics, custody or exit waterfall.
 
-#### Protocol or factory authority
+### Protocol or factory authority
 
 The protocol-fee rate and fee recipient come from the Wildcat hook-template configuration selected
 through the ArchController owner, not from the tranche borrower. `protocolFeeBips` is a percentage of
@@ -135,7 +88,7 @@ template can also specify an origination-fee asset and amount which the borrower
 creating the market. The tranching factory's ArchController, wrapper factory, singleton hook template
 and manager bytecode commitment are fixed when that factory is deployed.
 
-#### Verified, inherited or algorithmic
+### Verified, inherited or algorithmic
 
 The tranching factory verifies the registered market, borrower, sanctions sentinel, canonical wrapper,
 hook instance, sealed singleton provider and sole lender. The manager derives the market, base asset,
@@ -144,10 +97,10 @@ realised loss, FIFO inside each class, realised-only delinquency marks, sanction
 one-way terminalisation and one manager per market are code rules rather than commercial parameters.
 Holder sanctions checks use the borrower-principal namespace captured when the manager is initialised;
 the separate check for whether the manager itself will receive market settlement reads the market's live
-principal. The field kit should describe the observed routing and avoid claiming that every sanctions
-check automatically follows a later principal transfer.
+principal. A later borrower-principal transfer therefore does not move every sanctions check into the
+same namespace.
 
-### External standards and conceptual prior art
+## External standards and conceptual prior art
 
 [ERC-4626](https://eips.ethereum.org/EIPS/eip-4626) standardises shares over a single ERC-20 asset and
 the related valuation views. The canonical Wildcat wrapper uses that pattern as the manager's custody
@@ -172,38 +125,32 @@ remain the public source for the underlying market. They state that Wildcat does
 borrower or guarantee repayment, that market withdrawals are asynchronous, and that protocol fees sit
 at the market layer rather than being chosen by the borrower.
 
-No public source was found that establishes this exact V2.5 tranching stack as a live product. The
-repository itself is controlling: it deploys a pinned V2.5 revision in fork tests and describes the
-trancher as a prototype.
+This exact V2.5 tranching stack is a repository prototype, not a live product.
 
-## Constraints
+## Commercial boundaries
 
-- Start from `main` at `b90a155`; do not include the unrelated dirty manager-gas worktree.
-- Preserve the repository's prototype label. Do not call it audited, production-ready, compliant,
-  insured, rated, principal-protected or liquid.
-- Keep legal classification open. Structured-credit and securitisation language is explanatory
-  analogy, not a conclusion that these claims are securities, a securitisation or a collective vehicle.
-- State that the senior rate is an accounting target and priority claim limited by realised value and
-  recovery. It is neither the Wildcat market APR nor a promised return.
-- State that minimum junior subordination is enforced on senior entry and active junior exit. It is not
-  a continuously maintained collateral ratio after market movement or loss.
-- State that transferability is conditional on sanctions and the fixed class-gate address. It is not a
-  secondary liquidity undertaking.
-- State that a redemption request burns tranche shares into the Wildcat withdrawal process. Timing and
-  amount depend on market liquidity and borrower repayment.
-- Show protocol fee at the market layer. The manager charges no additional fee in the current code.
+- The repository is a prototype. It is not audited, production-ready, compliant, insured, rated,
+  principal-protected or liquid.
+- Legal classification remains open. Structured-credit and securitisation language is explanatory
+  analogy, not a conclusion that the claims are securities, a securitisation or a collective vehicle.
+- The senior rate is an accounting target and priority claim limited by realised value and recovery.
+  It is neither the Wildcat market APR nor a promised return.
+- Minimum junior subordination is enforced on senior entry and active junior exit. It is not a
+  continuously maintained collateral ratio after market movement or loss.
+- Transferability is conditional on sanctions and the fixed class-gate address. It is not a secondary
+  liquidity undertaking.
+- A redemption request burns tranche shares into the Wildcat withdrawal process. Timing and amount
+  depend on market liquidity and borrower repayment.
+- The protocol fee sits at the market layer. The manager charges no additional fee in the current code.
   Accrued fees are reserved ahead of unprocessed market withdrawals; already-processed unclaimed
   withdrawals rank ahead of later fee collection. The manager can divide only what its market position
   produces and recovers.
-- Show the exact distinction between a fixed gate address and potentially mutable gate policy.
-- Distinguish the manager's lack of admin setters from the upstream hook administrator's ability to
-  change the market minimum deposit or block fresh deposits by the manager.
-- Build deployment records by reading contract storage and market configuration. The current
-  `Initialized` event does not emit the economic terms or terminal recipient, and the factory does not
-  record the live protocol-fee configuration.
-- Use British English, plain prose, accessible colour contrast and static repository assets.
-- Keep diagrams correct when viewed on GitHub, without JavaScript, hosted fonts or third-party renderers.
-- Do not modify Solidity, V2.5 dependencies or economic logic as part of this run.
+- The gate address is fixed; policy inside the selected gate may be mutable.
+- The manager has no admin setters. The upstream hook administrator can still change the market minimum
+  deposit or block fresh deposits by the manager.
+- Deployment records must be assembled from contract storage and market configuration. The current
+  `Initialized` event omits the economic terms and terminal recipient, and the factory does not record
+  the live protocol-fee configuration.
 
 ## Non-goals
 
@@ -212,68 +159,8 @@ trancher as a prototype.
 - A pricing model for a real borrower or a forecast of default, recovery or time to liquidity.
 - More than two tranches, cross-market portfolios, diversification or an SPV structure.
 - A new front end, hosted microsite, interactive calculator or generated presentation deck.
-- Changes to V2.5, the canonical wrapper, singleton hooks or the manager.
-- Replacement of technical documentation already in the repository.
 
-## Design options
-
-### Option A: one long report
-
-Put research, primer, questions, examples and diagrams into one Markdown file.
-
-The file is easy to find and review. It is awkward in a meeting: BD must scroll past technical detail to
-reach a question, counterparties receive more internal qualification than they need, and a single edit
-becomes responsible for several audiences.
-
-### Option B: modular repository field kit
-
-Create `docs/bd/` with a short index, a technical research report, a plain-language primer, a one-page
-meeting brief, a parameter discovery guide, a question-and-answer and claims guide, and a gallery. Put
-five or six labelled SVG diagrams under `docs/bd/assets/`, and cross-link each document to the relevant
-visual and source.
-
-This takes slightly more file organisation but gives each audience a document with one job. Static SVG
-keeps words searchable, diffs reviewable and diagrams usable in a browser, screenshot or later deck.
-
-### Option C: generated website or slide deck
-
-Build a branded microsite or presentation with richer navigation and animation.
-
-This would be useful after the underlying terms and narrative survive real conversations. At this stage
-it adds layout and export work, creates another maintenance surface and makes factual review harder.
-
-### Selection
-
-Choose Option B. It is the least elaborate construction that gives BD call preparation, shareable
-counterparty material, source notes and reusable diagrams without mixing legal, engineering and sales
-claims. The existing `TRADFI_OUTREACH_PRIMER.md` can become a pointer to the field kit so old links keep
-working.
-
-## Proposed material set
-
-1. `docs/bd/README.md`: index, intended audience, recommended reading order and prototype warning.
-2. `docs/bd/RESEARCH_REPORT.md`: implementation-grounded product research, authority matrix, lifecycle,
-   economics, risk allocation, fees and deployment status.
-3. `docs/bd/PRIMER.md`: short lender and borrower explanation with crypto/TradFi vocabulary bridges.
-4. `docs/bd/MEETING_BRIEF.md`: a one-page call aid: 60-second explanation, five facts, five boundaries and
-   next-meeting checklist.
-5. `docs/bd/PARAMETER_DISCOVERY.md`: separate borrower and lender questions, acceptable-range worksheet,
-   scenario prompts and who actually controls each answer.
-6. `docs/bd/FAQ_AND_CLAIMS.md`: questions BD will receive, approved answers, prohibited shorthand and
-   escalation points.
-7. `docs/bd/INFOGRAPHICS.md`: a gallery with captions, alt text and instructions for reuse.
-8. `docs/bd/assets/one-market-two-claims.svg`: custody and exposure topology.
-9. `docs/bd/assets/priority-waterfall.svg`: conditional protocol-fee reserve at market layer, then the
-   manager's senior and junior allocation of cash actually recovered, with full, junior-loss and
-   senior-impairment examples.
-10. `docs/bd/assets/parameter-authority.svg`: borrower-at-formation, market borrower, protocol/factory,
-    inherited and hard-coded columns.
-11. `docs/bd/assets/healthy-lifecycle.svg`: formation through deposit, accrual, request, batch and claim.
-12. `docs/bd/assets/distress-lifecycle.svg`: delinquency mark, window, wind-down, recovery and settlement.
-13. `docs/bd/assets/cost-and-yield-bridge.svg`: market lender APR, protocol fee on top for borrower cost,
-    senior target and junior residual, with no extra manager fee.
-
-## Risk register seed
+## Commercial and technical risks
 
 ### Factual and commercial risks
 
@@ -292,8 +179,8 @@ working.
   separately; distinguish unprocessed from already-processed withdrawals.
 - **Legal analogy drift.** TradFi language becomes a legal classification or rating claim. Label every
   capital-stack example as an analogy and prototype illustration.
-- **Version drift.** Current material is reused after manager source, compiler profile or V2.5 pin changes.
-  Put the reviewed commit and status in the research report and field-kit index.
+- **Version drift.** Source or dependency changes can make the material stale. Recheck the claims whenever
+  the manager, compiler profile or V2.5 pin changes.
 
 ### Technical claims requiring careful treatment
 
@@ -312,18 +199,8 @@ working.
   unclaimed withdrawals are not later displaced. The trancher does not waive or duplicate the fee.
 - Holder sanctions checks retain the manager's initial borrower-principal namespace; the manager's own
   market-settlement check uses the market's live principal.
-- The V2.5 audit-bundle branch discussed in `V25_AUDIT_BUNDLE_ASSESSMENT.md` is not faulty because it lacks
-  trancher-only features. Production integration requires a reconciled, frozen revision.
 
-### Review focus for this documentation-only run
-
-No Solidity security audit applies because no contract code will change. Review should instead compare
-each statement and diagram against `TrancheFactory`, `TrancheManager`, `TrancheToken`,
-`TrancheOpenTermHooks`, `WaterfallMath`, the pinned V2.5 source and tests. The highest-risk seams are
-parameter authority, fee priority, senior-target wording, async timing, gate mutability and prototype
-status.
-
-## Glossary seeds
+## Glossary
 
 - **Base asset:** the ERC-20 asset lent to the Wildcat market and used for tranche accounting.
 - **Wildcat market:** the single underlying borrower credit market; the trancher does not create a
@@ -368,14 +245,9 @@ status.
 - [Fuzz tests](../../build/test/Fuzz.t.sol)
 - [Invariant tests](../../build/test/Invariant.t.sol)
 - [Fork tests](../../build/test/Fork.t.sol)
-- [Release evidence tests](../../build/test/ReleaseEvidence.t.sol)
 - [Architecture](../ARCHITECTURE.md)
-- [Implementation runbook](../IMPLEMENTATION_RUNBOOK.md)
 - [Trancher logic report](../TRANCHER_LOGIC_REPORT.md)
-- [Prototype handoff](../PROTOTYPE_HANDOFF.md)
 - [TradFi outreach primer](../TRADFI_OUTREACH_PRIMER.md)
-- [Release evidence](../RELEASE_EVIDENCE.md)
-- [V2.5 audit-bundle assessment](../V25_AUDIT_BUNDLE_ASSESSMENT.md)
 
 ### Pinned upstream source
 

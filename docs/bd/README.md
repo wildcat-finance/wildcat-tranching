@@ -16,8 +16,8 @@ This is a prototype, not a live offer, rating, guarantee, legal opinion or promi
 - [Desk FAQ](FAQ_AND_CLAIMS.md): short answers when the room starts kicking the tyres.
 - [Infographics](INFOGRAPHICS.md): six diagrams for a screen or follow-up note.
 
-The [research report](RESEARCH_REPORT.md) and [delivery runbook](DELIVERY_RUNBOOK.md) are internal source
-material. Use them to check a claim, not to sell the trade.
+The [research report](RESEARCH_REPORT.md) is internal source material. Use it to check a claim, not to
+sell the trade.
 
 ## The trade in numbers
 
