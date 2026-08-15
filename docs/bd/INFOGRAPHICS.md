@@ -50,4 +50,3 @@ The borrower rate, Wildcat protocol fee and senior target are three different nu
 ## Source note
 
 These diagrams describe the current prototype. They are not a rating, audit opinion or product approval.
-The internal [delivery runbook](DELIVERY_RUNBOOK.md) records the render and repository checks.

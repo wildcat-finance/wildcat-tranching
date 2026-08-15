@@ -22,13 +22,12 @@ check. Tranche holders never hold the Wildcat market token or the wrapper share.
 
 The contracts under [`build/`](build/) are a runnable prototype, not a deployment candidate. They
 cover deterministic manager deployment, singleton and wrapper binding checks, base-asset custody,
-the waterfall, async redemption and sanctions handling. They compile against the V2.5 singleton
-branch plus the narrow hook-specialisation change in
-[`v2-protocol@e88e799`](https://github.com/wildcat-finance/v2-protocol/commit/e88e799),
-which is proposed in V2 PR #129 on top of PR #124. `Fork.t.sol` deploys that pinned protocol stack
-on mainnet block `25,758,381`, then creates the singleton market and tranching hook, registers the
-canonical wrapper, deploys the predicted manager, funds both tranches and settles their queued
-exit through the market's expiry path.
+the waterfall, async redemption and sanctions handling. They compile against
+[`v2-protocol@e88e799`](https://github.com/wildcat-finance/v2-protocol/commit/e88e799), the pinned V2.5
+revision containing the singleton admission and hook surfaces required by the trancher. `Fork.t.sol`
+deploys that stack on mainnet block `25,758,381`, creates the singleton market and tranching hook,
+registers the canonical wrapper, deploys the predicted manager, funds both tranches and settles their
+queued exit through the market's expiry path.
 
 ## Design rules
 
@@ -68,11 +67,9 @@ build/test/
 
 docs/
   ARCHITECTURE.md              target topology, trust boundaries and invariants
-  IMPLEMENTATION_RUNBOOK.md    build order, interfaces, events, tests and deployment flows
-  PROTOTYPE_HANDOFF.md         visual explainer and boundaries for the demonstrable prototype
+  TRANCHER_LOGIC_REPORT.md     accounting, lifecycle and parameter design
   TRADFI_OUTREACH_PRIMER.md    first-conversation guide for credit and allocator outreach
-  V25_AUDIT_BUNDLE_ASSESSMENT.md required V2.5 reconciliation before a frozen audit bundle
-  SINGLETON_WRAPPER_HANDOFF.md handoff for the singleton-role-provider implementation
+  bd/README.md                 lender and borrower field kit
 ```
 
 ## Run the prototype
@@ -124,10 +121,8 @@ The fork suite proves that a gate can refuse deposit and transfer acquisition bu
 existing holder's exit. It also runs the real sentinel and escrow path for a sanctioned holder and
 the manager-sanction deferral path for an authenticated market withdrawal.
 
-## Read before implementing
+## Read the design
 
-Start with [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), then follow
-[`docs/IMPLEMENTATION_RUNBOOK.md`](docs/IMPLEMENTATION_RUNBOOK.md). The wrapper-aware singleton
-recipient exception is a prerequisite, not an optional polish item; the exact request to the singleton
-workstream is isolated in
-[`docs/SINGLETON_WRAPPER_HANDOFF.md`](docs/SINGLETON_WRAPPER_HANDOFF.md).
+Start with [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the contract topology and invariants,
+then read [`docs/TRANCHER_LOGIC_REPORT.md`](docs/TRANCHER_LOGIC_REPORT.md) for the accounting and
+lifecycle. The lender and borrower material starts at [`docs/bd/README.md`](docs/bd/README.md).
