@@ -79,6 +79,13 @@ contract ForkTest is Test {
     TrancheFactory internal trancheFactory;
     address internal singletonHooksTemplate;
 
+    struct ExitRequests {
+        uint256 firstJunior;
+        uint256 senior;
+        uint256 finalJunior;
+        uint32 expiry;
+    }
+
     function setUp() public {
         string memory rpc = vm.envOr("MAINNET_RPC_URL", DEFAULT_RPC);
         vm.createSelectFork(rpc, FORK_BLOCK);
@@ -155,6 +162,16 @@ contract ForkTest is Test {
         assertEq(manager.junior().manager(), managerAddress, "junior manager");
         assertFalse(manager.junior().isSenior(), "junior class");
 
+        _exerciseExitLifecycle(manager, market, asset, managerAddress, wrapperAddress);
+    }
+
+    function _exerciseExitLifecycle(
+        TrancheManager manager,
+        WildcatMarket market,
+        ForkAsset asset,
+        address managerAddress,
+        address wrapperAddress
+    ) internal {
         asset.mint(address(this), 400e18);
         asset.approve(managerAddress, 400e18);
         uint256 juniorShares = manager.depositJunior(100e18, address(this));
@@ -180,9 +197,88 @@ contract ForkTest is Test {
             Wildcat4626Wrapper(wrapperAddress).totalSupply(),
             "manager owns wrapper supply"
         );
-        assertEq(asset.allowance(managerAddress, marketAddress), 0, "market approval cleared");
+        assertEq(asset.allowance(managerAddress, address(market)), 0, "market approval cleared");
         assertEq(market.allowance(managerAddress, wrapperAddress), 0, "wrapper approval cleared");
         assertEq(manager.seniorValue() + manager.juniorValue(), manager.realisedValue(), "waterfall conserves value");
+
+        market.borrow(100e18);
+        assertEq(asset.balanceOf(address(this)), 100e18, "borrower creates an exit shortfall");
+
+        ExitRequests memory requests = _queuePriorityExit(manager, seniorShares, juniorShares);
+        assertEq(manager.claimable(requests.senior), 0, "senior not claimable before recovery");
+        assertEq(manager.claimable(requests.firstJunior), 0, "first junior request not claimable before recovery");
+        assertEq(manager.claimable(requests.finalJunior), 0, "final junior request not claimable before recovery");
+
+        address keeper = address(0xBEEF);
+        vm.warp(uint256(requests.expiry) + 1);
+        assertTrue(market.currentState().isDelinquent, "shortfall makes the market delinquent");
+        assertEq(market.getAvailableWithdrawalAmount(managerAddress, requests.expiry), 300e18, "market pays available liquidity");
+        vm.prank(keeper);
+        manager.pokeRecovery(requests.expiry);
+
+        assertEq(manager.recoveredUSDC(), 300e18, "first recovery observed");
+        assertEq(manager.allocatableUSDC(), 300e18, "first recovery allocated");
+        assertEq(manager.recoveryObservedByExpiry(requests.expiry), 300e18, "expiry receipt recorded");
+        assertEq(manager.faceCreditedByExpiry(requests.expiry), 300e18, "expiry face credited once");
+        assertEq(manager.recoverySurplus(), 0, "no unattributed recovery");
+        assertEq(manager.claimable(requests.senior), 300e18, "senior recovery is allocated first");
+        assertEq(manager.claimable(requests.firstJunior), 0, "earlier junior request waits behind senior");
+        assertEq(manager.claimable(requests.finalJunior), 0, "later junior request waits behind senior");
+        assertEq(asset.balanceOf(managerAddress), 300e18, "first recovery reaches manager");
+        vm.prank(keeper);
+        assertEq(manager.claim(requests.senior), 300e18, "senior claim paid");
+
+        assertEq(asset.balanceOf(address(this)), 400e18, "recorded senior owner receives payment");
+        assertEq(asset.balanceOf(keeper), 0, "keeper cannot redirect senior claim");
+        assertEq(manager.totalClaimedOut(), 300e18, "senior claim recorded");
+
+        asset.approve(address(market), 100e18);
+        market.repayAndProcessUnpaidWithdrawalBatches(100e18, 1);
+        assertEq(market.getAvailableWithdrawalAmount(managerAddress, requests.expiry), 100e18, "repaid liquidity is reserved for the batch");
+        vm.prank(keeper);
+        manager.pokeRecovery(requests.expiry);
+
+        assertEq(manager.recoveredUSDC(), 400e18, "total recovery observed");
+        assertEq(manager.allocatableUSDC(), 400e18, "total recovery allocated");
+        assertEq(manager.recoveryObservedByExpiry(requests.expiry), 400e18, "full expiry receipt recorded");
+        assertEq(manager.faceCreditedByExpiry(requests.expiry), 400e18, "full expiry face credited once");
+        assertEq(manager.claimable(requests.firstJunior), 25e18, "first junior request receives later recovery");
+        assertEq(manager.claimable(requests.finalJunior), 75e18, "second junior request receives later recovery");
+        assertTrue(market.currentState().isDelinquent, "accrued interest remains in the market batch");
+        assertEq(asset.balanceOf(managerAddress), 100e18, "second recovery reaches manager");
+        vm.prank(keeper);
+        assertEq(manager.claim(requests.firstJunior), 25e18, "first junior claim paid");
+        vm.prank(keeper);
+        assertEq(manager.claim(requests.finalJunior), 75e18, "second junior claim paid");
+        assertEq(asset.balanceOf(address(this)), 400e18, "claimant receives settled base asset");
+        assertEq(asset.balanceOf(keeper), 0, "keeper cannot redirect junior claim");
+        assertEq(asset.balanceOf(managerAddress), 0, "no base asset retained after claims");
+        assertEq(manager.totalClaimedOut(), 400e18, "all claims accounted");
+    }
+
+    function _queuePriorityExit(TrancheManager manager, uint256 seniorShares, uint256 juniorShares)
+        internal
+        returns (ExitRequests memory requests)
+    {
+        // Start with junior deliberately: the initial shortfall must still fill the later senior
+        // request before either junior request can claim.
+        requests.firstJunior = manager.requestRedeem(false, 25e18);
+        requests.senior = manager.requestRedeem(true, seniorShares);
+        requests.finalJunior = manager.requestRedeem(false, juniorShares - 25e18);
+
+        (,, uint128 firstJuniorFace,, uint32 firstJuniorExpiry) = manager.requests(requests.firstJunior);
+        (,, uint128 seniorFace,, uint32 seniorExpiry) = manager.requests(requests.senior);
+        (,, uint128 finalJuniorFace,, uint32 finalJuniorExpiry) = manager.requests(requests.finalJunior);
+
+        assertEq(firstJuniorFace, 25e18, "first junior request face");
+        assertEq(seniorFace, 300e18, "senior request face");
+        assertEq(finalJuniorFace, 75e18, "final junior request face");
+        assertEq(firstJuniorExpiry, seniorExpiry, "first junior and senior share market batch");
+        assertEq(seniorExpiry, finalJuniorExpiry, "senior and final junior share market batch");
+        assertEq(manager.faceQueuedByExpiry(seniorExpiry), 400e18, "expiry records all request faces");
+        assertEq(manager.senior().totalSupply(), 0, "senior shares burned for exit");
+        assertEq(manager.junior().totalSupply(), 0, "junior shares burned for exit");
+        requests.expiry = seniorExpiry;
     }
 
     function _deployProtocolStack() internal {

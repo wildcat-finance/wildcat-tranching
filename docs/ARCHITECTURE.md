@@ -8,7 +8,9 @@ the protocol types and implementations pinned by the `build/lib/v2-protocol` sub
 `build/test/Fork.t.sol`
 deploys the pinned contracts on mainnet block `25,758,381`, verifies the complete market,
 canonical wrapper and predicted manager deployment path, then deposits junior and senior capital
-through the manager. This remains an engineering prototype.
+through the manager, queues both exits into one market batch and settles an initial shortfall before
+the final recovery. That batch is delinquent at execution and retains accrued-interest residue in
+the market after all tranche face is settled. This remains an engineering prototype.
 
 The prototype targets Wildcat V2.5 and the sealed singleton role-provider hooks proposed in
 [`v2-protocol#124`](https://github.com/wildcat-finance/v2-protocol/pull/124), with narrow close and
@@ -17,9 +19,9 @@ withdrawal-execution hook extensions in
 Supporting an earlier
 V2 market without an equivalent immutable admission primitive is a separate design.
 
-The next implementation step is deliberately narrower than production hardening: exercise one async
-exit against the same real contract stack. That settlement work is not part of the deposit proof
-recorded here.
+The real-stack proof covers one bounded delinquent shortfall and later repayment. Broader
+delinquency, the terminal interest/dust rule and sanctions settlement remain hardening work, rather
+than a claim that this is ready for deployment.
 
 ## Terms
 

@@ -270,31 +270,35 @@ the waterfall value.
 
 ## Stage 5: prove the real exit path
 
-Add one complete async exit against the same deployed stack:
+The pinned fork now runs a bounded delinquent partial-recovery async path against the same deployed
+stack:
 
-1. request a partial senior redemption;
-2. confirm tranche shares burn before external calls;
-3. confirm wrapper shares fall by the observed amount;
-4. confirm wrapper redemption and market queueing move the request's exact scaled backing;
-5. advance to the batch expiry;
-6. fund and execute the batch through the supported market path;
-7. call `pokeRecovery` from another account;
-8. call `claim` from another account and confirm payment goes to the recorded owner;
-9. call `claim` again and receive zero.
-
-Repeat with junior once the senior path works.
+1. burn a capped junior slice, then the senior position, then the remaining junior position into one
+   shared market expiry;
+2. record exact class faces and prove neither request is claimable before recovery;
+3. borrow 100 base assets before expiry, then prove the market exposes only 300 assets from the
+   aggregate withdrawal to the manager;
+4. execute through `pokeRecovery`, which reaches the pinned withdrawal-execution hook;
+5. prove senior allocation fills before junior allocation;
+6. claim the senior request through an unrelated keeper and prove the recorded holder receives the
+   base asset;
+7. repay the final 100 assets, execute the remaining batch payment, and claim junior through the
+   keeper, leaving none in the manager.
 
 Required assertions:
 
-- request face equals the floor-normalised value of the scaled market tokens queued;
-- `recoveredUSDC == baseAsset.balanceOf(manager) + totalClaimedOut`;
-- `recoveredUSDC == allocatableUSDC + seniorDebtReserveUSDC + recoverySurplus`;
-- claimable cash never exceeds request face or recovered cash;
-- the request owner and FIFO position never change;
-- the manager retains no unintended market-token balance.
+- exact senior and junior request face follows their backing;
+- both class shares burn before the market batch is executable;
+- no request is claimable before the market callback records recovery;
+- senior is paid before junior from the shared receipt;
+- claims return the complete settled balance to their recorded owner;
+- the manager retains no base asset after both claims.
 
-Exit condition: deposit, custody, burn, queue, execute, allocate and claim pass as one real-contract
-lifecycle.
+Stage status: complete for one bounded delinquent shortfall path. `Fork.t.sol` covers deposit,
+custody, burn, queue, partial execution, senior-first allocation ahead of an earlier junior request,
+later recovery and claim as one real-contract lifecycle. It intentionally leaves accrued market
+interest queued after all tranche face settles. Broader delinquency and sanctions cases remain
+separate hardening work.
 
 ## Stage 6: exercise delinquency and loss
 

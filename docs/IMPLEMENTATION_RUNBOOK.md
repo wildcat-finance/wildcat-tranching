@@ -32,8 +32,12 @@ The singleton workstream must first make the small change described in
 requirement while preserving transfer-hook access checks and exempting only the nonzero canonical
 registered wrapper from the normal recipient-credential check.
 
-The real-stack test covers junior then senior base-asset deposits through the manager and proves the
-post-deposit custody identities. The next bounded step is one queued and executed exit.
+The real-stack test covers junior then senior base-asset deposits through the manager, records exact
+class issuance and post-deposit custody identities, then queues senior and junior exits into one
+batch. It deliberately creates a 100-asset shortfall, proves the market's available withdrawal and
+execution-hook recovery booking, then proves senior-first allocation before a later repayment
+settles junior to the recorded holder. The shortfall makes the market delinquent at execution; all
+tranche face settles, but accrued market interest remains queued for terminal accounting.
 
 ## Gate 2: Prototype accounting semantics
 

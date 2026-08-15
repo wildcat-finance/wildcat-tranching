@@ -27,7 +27,8 @@ branch plus the narrow hook-specialisation change in
 [`v2-protocol@e88e799`](https://github.com/wildcat-finance/v2-protocol/commit/e88e799),
 which is proposed in V2 PR #129 on top of PR #124. `Fork.t.sol` deploys that pinned protocol stack
 on mainnet block `25,758,381`, then creates the singleton market and tranching hook, registers the
-canonical wrapper, deploys the predicted manager and checks the exact close callback.
+canonical wrapper, deploys the predicted manager, funds both tranches and settles their queued
+exit through the market's expiry path.
 
 ## Design rules
 
@@ -99,10 +100,12 @@ side of an ordinary transfer. It cannot block a burn, withdrawal request, recove
 claim. Recovery from the permissionless market executor is recorded by withdrawal expiry, so an
 older batch cannot make a later request claimable.
 
-The local suite covers deposit, exit and recovery accounting. The pinned fork suite now proves the
-deployment, hook-wiring and base-asset deposit path. A real-stack queued exit and settlement remain
-the next stage. Terminal dust handling and a production settlement policy are deliberately not
-included.
+The local suite covers deposit, exit and recovery accounting. The pinned fork suite proves the
+deployment, hook wiring, base-asset entry and a two-step queued settlement: an initial shortfall
+puts a later senior request ahead of earlier junior requests, then later recovery settles junior to
+the recorded claimant. That shortfall makes the market delinquent at execution and leaves accrued
+interest in its batch; terminal dust handling and a production settlement policy are deliberately
+not included.
 
 ## Read before implementing
 
