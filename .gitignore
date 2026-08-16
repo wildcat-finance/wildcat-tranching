@@ -4,8 +4,12 @@ repos/
 # Foundry build artifacts
 build/out/
 build/cache/
+build/foundry.lock
 out/
 cache/
+
+# Local rendering workspace
+tmp/
 
 # Node
 node_modules/
