@@ -1,5 +1,8 @@
 # Desk primer
 
+Some credits are attractive at one attachment point and wrong at another. This structure lets senior and
+junior price different parts of one named borrower exposure, then funds both through one facility.
+
 ## The trade
 
 One borrower raises one facility from two classes of capital.
@@ -19,17 +22,29 @@ the structure.
 The senior target is not the loan coupon. It is the accounting hurdle used to divide facility value
 between the two classes, and it is paid only if the value or recovery exists.
 
-## Why each side might care
+## Why each side wants it
 
-**Borrower:** one facility can reach capital with two different return and loss appetites.
+**Borrower:** combine senior pricing with junior risk appetite in one line, with the opening capital stack
+set for the credit being financed.
 
-**Senior desk:** visible junior first-loss capital, priority on value and a fixed return target.
+**Senior desk:** own a named credit above visible funded junior capital, with priority on value and a fixed
+annual target.
 
-**Junior desk:** the residual return in exchange for taking the first hit and waiting behind senior exit
-requests.
+**Junior desk:** own the residual above senior's fixed target in exchange for taking the first hit and
+waiting behind senior exit requests.
 
-The decision still comes down to the obligor, use of proceeds, price, junior thickness, covenants and
-expected time to cash.
+This is useful precisely because the tickets are different. The final decision still comes down to the
+obligor, use of proceeds, price, junior thickness, covenants and expected time to cash.
+
+## What the spread can buy
+
+In the [Acme example](ACME_WORKED_EXAMPLE.md), the borrower pays a 10% lender rate. Senior supplies 80% of
+the capital at an 8% annual target. In the paid-as-agreed case, junior's $4m first-loss cheque ends the year
+at $4.72m: an 18% illustrative return. The same structure shows junior going to zero before senior is
+impaired in the severe case.
+
+That is the pitch in numbers. Junior earns the spread when the credit performs and absorbs the first loss
+when it does not.
 
 ## Run the downside before discussing yield
 

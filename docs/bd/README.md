@@ -1,12 +1,24 @@
-# One borrower. Two places in the capital stack.
+# One credit. Two ways to own it.
 
-The borrower raises one line. Junior funds the first-loss piece and keeps whatever value remains after
-senior. Senior sits above it with a fixed annual accounting target.
+A borrower has a credit worth funding. Senior wants a funded first-loss piece beneath it. Junior wants
+the return left after senior's fixed annual target. Put both into one facility and the same borrower cash
+supports two different tickets.
 
-That is the trade. Start with the credit, price and attachment point. Explain the software if somebody
-asks.
+The point is not to make bad credit look good. It is to give good credit more than one clearing price.
+Start with the borrower, return and attachment point. Explain the software if somebody asks.
 
-This is a prototype. It is not a live offer, rating, guarantee, legal opinion or promise of liquidity.
+## Why desks take the meeting
+
+**Senior** can own the named credit above explicit funded first-loss capital, with priority on facility
+value and a fixed annual target.
+
+**Junior** takes the first hit and owns the residual after senior. If the credit performs above the senior
+target, junior keeps the difference.
+
+**The borrower** can bring both pools of capital into one facility and set the initial senior target,
+junior percentage and workout window around the credit being financed.
+
+Nobody gets diversification by vocabulary. Both tickets still underwrite the same borrower.
 
 ## Take into the room
 
@@ -26,7 +38,7 @@ Borrower and use of proceeds. Facility size and expected draw. Lender rate and t
 Senior and junior cheques. Senior target and attachment point. Withdrawal cycle and expected time to cash.
 One delayed-payment case and one loss case.
 
-## Read the structure in thirty seconds
+## Read the payoff in thirty seconds
 
 Assume 300 senior, 100 junior and 315 due to senior:
 
@@ -36,7 +48,8 @@ Assume 300 senior, 100 junior and 315 due to senior:
 | 340 | 315 | 25 | Junior has absorbed the reduction in value |
 | 280 | 280 | 0 | Junior is gone; senior is impaired |
 
-Seniority changes who takes the first loss. It does not turn a poor borrower into a good one.
+The same credit can suit one desk at the senior attachment and another at the junior attachment. Seniority
+changes the order of value and loss; underwriting still decides whether either ticket is worth owning.
 
 ## What the borrower sets
 
@@ -55,7 +68,7 @@ The loan has its own size, lender rate, withdrawal cycle, grace period, arrears 
 rights. The platform fee is set separately. Put all of them on the term sheet because they affect cost,
 cash timing or both.
 
-## What matters to a desk
+## What earns the second call
 
 - **Credit:** one named borrower, not a diversified pool.
 - **Attachment:** junior loses first; senior loses after junior reaches zero.
@@ -73,3 +86,10 @@ legal default. Audited. Production-ready.
 
 Say what it is: one borrower credit, split into a senior claim and a junior first-loss claim, with cash
 exit tied to the borrower's ability to pay.
+
+## Scope
+
+This pack assumes the intended V2.5 integration lands as designed and describes the facility Wildcat means
+to bring to market. The current repository is tested implementation work, not a live offer, rating,
+guarantee, legal opinion or promise of liquidity. That belongs in diligence; it does not need to be the
+opening slide.

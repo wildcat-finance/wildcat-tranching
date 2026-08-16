@@ -1,6 +1,8 @@
 # Facility worksheet
 
-Fill this in before pricing the two classes. Blank cells mean the deal is not ready.
+This is where appetite becomes terms. Start with a borrower worth funding, then make senior and junior
+write down the price, attachment and cash timing each will actually accept. Blank cells mean there is no
+deal yet.
 
 ## 1. Credit
 
@@ -92,5 +94,5 @@ has not returned the money.
 | Arrears monitoring |  |
 | Workout |  |
 
-This worksheet does not amend a facility. It tells the deal team whether there is enough substance to
-form one.
+This worksheet does not amend a facility. It tells the deal team whether both cheques can clear on terms
+worth documenting.
