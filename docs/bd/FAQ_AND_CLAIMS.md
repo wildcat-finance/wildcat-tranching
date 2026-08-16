@@ -1,5 +1,11 @@
 # Desk FAQ
 
+## Why does this exist?
+
+Because the same borrower can be attractive at one attachment point and uninvestable at another. Senior
+gets funded first-loss capital beneath it. Junior gets the residual above senior's fixed target. The
+borrower gets one facility rather than asking every desk to accept the same return and loss profile.
+
 ## What am I buying?
 
 A senior or junior participation in one named borrower facility. Both classes own the same credit.
@@ -84,14 +90,17 @@ Cash already allocated remains claimable, subject to the holder's own escrow che
 Borrower memo, use of proceeds, capital stack, price, base and downside cash cases, time to cash, amendment
 rights, reporting, legal analysis and named workout owners.
 
-## Is it ready to buy?
+## What stage is this at?
 
-No. It is a tested prototype. It is not rated, audited or live.
+The structure, parameter set and worked economics are ready for counterparty design discussions on the
+assumption that the intended V2.5 integration lands as designed. The repository is tested implementation
+work; it is not itself a live offer, rating or completed audit.
 
 ## Say this
 
-One borrower. Senior priority. Junior first loss. Fixed annual senior target. Cash exit tied to borrower
-payment. Open transfer subject to the sanctions oracle.
+One borrower. Two attachment points. Senior owns priority above funded first loss. Junior owns the residual
+and takes the first hit. The borrower shapes the opening stack. Cash exit follows borrower payment. Open
+transfer remains subject to the sanctions oracle.
 
 ## Do not say this
 

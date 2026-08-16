@@ -4,10 +4,17 @@
 
 One borrower. One facility. Two attachment points.
 
-Junior takes the first loss and keeps the residual return. Senior sits above it with a fixed annual
-accounting target. Both are exposed to the same borrower and both wait for the same cash.
+Senior owns the named credit above funded first-loss capital. Junior takes that first loss and owns the
+value left after senior's fixed annual target. The borrower gets one capital stack built around two
+different appetites.
 
-Then ask about the credit.
+That is enough structure for the first minute. Then show the price and ask about the credit.
+
+## Why this gets a meeting
+
+Senior does not need to own the first-loss attachment to fund a borrower it likes. Junior owns every
+dollar of facility value left after senior's target when the credit performs. The borrower can negotiate
+both cheques as one financing instead of pretending every lender wants the same risk.
 
 ## Five questions
 
@@ -52,13 +59,16 @@ fixed. Loan amendment rights remain a separate negotiation.
 For an open class: yes, anyone can receive it unless their wallet is flagged by the Chainalysis sanctions
 oracle. Transferability still does not promise a market, buyer or price.
 
-## The honest answers
+## When diligence starts
 
 Senior is not guaranteed. The junior cushion is not rebuilt after a loss. Exit is not instant. Wind-down
-is an operating state, not automatically legal default. This is a tested prototype, not a rated or live
-product.
+is an operating state, not automatically legal default.
+
+This pack assumes the intended V2.5 integration lands as designed. The repository contains tested
+implementation work; it is not itself a rated product or live offer.
 
 ## Close with this
 
 Bring one borrower, one proposed capital stack and three cash cases: paid as agreed, paid late and cured,
-and impaired. We can then decide whether the price, subordination and time to cash deserve another call.
+and impaired. If both cheques clear those numbers, stop discussing architecture and start diligencing the
+credit.

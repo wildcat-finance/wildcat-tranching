@@ -1,5 +1,12 @@
 # Acme Ltd: a $20m worked credit
 
+Acme wants a $20m USDC line. Senior supplies $16m above a $4m junior first-loss cheque. At a 10% lender
+rate and an 8% senior target, the paid-as-agreed case gives senior its target and leaves junior with an 18%
+illustrative return.
+
+The same five pages take the room through funding, full performance, a day-24 cure and a $12m severe
+recovery. There is upside worth discussing and a loss case nobody gets to hand-wave.
+
 This is a desk illustration, not a quote or forecast. It assumes one USDC equals one dollar, a full draw
 for one year and simple rounded calculations. A live transaction would use the contract's exact accrual,
 scaling and rounding.
@@ -137,3 +144,6 @@ underwritten separately in a live deal.
 Acme pays 10.5% running cost on a $20m line. Senior puts in $16m for an 8% accounting target. Junior puts
 in $4m, takes the first loss and keeps the residual. Weekly batching governs exit requests; Acme's cash
 governs payment.
+
+That is a financeable conversation: 10.5% running borrower cost, an 8% senior target above 20% funded
+junior, and the downside shown before anybody writes a cheque.

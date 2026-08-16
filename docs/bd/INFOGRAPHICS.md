@@ -1,6 +1,7 @@
 # Deal diagrams
 
-Six screen-ready pictures. Keep each caption with its image.
+Eleven screen-ready pictures: six pages for the structure and five for the Acme worked credit. Do not send
+all eleven as a dump. Pick the structure, payoff and cash case that answer the room's actual question.
 
 ## One loan, two claims
 
@@ -43,7 +44,7 @@ A 5% platform fee means 5% of the interest bill, not five percentage points of p
 is another number again: it divides value between the two classes. No fee is charged at the participation
 layer.
 
-## Use rules
+## Use them properly
 
 - Keep the qualification with the picture.
 - Treat every number as an illustration until a live credit is approved.
@@ -51,7 +52,8 @@ layer.
 - Use the [field-kit visual rules](BRAND_AND_VISUALS.md) for any new image.
 - Send implementation questions to the [internal research report](RESEARCH_REPORT.md).
 
-These diagrams describe the current prototype. They are not a rating, audit opinion or product approval.
+These diagrams assume the intended V2.5 integration lands as designed. They describe the facility Wildcat
+means to bring to market; they are not a rating, audit opinion or live offer.
 
 ## Worked sequence
 
