@@ -52,3 +52,13 @@ layer.
 - Send implementation questions to the [internal research report](RESEARCH_REPORT.md).
 
 These diagrams describe the current prototype. They are not a rating, audit opinion or product approval.
+
+## Worked sequence
+
+The [Acme Ltd example](ACME_WORKED_EXAMPLE.md) has five pages that can be presented in order:
+
+1. [Terms](assets/acme-terms.png)
+2. [Funding](assets/acme-funding.png)
+3. [Happy: paid as agreed](assets/acme-performing.png)
+4. [Neutral: cured on day 24](assets/acme-cure.png)
+5. [Catastrophic: $12m net recovery](assets/acme-loss.png)

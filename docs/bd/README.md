@@ -15,6 +15,7 @@ This is a prototype. It is not a live offer, rating, guarantee, legal opinion or
 - [Parameter worksheet](PARAMETER_DISCOVERY.md): the decisions needed to price a facility.
 - [Desk FAQ](FAQ_AND_CLAIMS.md): short answers for the obvious objections.
 - [Infographics](INFOGRAPHICS.md): the structure on a screen.
+- [Acme worked example](ACME_WORKED_EXAMPLE.md): a $20m facility through performing, cured and loss paths.
 
 The [research report](RESEARCH_REPORT.md) is internal source material. Use it to check an edge case, not
 to pitch the trade.
