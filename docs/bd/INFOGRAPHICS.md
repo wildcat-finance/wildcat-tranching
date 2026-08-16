@@ -1,52 +1,54 @@
 # Deal diagrams
 
-Six pictures. One trade. Keep the captions attached so nobody sells priority as a guarantee or
-transferability as liquidity.
+Six screen-ready pictures. Keep each caption with its image.
 
-## One loan, two tickets
+## One loan, two claims
 
-![One borrower facility supports senior and junior participation classes.](assets/one-market-two-claims.svg)
+![One named borrower facility supports a senior claim and a junior first-loss claim.](assets/one-loan-two-claims.png)
 
-Same credit. Senior has first claim on value and senior exit requests clear before junior requests.
-Junior takes the first loss and keeps the residual.
+Use this first. Both classes own the same borrower credit. Senior has a fixed accounting target; junior
+takes the first loss and keeps the residual.
 
-## Where the money goes
+## Loss waterfall
 
-![Cash fills senior exit requests before junior requests, while junior absorbs loss before senior.](assets/priority-waterfall.svg)
+![Three cases show junior absorbing loss before senior is impaired.](assets/loss-waterfall.png)
 
-Use this for the three cases that matter: whole, junior impaired and senior impaired.
+Use this before discussing yield. The junior percentage is not rebuilt after loss.
 
-## Who controls what
+## Who sets what
 
-![Four columns separate borrower-selected facility terms, loan operating terms, platform settings and fixed mechanics.](assets/parameter-authority.svg)
+![Borrower formation terms, loan terms and system or platform settings are shown separately.](assets/who-sets-what.png)
 
-The borrower shapes the deal at formation. That does not mean the borrower can rewrite it later.
+The borrower shapes the capital stack at formation. Loan amendments and platform settings remain separate.
 
-## Cash in, cash out
+## Cash lifecycle
 
-![Seven steps run from agreeing terms through funding, loan performance, exit request, cash collection and payment.](assets/healthy-lifecycle.svg)
+![Six steps show funding, borrower draw, exit request and cash clearing.](assets/cash-lifecycle.png)
 
-There is no instant exit. Cash comes out when the loan produces it.
+The withdrawal cycle batches an exit request. Payment still waits for borrower cash. For an open class,
+any wallet may receive the participation unless the Chainalysis sanctions oracle flags it.
 
 ## Arrears and workout
 
-![An arrears timeline branches to cure or permanent wind-down, followed by recovery and settlement.](assets/distress-lifecycle.svg)
+![An arrears timeline branches to cure or permanent wind-down.](assets/arrears-and-workout.png)
 
-Use this to agree who watches the credit, who records the trigger and who runs the workout.
+Cure must happen before the live threshold is recorded. Once recorded, wind-down stays and senior accrual
+freezes at the cutoff.
 
-## Borrower cost versus holder return
+## Borrower cost and holder return
 
-![Borrower cost combines lender interest and the Wildcat protocol fee, while the facility separately divides value between senior and junior.](assets/cost-and-yield-bridge.svg)
+![A 10 percent lender rate plus a fee equal to 5 percent of interest produces a 10.5 percent running borrower cost, while the participation waterfall separately divides value.](assets/cost-and-returns.png)
 
-The borrower rate, Wildcat protocol fee and senior target are three different numbers. Keep them that way.
+A 5% platform fee means 5% of the interest bill, not five percentage points of principal. The senior target
+is another number again: it divides value between the two classes. No fee is charged at the participation
+layer.
 
-## Reuse rules
+## Use rules
 
 - Keep the qualification with the picture.
 - Treat every number as an illustration until a live credit is approved.
-- Never promise repayment, liquidity, rating or legal treatment.
+- Do not promise repayment, liquidity, rating or legal treatment.
+- Use the [field-kit visual rules](BRAND_AND_VISUALS.md) for any new image.
 - Send implementation questions to the [internal research report](RESEARCH_REPORT.md).
-
-## Source note
 
 These diagrams describe the current prototype. They are not a rating, audit opinion or product approval.
