@@ -2,59 +2,63 @@
 
 ## Open with this
 
-One borrower. One facility. Two tickets.
+One borrower. One facility. Two attachment points.
 
-Junior takes the first loss and owns the residual. Senior sits above it, accrues an annual simple
-accounting target and has first claim on realised value. Senior exit requests clear before junior
-requests. The structure reaches two risk books without pretending the underlying credit changed.
+Junior takes the first loss and keeps the residual return. Senior sits above it with a fixed annual
+accounting target. Both are exposed to the same borrower and both wait for the same cash.
 
-Then stop talking and ask about the deal.
+Then ask about the credit.
 
-## Five questions that matter
+## Five questions
 
-1. Who is the borrower, what is the money for and where does repayment come from?
-2. How much junior capital is genuinely funded, and what downside does it survive?
-3. What return does senior need for this credit and this time to cash?
-4. What can the borrower change after closing, and whose consent is needed?
-5. Who is allowed to hold each class, and who runs monitoring and workout?
+1. Who is the obligor, what is the money for and where does repayment come from?
+2. How much junior capital is funded, and what loss does it absorb before senior is touched?
+3. What price does senior need for this borrower and this expected time to cash?
+4. Which loan terms can change after closing, and who can object?
+5. Who monitors arrears, calls the trigger and runs the workout?
 
-## Numbers to leave with
+## Numbers to put on one page
 
-- senior target: 0% to 100% per year, simple accrual;
-- junior percentage at entry: 5% to 90%;
-- extra workout window after loan grace: more than 0 and no more than 90 days;
-- senior and junior eligibility: open or a fixed provider;
-- loan rate, size, reserve, arrears charge and withdrawal period;
-- Wildcat protocol and origination charges; and
-- final recipient for genuine surplus after everyone is paid.
+- facility size and expected draw;
+- lender rate and total borrower running cost;
+- senior amount, annual target and attachment point;
+- junior amount, percentage and expected residual return;
+- withdrawal cycle, grace period and extra arrears window;
+- reserve, arrears charge and one-off fees; and
+- base, delayed-payment and loss cases.
 
-The borrower proposes the facility terms at formation. Manager economics and each class's open-or-provider
-setting are fixed; a selected provider's policy may change. None of this is a standing right to reprice
-the deal.
+The borrower proposes the senior target, junior percentage, extra window, class access setting and final
+surplus recipient when the facility is formed. Manager economics and the class access setting are then
+fixed. Loan amendment rights remain a separate negotiation.
 
-## If they are senior
+## If the room is senior
 
-- Show the exact loss that burns through junior and reaches senior.
-- Show when cash is expected in the base case and in workout.
+- Show the loss that burns through junior and reaches senior.
+- Show expected cash timing in the base case and workout.
 - Prove the junior cheque exists and funds first.
 - List every loan term that can move without senior consent.
-- Agree the reporting pack before the money moves.
+- Agree reporting and escalation before the money moves.
 
-## If they are junior
+## If the room is junior
 
 - Show the residual after senior accrual in the base case.
-- Show how fast the residual disappears in the downside.
-- Explain that junior exit requests wait behind senior exit requests.
-- Test whether the exit constraint fits their treasury needs.
-- Be explicit about which decisions neither class controls.
+- Show how quickly that residual disappears in the downside.
+- Explain that junior exit cash waits behind senior exit requests.
+- Test whether the expected cash timing fits treasury needs.
+- Be explicit about decisions that neither class controls.
+
+## The transfer answer
+
+For an open class: yes, anyone can receive it unless their wallet is flagged by the Chainalysis sanctions
+oracle. Transferability still does not promise a market, buyer or price.
 
 ## The honest answers
 
-Senior is not guaranteed. The junior cushion is not rebuilt after loss. Exit is not instant. Transfer does
-not produce a buyer. Wind-down is an operating state, not automatically legal default. This is a tested
-prototype, not a rated or production product.
+Senior is not guaranteed. The junior cushion is not rebuilt after a loss. Exit is not instant. Wind-down
+is an operating state, not automatically legal default. This is a tested prototype, not a rated or live
+product.
 
 ## Close with this
 
-Bring us one borrower, one proposed capital stack and three cash cases: whole, junior impaired and senior
-impaired. We will tell you whether the price, subordination and time to cash are worth pursuing.
+Bring one borrower, one proposed capital stack and three cash cases: paid as agreed, paid late and cured,
+and impaired. We can then decide whether the price, subordination and time to cash deserve another call.
